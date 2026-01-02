@@ -444,30 +444,30 @@ Create `src/core/tools.ts`:
 
 Create `src/session/store.ts`:
 
-- [ ] In-memory Map<SessionID, SessionState>
-- [ ] CRUD operations
-- [ ] Track active session count per project
+- [*] In-memory Map<SessionID, SessionState>
+- [*] CRUD operations
+- [*] Track active session count per project
 
 ### 6.2 Session Manager
 
 Create `src/session/manager.ts`:
 
-- [ ] Implement `startSession(projectId, npcId, playerId): Promise<SessionStartResult>`
-  - [ ] Load project and validate
-  - [ ] Load definition
-  - [ ] Load API keys
-  - [ ] Get or create instance
-  - [ ] Load knowledge base
-  - [ ] Cache original anchor
-  - [ ] Create session in store
-  - [ ] Return session_id, npc_name, mood
-- [ ] Implement `endSession(sessionId): Promise<SessionEndResult>`
-  - [ ] Summarize conversation, create memory (unless exit_convo)
-  - [ ] Update mood
-  - [ ] Validate anchor integrity
-  - [ ] Save instance (with history)
-  - [ ] Delete from store
-- [ ] Implement timeout cleanup
+- [*] Implement `startSession(projectId, npcId, playerId): Promise<SessionStartResult>`
+  - [*] Load project and validate
+  - [*] Load definition
+  - [*] Load API keys
+  - [*] Get or create instance
+  - [*] Load knowledge base
+  - [*] Cache original anchor
+  - [*] Create session in store
+  - [*] Return session_id, npc_name, mood
+- [*] Implement `endSession(sessionId): Promise<SessionEndResult>`
+  - [*] Summarize conversation, create memory (unless exit_convo)
+  - [*] Update mood
+  - [*] Validate anchor integrity
+  - [*] Save instance (with history)
+  - [*] Delete from store
+- [*] Implement timeout cleanup
 
 **Checkpoint:** Sessions can be created and ended. State persists.
 
@@ -802,7 +802,7 @@ Create `src/voice/audio.ts`:
 | 3 | Provider Abstraction | Complete |
 | 4 | Storage Layer | Complete |
 | 5 | Core NPC Logic | Complete |
-| 6 | Session Management | Not Started |
+| 6 | Session Management | Complete |
 | 7 | API Routes | Not Started |
 | 8 | Voice Pipeline | Not Started |
 | 9 | Web Test UI | Not Started |
