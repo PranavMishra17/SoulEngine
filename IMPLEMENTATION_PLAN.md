@@ -279,26 +279,26 @@ Create `src/security/anchor-guard.ts`:
 
 Create `src/providers/llm/interface.ts` and `src/providers/llm/gemini.ts`:
 
-- [ ] Define LLMProvider interface with streamChat()
-- [ ] Implement Gemini streaming with function calling
-- [ ] Handle AbortSignal for cancellation
+- [*] Define LLMProvider interface with streamChat()
+- [*] Implement Gemini streaming with function calling
+- [*] Handle AbortSignal for cancellation
 
 ### 3.2 STT Provider
 
 Create `src/providers/stt/interface.ts` and `src/providers/stt/deepgram.ts`:
 
-- [ ] Define STTProvider interface with createSession()
-- [ ] Implement Deepgram WebSocket live transcription
-- [ ] Handle reconnection with backoff
+- [*] Define STTProvider interface with createSession()
+- [*] Implement Deepgram WebSocket live transcription
+- [*] Handle reconnection with backoff
 
 ### 3.3 TTS Providers
 
 Create `src/providers/tts/interface.ts`, `cartesia.ts`, `elevenlabs.ts`, `factory.ts`:
 
-- [ ] Define TTSProvider interface with createSession()
-- [ ] Implement Cartesia WebSocket streaming (default)
-- [ ] Implement ElevenLabs WebSocket streaming (alternative)
-- [ ] Factory to select provider based on project settings
+- [*] Define TTSProvider interface with createSession()
+- [*] Implement Cartesia WebSocket streaming (default)
+- [*] Implement ElevenLabs WebSocket streaming (alternative)
+- [*] Factory to select provider based on project settings
 
 **Checkpoint:** Providers connect and stream independently.
 
@@ -312,61 +312,61 @@ Create `src/providers/tts/interface.ts`, `cartesia.ts`, `elevenlabs.ts`, `factor
 
 Create `src/storage/projects.ts`:
 
-- [ ] Implement `createProject(name: string): Promise<Project>`
-  - [ ] Generate project ID
-  - [ ] Create directory structure
-  - [ ] Write project.yaml with defaults
-  - [ ] Return project
-- [ ] Implement `getProject(projectId: string): Promise<Project>`
-- [ ] Implement `updateProject(projectId: string, updates: Partial<Project>): Promise<Project>`
-- [ ] Implement `deleteProject(projectId: string): Promise<void>`
-- [ ] Implement `listProjects(): Promise<Project[]>`
+- [*] Implement `createProject(name: string): Promise<Project>`
+  - [*] Generate project ID
+  - [*] Create directory structure
+  - [*] Write project.yaml with defaults
+  - [*] Return project
+- [*] Implement `getProject(projectId: string): Promise<Project>`
+- [*] Implement `updateProject(projectId: string, updates: Partial<Project>): Promise<Project>`
+- [*] Implement `deleteProject(projectId: string): Promise<void>`
+- [*] Implement `listProjects(): Promise<Project[]>`
 
 ### 4.2 Secrets Storage
 
 Create `src/storage/secrets.ts`:
 
-- [ ] Implement `saveApiKeys(projectId: string, keys: ApiKeys): Promise<void>`
-  - [ ] Encrypt with ENCRYPTION_KEY
-  - [ ] Write to secrets.enc
-- [ ] Implement `loadApiKeys(projectId: string): Promise<ApiKeys>`
-  - [ ] Decrypt and return
+- [*] Implement `saveApiKeys(projectId: string, keys: ApiKeys): Promise<void>`
+  - [*] Encrypt with ENCRYPTION_KEY
+  - [*] Write to secrets.enc
+- [*] Implement `loadApiKeys(projectId: string): Promise<ApiKeys>`
+  - [*] Decrypt and return
 
 ### 4.3 Knowledge Base Storage
 
 Create `src/storage/knowledge.ts`:
 
-- [ ] Implement `getKnowledgeBase(projectId: string): Promise<KnowledgeBase>`
-- [ ] Implement `updateKnowledgeBase(projectId: string, kb: KnowledgeBase): Promise<void>`
-- [ ] Validate category and depth structure
+- [*] Implement `getKnowledgeBase(projectId: string): Promise<KnowledgeBase>`
+- [*] Implement `updateKnowledgeBase(projectId: string, kb: KnowledgeBase): Promise<void>`
+- [*] Validate category and depth structure
 
 ### 4.4 NPC Definition Storage
 
 Create `src/storage/definitions.ts`:
 
-- [ ] Implement `createDefinition(projectId: string, def: NPCDefinition): Promise<NPCDefinition>`
-  - [ ] Generate NPC ID
-  - [ ] Validate against project limits
-  - [ ] Write YAML file
-- [ ] Implement `getDefinition(projectId: string, npcId: string): Promise<NPCDefinition>`
-- [ ] Implement `updateDefinition(projectId: string, npcId: string, updates): Promise<NPCDefinition>`
-- [ ] Implement `deleteDefinition(projectId: string, npcId: string): Promise<void>`
-- [ ] Implement `listDefinitions(projectId: string): Promise<NPCDefinition[]>`
+- [*] Implement `createDefinition(projectId: string, def: NPCDefinition): Promise<NPCDefinition>`
+  - [*] Generate NPC ID
+  - [*] Validate against project limits
+  - [*] Write YAML file
+- [*] Implement `getDefinition(projectId: string, npcId: string): Promise<NPCDefinition>`
+- [*] Implement `updateDefinition(projectId: string, npcId: string, updates): Promise<NPCDefinition>`
+- [*] Implement `deleteDefinition(projectId: string, npcId: string): Promise<void>`
+- [*] Implement `listDefinitions(projectId: string): Promise<NPCDefinition[]>`
 
 ### 4.5 Instance Storage with History
 
 Create `src/storage/instances.ts`:
 
-- [ ] Implement `getInstance(instanceId: string): Promise<NPCInstance>`
-- [ ] Implement `getOrCreateInstance(projectId, npcId, playerId): Promise<NPCInstance>`
-  - [ ] Check if instance exists for this player
-  - [ ] If not, create from definition
-- [ ] Implement `saveInstance(instance: NPCInstance): Promise<{ version: string }>`
-  - [ ] If history enabled, archive current.json
-  - [ ] Write new current.json
-  - [ ] Prune old history
-- [ ] Implement `getInstanceHistory(instanceId: string): Promise<StateVersion[]>`
-- [ ] Implement `rollbackInstance(instanceId: string, version: string): Promise<NPCInstance>`
+- [*] Implement `getInstance(instanceId: string): Promise<NPCInstance>`
+- [*] Implement `getOrCreateInstance(projectId, npcId, playerId): Promise<NPCInstance>`
+  - [*] Check if instance exists for this player
+  - [*] If not, create from definition
+- [*] Implement `saveInstance(instance: NPCInstance): Promise<{ version: string }>`
+  - [*] If history enabled, archive current.json
+  - [*] Write new current.json
+  - [*] Prune old history
+- [*] Implement `getInstanceHistory(instanceId: string): Promise<StateVersion[]>`
+- [*] Implement `rollbackInstance(instanceId: string, version: string): Promise<NPCInstance>`
 
 **Checkpoint:** Full CRUD for projects, definitions, instances works.
 
@@ -799,8 +799,8 @@ Create `src/voice/audio.ts`:
 |-------|-------------|--------|
 | 1 | Foundation | Complete |
 | 2 | Security Foundation | Complete |
-| 3 | Provider Abstraction | Not Started |
-| 4 | Storage Layer | Not Started |
+| 3 | Provider Abstraction | Complete |
+| 4 | Storage Layer | Complete |
 | 5 | Core NPC Logic | Not Started |
 | 6 | Session Management | Not Started |
 | 7 | API Routes | Not Started |
