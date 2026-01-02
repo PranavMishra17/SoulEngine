@@ -138,11 +138,11 @@ evolve-npc/
 
 ### 1.1 Project Initialization
 
-- [ ] Initialize project with `bun init` or `npm init`
-- [ ] Configure tsconfig.json with strict mode, ES2022 target
-- [ ] Install core dependencies: hono, zod, pino, pino-pretty, ws, yaml
-- [ ] Create folder structure as shown above
-- [ ] Add .env.example:
+- [*] Initialize project with `bun init` or `npm init`
+- [*] Configure tsconfig.json with strict mode, ES2022 target
+- [*] Install core dependencies: hono, zod, pino, pino-pretty, ws, yaml
+- [*] Create folder structure as shown above
+- [*] Add .env.example:
 
 ```
 PORT=3000
@@ -158,72 +158,72 @@ STATE_HISTORY_MAX_VERSIONS=10
 
 Create `src/logger.ts`:
 
-- [ ] Initialize Pino with JSON output
-- [ ] Support LOG_LEVEL from env (default: info)
-- [ ] Export child logger factory: `createLogger(name: string)`
-- [ ] Include base fields: service name, version
-- [ ] Add request ID generation utility
+- [*] Initialize Pino with JSON output
+- [*] Support LOG_LEVEL from env (default: info)
+- [*] Export child logger factory: `createLogger(name: string)`
+- [*] Include base fields: service name, version
+- [*] Add request ID generation utility
 
 ### 1.3 Config Module
 
 Create `src/config.ts`:
 
-- [ ] Load environment variables
-- [ ] Define config schema with Zod, validate on load
-- [ ] Export typed config object
-- [ ] Include security config: rate limits, max input length
-- [ ] Include session config: timeout duration
-- [ ] Include storage config: data dir, history settings
-- [ ] Include limits: max NPCs per project, max categories, etc.
+- [*] Load environment variables
+- [*] Define config schema with Zod, validate on load
+- [*] Export typed config object
+- [*] Include security config: rate limits, max input length
+- [*] Include session config: timeout duration
+- [*] Include storage config: data dir, history settings
+- [*] Include limits: max NPCs per project, max categories, etc.
 
 ### 1.4 Core Types
 
 Create `src/types/project.ts`:
 
-- [ ] Define ProjectID type: string
-- [ ] Define ProjectSettings interface: llm_provider, stt_provider, tts_provider, default_voice_id, timeouts
-- [ ] Define ProjectLimits interface: max_npcs, max_categories, max_concurrent_sessions
-- [ ] Define Project interface: id, name, created_at, settings, limits
+- [*] Define ProjectID type: string
+- [*] Define ProjectSettings interface: llm_provider, stt_provider, tts_provider, default_voice_id, timeouts
+- [*] Define ProjectLimits interface: max_npcs, max_categories, max_concurrent_sessions
+- [*] Define Project interface: id, name, created_at, settings, limits
 
 Create `src/types/knowledge.ts`:
 
-- [ ] Define KnowledgeCategory interface: id, description, depths (Record<number, string>)
-- [ ] Define KnowledgeBase interface: categories (Record<string, KnowledgeCategory>)
-- [ ] Define KnowledgeAccess type: Record<string, number> (category -> depth level)
+- [*] Define KnowledgeCategory interface: id, description, depths (Record<number, string>)
+- [*] Define KnowledgeBase interface: categories (Record<string, KnowledgeCategory>)
+- [*] Define KnowledgeAccess type: Record<string, number> (category -> depth level)
 
 Create `src/types/npc.ts`:
 
-- [ ] Define CoreAnchor interface: backstory, principles, trauma_flags
-- [ ] Define PersonalityBaseline interface: Big Five traits (0-1 scale)
-- [ ] Define MoodVector interface: valence, arousal, dominance
-- [ ] Define VoiceConfig interface: provider, voice_id, speed
-- [ ] Define ScheduleBlock interface: start, end, location_id, activity
-- [ ] Define MCPPermissions interface: conversation_tools, game_event_tools, denied
-- [ ] Define NPCDefinition interface: id, project_id, name, description, core_anchor, personality_baseline, voice, schedule, mcp_permissions, knowledge_access
-- [ ] Define Memory interface: id, content, timestamp, salience, type
-- [ ] Define RelationshipState interface: trust, familiarity, sentiment
-- [ ] Define DailyPulse interface: mood, takeaway, timestamp
-- [ ] Define CycleMetadata interface: last_weekly, last_persona_shift
-- [ ] Define NPCInstance interface: id, definition_id, project_id, player_id, created_at, current_mood, trait_modifiers, short_term_memory, long_term_memory, relationships, daily_pulse, cycle_metadata
+- [*] Define CoreAnchor interface: backstory, principles, trauma_flags
+- [*] Define PersonalityBaseline interface: Big Five traits (0-1 scale)
+- [*] Define MoodVector interface: valence, arousal, dominance
+- [*] Define VoiceConfig interface: provider, voice_id, speed
+- [*] Define ScheduleBlock interface: start, end, location_id, activity
+- [*] Define MCPPermissions interface: conversation_tools, game_event_tools, denied
+- [*] Define NPCDefinition interface: id, project_id, name, description, core_anchor, personality_baseline, voice, schedule, mcp_permissions, knowledge_access
+- [*] Define Memory interface: id, content, timestamp, salience, type
+- [*] Define RelationshipState interface: trust, familiarity, sentiment
+- [*] Define DailyPulse interface: mood, takeaway, timestamp
+- [*] Define CycleMetadata interface: last_weekly, last_persona_shift
+- [*] Define NPCInstance interface: id, definition_id, project_id, player_id, created_at, current_mood, trait_modifiers, short_term_memory, long_term_memory, relationships, daily_pulse, cycle_metadata
 
 Create `src/types/session.ts`:
 
-- [ ] Define SessionID type: string (UUID)
-- [ ] Define SessionState interface: session_id, project_id, definition_id, instance, conversation_history, created_at, last_activity, player_id
-- [ ] Define SessionInitRequest interface: project_id, npc_id, player_id
-- [ ] Define SessionEndResponse interface: success, version
+- [*] Define SessionID type: string (UUID)
+- [*] Define SessionState interface: session_id, project_id, definition_id, instance, conversation_history, created_at, last_activity, player_id
+- [*] Define SessionInitRequest interface: project_id, npc_id, player_id
+- [*] Define SessionEndResponse interface: success, version
 
 Create `src/types/security.ts`:
 
-- [ ] Define SanitizationResult, ModerationResult, SecurityContext interfaces
+- [*] Define SanitizationResult, ModerationResult, SecurityContext interfaces
 
 Create `src/types/voice.ts`:
 
-- [ ] Define VoiceConfig, AudioChunk, TranscriptEvent, TTSChunk interfaces
+- [*] Define VoiceConfig, AudioChunk, TranscriptEvent, TTSChunk interfaces
 
 Create `src/types/mcp.ts`:
 
-- [ ] Define Tool, ToolCall, ToolResult, ToolPermission interfaces
+- [*] Define Tool, ToolCall, ToolResult, ToolPermission interfaces
 
 **Checkpoint:** Types compile without errors.
 
@@ -237,35 +237,35 @@ Create `src/types/mcp.ts`:
 
 Create `src/security/sanitizer.ts`:
 
-- [ ] Implement `sanitize(input: string): SanitizationResult`
-- [ ] Enforce max length (default 500)
-- [ ] Strip injection patterns
-- [ ] Log violations at warn level
+- [*] Implement `sanitize(input: string): SanitizationResult`
+- [*] Enforce max length (default 500)
+- [*] Strip injection patterns
+- [*] Log violations at warn level
 
 ### 2.2 Rate Limiter
 
 Create `src/security/rate-limiter.ts`:
 
-- [ ] Implement sliding window rate limiter
-- [ ] Key by `${project_id}:${player_id}:${npc_id}`
-- [ ] Configurable limit (default: 10/min)
-- [ ] In-memory store with TTL cleanup
+- [*] Implement sliding window rate limiter
+- [*] Key by `${project_id}:${player_id}:${npc_id}`
+- [*] Configurable limit (default: 10/min)
+- [*] In-memory store with TTL cleanup
 
 ### 2.3 Content Moderator
 
 Create `src/security/moderator.ts`:
 
-- [ ] Implement `moderate(input: string): Promise<ModerationResult>`
-- [ ] Keyword-based check (expandable to LLM-based)
-- [ ] Return action: none, warn, exit
-- [ ] Log flagged content
+- [*] Implement `moderate(input: string): Promise<ModerationResult>`
+- [*] Keyword-based check (expandable to LLM-based)
+- [*] Return action: none, warn, exit
+- [*] Log flagged content
 
 ### 2.4 Anchor Guard
 
 Create `src/security/anchor-guard.ts`:
 
-- [ ] Implement `validateAnchorIntegrity(original, current): boolean`
-- [ ] Implement `enforceAnchorImmutability(state, originalAnchor): NPCState`
+- [*] Implement `validateAnchorIntegrity(original, current): boolean`
+- [*] Implement `enforceAnchorImmutability(state, originalAnchor): NPCState`
 
 **Checkpoint:** Security modules work standalone.
 
@@ -797,8 +797,8 @@ Create `src/voice/audio.ts`:
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Foundation | Not Started |
-| 2 | Security Foundation | Not Started |
+| 1 | Foundation | Complete |
+| 2 | Security Foundation | Complete |
 | 3 | Provider Abstraction | Not Started |
 | 4 | Storage Layer | Not Started |
 | 5 | Core NPC Logic | Not Started |
