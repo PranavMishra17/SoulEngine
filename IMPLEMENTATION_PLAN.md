@@ -380,57 +380,57 @@ Create `src/storage/instances.ts`:
 
 Create `src/core/knowledge.ts`:
 
-- [ ] Implement `resolveKnowledge(knowledgeBase: KnowledgeBase, access: KnowledgeAccess): string`
-  - [ ] For each category in access
-  - [ ] Include all depths up to access level
-  - [ ] Concatenate into knowledge string
+- [*] Implement `resolveKnowledge(knowledgeBase: KnowledgeBase, access: KnowledgeAccess): string`
+  - [*] For each category in access
+  - [*] Include all depths up to access level
+  - [*] Concatenate into knowledge string
 
 ### 5.2 Memory System
 
 Create `src/core/memory.ts`:
 
-- [ ] Implement Memory creation with ID and timestamp
-- [ ] Implement salience scoring
-- [ ] Implement STM/LTM retrieval
-- [ ] Implement memory pruning (STM: 20, LTM: 50)
+- [*] Implement Memory creation with ID and timestamp
+- [*] Implement salience scoring
+- [*] Implement STM/LTM retrieval
+- [*] Implement memory pruning (STM: 20, LTM: 50)
 
 ### 5.3 Memory Summarizer
 
 Create `src/core/summarizer.ts`:
 
-- [ ] Implement `summarizeConversation(history, npcPerspective): Promise<string>`
-- [ ] LLM prompt for 2-3 sentence summary from NPC perspective
-- [ ] No direct quotes (injection filtering)
+- [*] Implement `summarizeConversation(history, npcPerspective): Promise<string>`
+- [*] LLM prompt for 2-3 sentence summary from NPC perspective
+- [*] No direct quotes (injection filtering)
 
 ### 5.4 Personality Engine
 
 Create `src/core/personality.ts`:
 
-- [ ] Implement trait modifier application (bounds: -0.3 to +0.3)
-- [ ] Implement mood influence on behavior
-- [ ] Generate personality description for prompt
+- [*] Implement trait modifier application (bounds: -0.3 to +0.3)
+- [*] Implement mood influence on behavior
+- [*] Generate personality description for prompt
 
 ### 5.5 Context Assembly
 
 Create `src/core/context.ts`:
 
-- [ ] Implement `assembleSystemPrompt(definition, instance, knowledge, securityContext): string`
-  - [ ] Core Anchor injection
-  - [ ] Active personality (baseline + modifiers)
-  - [ ] Current mood
-  - [ ] Knowledge (resolved from access)
-  - [ ] Relevant memories
-  - [ ] Relationship with player
-  - [ ] Exit instruction if security flagged
-- [ ] Implement `assembleConversationHistory(history, budget): Message[]`
+- [*] Implement `assembleSystemPrompt(definition, instance, knowledge, securityContext): string`
+  - [*] Core Anchor injection
+  - [*] Active personality (baseline + modifiers)
+  - [*] Current mood
+  - [*] Knowledge (resolved from access)
+  - [*] Relevant memories
+  - [*] Relationship with player
+  - [*] Exit instruction if security flagged
+- [*] Implement `assembleConversationHistory(history, budget): Message[]`
 
 ### 5.6 Tool Assembly
 
 Create `src/core/tools.ts`:
 
-- [ ] Implement `getAvailableTools(definition, securityContext): Tool[]`
-- [ ] Filter by NPC permissions
-- [ ] Add exit_convo if needed
+- [*] Implement `getAvailableTools(definition, securityContext): Tool[]`
+- [*] Filter by NPC permissions
+- [*] Add exit_convo if needed
 
 **Checkpoint:** Core logic produces correct prompts with knowledge.
 
@@ -801,7 +801,7 @@ Create `src/voice/audio.ts`:
 | 2 | Security Foundation | Complete |
 | 3 | Provider Abstraction | Complete |
 | 4 | Storage Layer | Complete |
-| 5 | Core NPC Logic | Not Started |
+| 5 | Core NPC Logic | Complete |
 | 6 | Session Management | Not Started |
 | 7 | API Routes | Not Started |
 | 8 | Voice Pipeline | Not Started |
