@@ -2,7 +2,7 @@
  * NPC List and Editor Page Handlers
  */
 
-import { npcs, knowledge, projects } from '../api.js';
+import { npcs, knowledge, projects, mcpTools } from '../api.js';
 import { toast, modal, loading, renderTemplate, updateNav, createTagInput, describePersonality } from '../components.js';
 import { router } from '../router.js';
 
@@ -89,6 +89,7 @@ export async function initNpcListPage(params) {
     { href: `/projects/${projectId}`, label: 'Dashboard' },
     { href: `/projects/${projectId}/npcs`, label: 'NPCs', active: true },
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
+    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
     { href: `/projects/${projectId}/playground`, label: 'Playground' },
   ]);
 
@@ -165,6 +166,7 @@ export async function initNpcEditorPage(params) {
     { href: `/projects/${projectId}`, label: 'Dashboard' },
     { href: `/projects/${projectId}/npcs`, label: 'NPCs', active: true },
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
+    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
     { href: `/projects/${projectId}/playground`, label: 'Playground' },
   ]);
 
@@ -238,6 +240,12 @@ async function initEditor(projectId, npcId) {
   // Load knowledge categories
   await loadKnowledgeCategories(projectId);
 
+  // Load MCP tools
+  await loadMcpToolsForNpc(projectId);
+
+  // Load NPC network
+  await loadNetworkTab(projectId);
+
   // Update live preview
   updatePreview();
 }
@@ -271,6 +279,7 @@ function getDefaultDefinition() {
     },
     default_mood: '',
     schedule: [],
+    network: [],
   };
 }
 
@@ -472,6 +481,246 @@ async function loadKnowledgeCategories(projectId) {
     });
   } catch (error) {
     console.error('Failed to load knowledge categories:', error);
+  }
+}
+
+// Built-in tools that are always available (security escape hatch)
+const BUILTIN_TOOLS = [
+  {
+    id: 'exit_convo',
+    name: 'Exit Conversation',
+    description: 'End conversation immediately when player crosses serious boundaries. Ends the session.',
+    builtin: true,
+  },
+];
+
+/**
+ * Load MCP tools from project and render in NPC editor
+ */
+async function loadMcpToolsForNpc(projectId) {
+  const convList = document.getElementById('conversation-tools-list');
+  const gameList = document.getElementById('game-tools-list');
+
+  if (!convList || !gameList) return;
+
+  try {
+    const projectTools = await mcpTools.get(projectId);
+    const convTools = projectTools.conversation_tools || [];
+    const gameTools = projectTools.game_event_tools || [];
+
+    // Get currently enabled tools from NPC definition
+    const enabledConvTools = currentDefinition.mcp_permissions?.conversation_tools || [];
+    const enabledGameTools = currentDefinition.mcp_permissions?.game_event_tools || [];
+
+    // Combine built-in tools with project conversation tools
+    const allConvTools = [...BUILTIN_TOOLS, ...convTools];
+
+    // Render conversation tools (including built-in)
+    if (allConvTools.length === 0) {
+      convList.innerHTML = '<p class="empty-hint">No conversation tools defined. <a href="#" class="link-to-tools">Add tools in MCP Tools page</a></p>';
+      convList.querySelector('.link-to-tools')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        router.navigate(`/projects/${projectId}/mcp-tools`);
+      });
+    } else {
+      convList.innerHTML = allConvTools.map(tool => `
+        <label class="tool-checkbox ${tool.builtin ? 'tool-builtin' : ''}">
+          <input type="checkbox" data-tool-type="conversation" data-tool-id="${escapeHtml(tool.id)}"
+            ${enabledConvTools.includes(tool.id) ? 'checked' : ''}>
+          <div class="tool-checkbox-content">
+            <span class="tool-checkbox-name">${escapeHtml(tool.name)}${tool.builtin ? ' <span class="badge badge-info">Built-in</span>' : ''}</span>
+            <span class="tool-checkbox-desc">${escapeHtml(tool.description)}</span>
+          </div>
+        </label>
+      `).join('');
+    }
+
+    // Render game event tools
+    if (gameTools.length === 0) {
+      gameList.innerHTML = '<p class="empty-hint">No game event tools defined. <a href="#" class="link-to-tools">Add tools in MCP Tools page</a></p>';
+      gameList.querySelector('.link-to-tools')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        router.navigate(`/projects/${projectId}/mcp-tools`);
+      });
+    } else {
+      gameList.innerHTML = gameTools.map(tool => `
+        <label class="tool-checkbox">
+          <input type="checkbox" data-tool-type="game_event" data-tool-id="${escapeHtml(tool.id)}"
+            ${enabledGameTools.includes(tool.id) ? 'checked' : ''}>
+          <div class="tool-checkbox-content">
+            <span class="tool-checkbox-name">${escapeHtml(tool.name)}</span>
+            <span class="tool-checkbox-desc">${escapeHtml(tool.description)}</span>
+          </div>
+        </label>
+      `).join('');
+    }
+
+    // Bind checkbox handlers
+    document.querySelectorAll('[data-tool-type]').forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const toolType = e.target.dataset.toolType;
+        const toolId = e.target.dataset.toolId;
+        const isChecked = e.target.checked;
+
+        if (!currentDefinition.mcp_permissions) {
+          currentDefinition.mcp_permissions = { conversation_tools: [], game_event_tools: [], denied: [] };
+        }
+
+        const targetArray = toolType === 'conversation'
+          ? currentDefinition.mcp_permissions.conversation_tools
+          : currentDefinition.mcp_permissions.game_event_tools;
+
+        if (isChecked && !targetArray.includes(toolId)) {
+          targetArray.push(toolId);
+        } else if (!isChecked) {
+          const idx = targetArray.indexOf(toolId);
+          if (idx > -1) targetArray.splice(idx, 1);
+        }
+      });
+    });
+
+  } catch (error) {
+    console.error('Failed to load MCP tools:', error);
+    convList.innerHTML = '<p class="empty-hint">Failed to load tools</p>';
+    gameList.innerHTML = '<p class="empty-hint">Failed to load tools</p>';
+  }
+}
+
+/**
+ * Load other NPCs and render network selection
+ */
+async function loadNetworkTab(projectId) {
+  const container = document.getElementById('network-npc-list');
+  const emptyMsg = document.getElementById('network-empty');
+  const countEl = document.getElementById('network-count');
+
+  if (!container) return;
+
+  try {
+    const allNpcs = await npcs.list(projectId);
+
+    // Filter out current NPC
+    const otherNpcs = (allNpcs.npcs || []).filter(npc => npc.id !== currentNpcId);
+
+    if (otherNpcs.length === 0) {
+      container.innerHTML = '';
+      emptyMsg.style.display = 'block';
+      return;
+    }
+
+    emptyMsg.style.display = 'none';
+
+    // Get current network
+    const currentNetwork = currentDefinition.network || [];
+
+    container.innerHTML = otherNpcs.map(npc => {
+      const existing = currentNetwork.find(n => n.npc_id === npc.id);
+      const isKnown = !!existing;
+      const tier = existing?.familiarity_tier || 1;
+
+      return `
+        <div class="network-entry ${isKnown ? 'active' : ''}" data-npc-id="${npc.id}">
+          <label class="network-toggle">
+            <input type="checkbox" class="network-checkbox" ${isKnown ? 'checked' : ''}>
+            <div class="network-npc-info">
+              <span class="network-npc-name">${escapeHtml(npc.name)}</span>
+              <span class="network-npc-desc">${escapeHtml(npc.description || 'No description')}</span>
+            </div>
+          </label>
+          <select class="input network-tier" ${!isKnown ? 'disabled' : ''}>
+            <option value="1" ${tier === 1 ? 'selected' : ''}>Acquaintance</option>
+            <option value="2" ${tier === 2 ? 'selected' : ''}>Familiar</option>
+            <option value="3" ${tier === 3 ? 'selected' : ''}>Close</option>
+          </select>
+        </div>
+      `;
+    }).join('');
+
+    // Update count
+    updateNetworkCount();
+
+    // Bind handlers
+    bindNetworkHandlers();
+
+  } catch (error) {
+    console.error('Failed to load NPCs for network:', error);
+    container.innerHTML = '<p class="error-hint">Failed to load NPCs</p>';
+  }
+}
+
+/**
+ * Bind network checkbox and tier select handlers
+ */
+function bindNetworkHandlers() {
+  document.querySelectorAll('.network-entry').forEach(entry => {
+    const npcId = entry.dataset.npcId;
+    const checkbox = entry.querySelector('.network-checkbox');
+    const tierSelect = entry.querySelector('.network-tier');
+
+    checkbox.addEventListener('change', (e) => {
+      const isChecked = e.target.checked;
+      entry.classList.toggle('active', isChecked);
+      tierSelect.disabled = !isChecked;
+
+      updateNetwork(npcId, isChecked, parseInt(tierSelect.value));
+    });
+
+    tierSelect.addEventListener('change', (e) => {
+      updateNetwork(npcId, true, parseInt(e.target.value));
+    });
+  });
+}
+
+/**
+ * Update the network array in currentDefinition
+ */
+function updateNetwork(npcId, isKnown, tier) {
+  if (!currentDefinition.network) {
+    currentDefinition.network = [];
+  }
+
+  // Check limit
+  if (isKnown && currentDefinition.network.length >= 5) {
+    const existing = currentDefinition.network.find(n => n.npc_id === npcId);
+    if (!existing) {
+      toast.warning('Limit Reached', 'NPCs can only know up to 5 other NPCs');
+      // Uncheck the checkbox
+      const entry = document.querySelector(`.network-entry[data-npc-id="${npcId}"]`);
+      if (entry) {
+        entry.querySelector('.network-checkbox').checked = false;
+        entry.classList.remove('active');
+        entry.querySelector('.network-tier').disabled = true;
+      }
+      return;
+    }
+  }
+
+  // Update network array
+  const existingIdx = currentDefinition.network.findIndex(n => n.npc_id === npcId);
+
+  if (isKnown) {
+    if (existingIdx >= 0) {
+      currentDefinition.network[existingIdx].familiarity_tier = tier;
+    } else {
+      currentDefinition.network.push({ npc_id: npcId, familiarity_tier: tier });
+    }
+  } else {
+    if (existingIdx >= 0) {
+      currentDefinition.network.splice(existingIdx, 1);
+    }
+  }
+
+  updateNetworkCount();
+}
+
+/**
+ * Update the network count display
+ */
+function updateNetworkCount() {
+  const count = currentDefinition.network?.length || 0;
+  const countEl = document.getElementById('network-count');
+  if (countEl) {
+    countEl.textContent = `${count} / 5 connections`;
   }
 }
 

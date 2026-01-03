@@ -39,6 +39,18 @@ export interface MCPPermissions {
   denied: string[];
 }
 
+/**
+ * NPC network entry - represents another NPC this character knows
+ * Familiarity tiers:
+ * - 1 (Acquaintance): Name + description only
+ * - 2 (Familiar): + backstory + schedule
+ * - 3 (Close): + personality + principles + trauma flags
+ */
+export interface NPCNetworkEntry {
+  npc_id: string;
+  familiarity_tier: 1 | 2 | 3;
+}
+
 export interface NPCDefinition {
   id: string;
   project_id: string;
@@ -50,6 +62,8 @@ export interface NPCDefinition {
   schedule: ScheduleBlock[];
   mcp_permissions: MCPPermissions;
   knowledge_access: KnowledgeAccess;
+  /** NPCs this character knows (max 5) */
+  network: NPCNetworkEntry[];
 }
 
 export interface Memory {

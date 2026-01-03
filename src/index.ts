@@ -13,6 +13,7 @@ import { WebSocketServer } from 'ws';
 import { projectRoutes } from './routes/projects.js';
 import { knowledgeRoutes } from './routes/knowledge.js';
 import { npcRoutes } from './routes/npcs.js';
+import { mcpToolsRoutes } from './routes/mcp-tools.js';
 import { createSessionRoutes } from './routes/session.js';
 import { createConversationRoutes } from './routes/conversation.js';
 import { createCycleRoutes } from './routes/cycles.js';
@@ -60,9 +61,10 @@ app.route('/api/projects', projectRoutes);
 // Create a sub-app for project-scoped routes
 const projectScoped = new Hono();
 
-// Mount knowledge and NPC routes under project scope
+// Mount knowledge, NPC, and MCP tools routes under project scope
 projectScoped.route('/knowledge', knowledgeRoutes);
 projectScoped.route('/npcs', npcRoutes);
+projectScoped.route('/mcp-tools', mcpToolsRoutes);
 
 // Mount the project-scoped routes
 app.route('/api/projects/:projectId', projectScoped);

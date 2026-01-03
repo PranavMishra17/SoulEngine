@@ -140,9 +140,20 @@ class DeepgramSession implements STTSession {
       return null;
     }
 
-    // Note: In Deepgram SDK, is_final being false means it's a final transcript
-    // This is counter-intuitive but documented in SDK_REFERENCE.md
-    const isFinal = transcriptData.is_final === false || transcriptData.speech_final === true;
+    // is_final: true means this transcript chunk is final for its audio segment
+    // speech_final: true means the speaker has finished their utterance
+    // We treat either as a signal to process the transcript
+    const isFinal = transcriptData.is_final === true || transcriptData.speech_final === true;
+
+    logger.debug(
+      {
+        transcript: transcript.substring(0, 50),
+        isFinal,
+        is_final: transcriptData.is_final,
+        speech_final: transcriptData.speech_final
+      },
+      'Parsed Deepgram transcript'
+    );
 
     return {
       text: transcript,

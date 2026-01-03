@@ -1,10 +1,11 @@
 import { createLogger } from '../logger.js';
-import type { NPCDefinition, NPCInstance } from '../types/npc.js';
+import type { NPCDefinition, NPCInstance, NPCNetworkEntry } from '../types/npc.js';
 import type { SecurityContext } from '../types/security.js';
 import type { Message } from '../types/session.js';
 import type { LLMMessage } from '../providers/llm/interface.js';
 import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
 import { formatMemoriesForPrompt, retrieveSTM, retrieveLTM } from './memory.js';
+import { getDefinition } from '../storage/definitions.js';
 
 const logger = createLogger('context-assembly');
 
@@ -200,6 +201,106 @@ Respond to the player's latest message as ${definition.name}.
 }
 
 /**
+ * Format a Tier 1 (Acquaintance) NPC - name + description only
+ */
+function formatTier1Npc(npc: NPCDefinition): string {
+  return `- ${npc.name}: ${npc.description}`;
+}
+
+/**
+ * Format a Tier 2 (Familiar) NPC - + backstory + schedule
+ */
+function formatTier2Npc(npc: NPCDefinition): string {
+  let text = `- ${npc.name}: ${npc.description}\n`;
+  text += `  Background: ${npc.core_anchor.backstory}`;
+  if (npc.schedule && npc.schedule.length > 0) {
+    const scheduleStr = npc.schedule
+      .map((s) => `${s.start}-${s.end}: ${s.activity}`)
+      .join(', ');
+    text += `\n  Schedule: ${scheduleStr}`;
+  }
+  return text;
+}
+
+/**
+ * Format a Tier 3 (Close) NPC - + personality + principles + trauma flags
+ */
+function formatTier3Npc(npc: NPCDefinition): string {
+  let text = formatTier2Npc(npc);
+  const personalityDesc = generatePersonalityDescription(npc.personality_baseline);
+  text += `\n  Personality: ${personalityDesc}`;
+  text += `\n  Values: ${npc.core_anchor.principles.join(', ')}`;
+  if (npc.core_anchor.trauma_flags.length > 0) {
+    text += `\n  Sensitive topics: ${npc.core_anchor.trauma_flags.join(', ')}`;
+  }
+  return text;
+}
+
+/**
+ * Format known NPCs for the system prompt based on familiarity tiers
+ */
+async function formatKnownNpcs(
+  definition: NPCDefinition,
+  projectId: string
+): Promise<string> {
+  if (!definition.network || definition.network.length === 0) {
+    return '';
+  }
+
+  const sections: string[] = ['[KNOWN NPCs - YOUR SOCIAL NETWORK]'];
+  sections.push('You know the following people in this world:\n');
+
+  // Group by tier (3 = Close, 2 = Familiar, 1 = Acquaintance)
+  const byTier: Record<number, Array<{ entry: NPCNetworkEntry; npc: NPCDefinition }>> = {
+    3: [],
+    2: [],
+    1: [],
+  };
+
+  for (const entry of definition.network) {
+    try {
+      const knownNpc = await getDefinition(projectId, entry.npc_id);
+      byTier[entry.familiarity_tier].push({ entry, npc: knownNpc });
+    } catch (error) {
+      // Skip if NPC not found
+      logger.warn({ npcId: entry.npc_id }, 'Known NPC not found, skipping');
+    }
+  }
+
+  // Format Tier 3 - Close
+  if (byTier[3].length > 0) {
+    sections.push('**Close Contacts (you know them well):**');
+    for (const { npc } of byTier[3]) {
+      sections.push(formatTier3Npc(npc));
+    }
+  }
+
+  // Format Tier 2 - Familiar
+  if (byTier[2].length > 0) {
+    sections.push('\n**Familiar (you know their story):**');
+    for (const { npc } of byTier[2]) {
+      sections.push(formatTier2Npc(npc));
+    }
+  }
+
+  // Format Tier 1 - Acquaintance
+  if (byTier[1].length > 0) {
+    sections.push('\n**Acquaintances (you know of them):**');
+    for (const { npc } of byTier[1]) {
+      sections.push(formatTier1Npc(npc));
+    }
+  }
+
+  // Only return if we have actual NPCs to show
+  const totalNpcs = byTier[1].length + byTier[2].length + byTier[3].length;
+  if (totalNpcs === 0) {
+    return '';
+  }
+
+  return sections.join('\n');
+}
+
+/**
  * Assemble the complete system prompt for an NPC conversation.
  *
  * This function builds a structured prompt with clearly separated sections:
@@ -208,6 +309,7 @@ Respond to the player's latest message as ${definition.name}.
  * - Personality traits
  * - Current mood
  * - Relationship to player
+ * - Known NPCs (social network)
  * - World knowledge (resolved)
  * - Recent memories
  * - Security boundaries
@@ -220,13 +322,13 @@ Respond to the player's latest message as ${definition.name}.
  * @param options - Assembly options
  * @returns Complete system prompt string
  */
-export function assembleSystemPrompt(
+export async function assembleSystemPrompt(
   definition: NPCDefinition,
   instance: NPCInstance,
   resolvedKnowledge: string,
   securityContext: SecurityContext,
   options: ContextAssemblyOptions = {}
-): string {
+): Promise<string> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
   logger.debug(
@@ -259,6 +361,12 @@ ${definition.description}`);
 
   // Relationship to player
   sections.push(formatRelationship(instance, instance.player_id));
+
+  // Known NPCs (social network)
+  const knownNpcsSection = await formatKnownNpcs(definition, definition.project_id);
+  if (knownNpcsSection) {
+    sections.push(knownNpcsSection);
+  }
 
   // World knowledge (if enabled and available)
   if (opts.includeKnowledge && resolvedKnowledge) {

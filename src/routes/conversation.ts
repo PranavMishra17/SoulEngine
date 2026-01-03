@@ -121,7 +121,7 @@ export function createConversationRoutes(
       const availableTools = getAvailableTools(definition, securityContext, projectTools);
 
       // 8. Assemble system prompt
-      const systemPrompt = assembleSystemPrompt(
+      const systemPrompt = await assembleSystemPrompt(
         definition,
         instance,
         resolvedKnowledge,

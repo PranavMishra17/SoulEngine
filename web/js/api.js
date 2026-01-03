@@ -73,6 +73,8 @@ export const projects = {
     body: JSON.stringify(keys),
   }),
 
+  getKeyStatus: (projectId) => request(`/projects/${projectId}/keys`),
+
   getVoices: (projectId, provider = 'cartesia') => request(`/projects/${projectId}/voices?provider=${provider}`),
 };
 
@@ -85,6 +87,18 @@ export const knowledge = {
   update: (projectId, knowledgeBase) => request(`/projects/${projectId}/knowledge`, {
     method: 'PUT',
     body: JSON.stringify(knowledgeBase),
+  }),
+};
+
+/**
+ * MCP Tools API
+ */
+export const mcpTools = {
+  get: (projectId) => request(`/projects/${projectId}/mcp-tools`),
+
+  update: (projectId, tools) => request(`/projects/${projectId}/mcp-tools`, {
+    method: 'PUT',
+    body: JSON.stringify(tools),
   }),
 };
 
@@ -304,6 +318,7 @@ export class VoiceClient {
 export default {
   projects,
   knowledge,
+  mcpTools,
   npcs,
   session,
   conversation,

@@ -6,6 +6,7 @@ import {
   getSessionContext,
   addMessageToSession,
   updateSessionInstance,
+  endSession,
   SessionContext,
   SessionError,
 } from '../session/manager.js';
@@ -24,7 +25,7 @@ import type { TranscriptEvent, TTSChunk, VoiceConfig } from '../types/voice.js';
 import type { ToolCall, Tool } from '../types/mcp.js';
 import type { STTProvider, STTSession, STTSessionConfig, STTSessionEvents } from '../providers/stt/interface.js';
 import type { TTSProvider, TTSSession, TTSSessionConfig, TTSSessionEvents } from '../providers/tts/interface.js';
-import type { LLMProvider, LLMStreamChunk, LLMMessage, LLMChatRequest } from '../providers/llm/interface.js';
+import type { LLMProvider, LLMChatRequest } from '../providers/llm/interface.js';
 
 const logger = createLogger('voice-pipeline');
 
@@ -434,7 +435,7 @@ export class VoicePipeline {
    * Process an NPC turn - LLM generation and TTS
    */
   private async processTurn(
-    userInput: string,
+    _userInput: string,
     context: SessionContext,
     securityContext: SecurityContext
   ): Promise<void> {
@@ -447,7 +448,7 @@ export class VoicePipeline {
 
     try {
       // Assemble system prompt
-      const systemPrompt = assembleSystemPrompt(
+      const systemPrompt = await assembleSystemPrompt(
         context.definition,
         context.instance,
         context.resolvedKnowledge,
@@ -585,6 +586,19 @@ export class VoicePipeline {
           sessionStore.get(this.sessionId)?.state.player_id || '',
           context.definition.id
         );
+
+        // Forcefully end the session (same as "End Session" button)
+        // Pass exitConvoUsed=true to skip memory creation
+        try {
+          await endSession(this.sessionId, this.llmProvider, true);
+          logger.info({ sessionId: this.sessionId }, 'Session ended by exit_convo');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          logger.error({ sessionId: this.sessionId, error: errorMessage }, 'Failed to end session after exit_convo');
+        }
+
+        // Signal pipeline to stop
+        this.isActive = false;
 
         this.events.onExitConvo(exitResult.reason, exitResult.cooldownSeconds);
         return;

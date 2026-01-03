@@ -343,6 +343,14 @@
               </div>
               <span class="action-arrow">→</span>
             </a>
+            <a href="#" class="action-card" id="link-mcp-tools">
+              <div class="action-icon">⬡</div>
+              <div class="action-content">
+                <h3>MCP Tools</h3>
+                <p>Define tools NPCs can use</p>
+              </div>
+              <span class="action-arrow">→</span>
+            </a>
             <a href="#" class="action-card" id="link-playground">
               <div class="action-icon">◑</div>
               <div class="action-content">
@@ -461,7 +469,11 @@
             </a>
             <a href="#section-tools" class="editor-nav-item" data-section="tools">
               <span class="nav-icon">⬡</span>
-              Tool Permissions
+              MCP Tools
+            </a>
+            <a href="#section-network" class="editor-nav-item" data-section="network">
+              <span class="nav-icon">⬢</span>
+              Network
             </a>
           </nav>
         </aside>
@@ -688,10 +700,10 @@
             </div>
           </section>
 
-          <!-- Tool Permissions Section -->
+          <!-- MCP Tools Section -->
           <section class="editor-section" id="section-tools">
-            <h2>Tool Permissions</h2>
-            <p class="section-desc">Which MCP tools can this NPC use?</p>
+            <h2>MCP Tools</h2>
+            <p class="section-desc">Which MCP tools can this NPC use? Tools are defined at the project level.</p>
 
             <div class="tools-grid" id="tools-grid">
               <div class="tool-category">
@@ -707,6 +719,54 @@
                 <p class="tool-category-desc">Game logic triggers these</p>
                 <div class="tool-list" id="game-tools-list">
                   <!-- Tools will be inserted here -->
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- NPC Network Section -->
+          <section class="editor-section" id="section-network">
+            <h2>NPC Network</h2>
+            <p class="section-desc">
+              Select other NPCs this character knows. The familiarity tier determines how much they know about each other.
+            </p>
+
+            <div class="network-header">
+              <span class="network-count" id="network-count">0 / 5 connections</span>
+              <label class="checkbox-item network-bidirectional">
+                <input type="checkbox" id="network-bidirectional" checked>
+                <span>Add me to their network too (bidirectional)</span>
+              </label>
+            </div>
+
+            <div id="network-npc-list" class="network-list">
+              <!-- Populated by JS -->
+            </div>
+
+            <p id="network-empty" class="empty-hint" style="display: none;">
+              No other NPCs in this project yet. Create more NPCs to build relationships.
+            </p>
+
+            <div class="network-tiers-legend">
+              <div class="tier-legend-item">
+                <span class="tier-badge tier-1">1</span>
+                <div>
+                  <strong>Acquaintance</strong>
+                  <p>Knows name and general description</p>
+                </div>
+              </div>
+              <div class="tier-legend-item">
+                <span class="tier-badge tier-2">2</span>
+                <div>
+                  <strong>Familiar</strong>
+                  <p>Also knows backstory and schedule</p>
+                </div>
+              </div>
+              <div class="tier-legend-item">
+                <span class="tier-badge tier-3">3</span>
+                <div>
+                  <strong>Close</strong>
+                  <p>Also knows personality, values, and sensitive topics</p>
                 </div>
               </div>
             </div>
@@ -794,6 +854,80 @@
             Add Category
           </button>
         </div>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-mcp-tools">
+    <div class="mcp-tools-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-project">Project</a>
+            <span class="breadcrumb-sep">/</span>
+            <span>MCP Tools</span>
+          </div>
+          <h1>MCP Tools</h1>
+          <p class="page-subtitle">Define tools that NPCs can use during conversations or game events</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-ghost" id="btn-download-tools-template" title="Download template">
+            <span class="icon">↓</span>
+            Template
+          </button>
+          <button class="btn btn-ghost" id="btn-import-tools" title="Import from JSON">
+            <span class="icon">↑</span>
+            Import
+          </button>
+          <button class="btn btn-ghost" id="btn-export-tools" title="Export to JSON">
+            <span class="icon">↓</span>
+            Export
+          </button>
+        </div>
+      </header>
+
+      <div class="mcp-tools-layout">
+        <!-- Conversation Tools -->
+        <section class="tools-section">
+          <div class="tools-section-header">
+            <div class="tools-section-info">
+              <h2>Conversation Tools</h2>
+              <p class="tools-section-desc">Tools the NPC decides to use during dialogue (e.g., lock door, call guards, give item)</p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-add-conv-tool">
+              <span class="icon">+</span>
+              Add Tool
+            </button>
+          </div>
+          <div class="tools-list" id="conversation-tools">
+            <!-- Tools will be inserted here -->
+          </div>
+          <div class="empty-state-inline" id="empty-conv-tools" style="display: none;">
+            <p>No conversation tools defined yet.</p>
+          </div>
+        </section>
+
+        <!-- Game Event Tools -->
+        <section class="tools-section">
+          <div class="tools-section-header">
+            <div class="tools-section-info">
+              <h2>Game Event Tools</h2>
+              <p class="tools-section-desc">Tools triggered by game logic that affect NPC state (e.g., receive_gift, witness_crime)</p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-add-game-tool">
+              <span class="icon">+</span>
+              Add Tool
+            </button>
+          </div>
+          <div class="tools-list" id="game-event-tools">
+            <!-- Tools will be inserted here -->
+          </div>
+          <div class="empty-state-inline" id="empty-game-tools" style="display: none;">
+            <p>No game event tools defined yet.</p>
+          </div>
+        </section>
       </div>
     </div>
   </template>
@@ -1029,6 +1163,7 @@
   <script type="module" src="/js/pages/dashboard.js"></script>
   <script type="module" src="/js/pages/npc-editor.js"></script>
   <script type="module" src="/js/pages/knowledge.js"></script>
+  <script type="module" src="/js/pages/mcp-tools.js"></script>
   <script type="module" src="/js/pages/playground.js"></script>
   <script type="module" src="/js/app.js"></script>
 </body>

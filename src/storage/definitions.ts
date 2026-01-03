@@ -69,6 +69,39 @@ function validateDefinition(def: NPCDefinition): void {
   if (!def.voice || !def.voice.voice_id) {
     throw new StorageValidationError('NPC definition must have voice configuration with voice_id');
   }
+
+  // Validate network (optional field, but if present must be valid)
+  if (def.network) {
+    if (!Array.isArray(def.network)) {
+      throw new StorageValidationError('NPC network must be an array');
+    }
+
+    if (def.network.length > 5) {
+      throw new StorageValidationError('NPC network cannot exceed 5 entries');
+    }
+
+    const seenIds = new Set<string>();
+    for (const entry of def.network) {
+      if (!entry.npc_id || typeof entry.npc_id !== 'string') {
+        throw new StorageValidationError('Network entry must have valid npc_id');
+      }
+
+      if (![1, 2, 3].includes(entry.familiarity_tier)) {
+        throw new StorageValidationError('Familiarity tier must be 1, 2, or 3');
+      }
+
+      // Prevent self-reference
+      if (entry.npc_id === def.id) {
+        throw new StorageValidationError('NPC cannot know itself');
+      }
+
+      // Prevent duplicates
+      if (seenIds.has(entry.npc_id)) {
+        throw new StorageValidationError('Duplicate NPC in network');
+      }
+      seenIds.add(entry.npc_id);
+    }
+  }
 }
 
 /**

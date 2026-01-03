@@ -10,6 +10,7 @@ import { initProjectsPage } from './pages/projects.js';
 import { initDashboardPage } from './pages/dashboard.js';
 import { initNpcListPage, initNpcEditorPage } from './pages/npc-editor.js';
 import { initKnowledgePage } from './pages/knowledge.js';
+import { initMcpToolsPage } from './pages/mcp-tools.js';
 import { initPlaygroundPage } from './pages/playground.js';
 
 /**
@@ -36,6 +37,9 @@ function init() {
 
     // Knowledge Base
     .on('/projects/:projectId/knowledge', initKnowledgePage)
+
+    // MCP Tools
+    .on('/projects/:projectId/mcp-tools', initMcpToolsPage)
 
     // Playground
     .on('/projects/:projectId/playground', initPlaygroundPage)

@@ -55,6 +55,11 @@ const MCPPermissionsSchema = z.object({
 
 const KnowledgeAccessSchema = z.record(z.string(), z.number().int().min(0));
 
+const NPCNetworkEntrySchema = z.object({
+  npc_id: z.string().min(1),
+  familiarity_tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+});
+
 const CreateNPCSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().min(1).max(1000),
@@ -68,6 +73,7 @@ const CreateNPCSchema = z.object({
     denied: [],
   }),
   knowledge_access: KnowledgeAccessSchema.default({}),
+  network: z.array(NPCNetworkEntrySchema).max(5).default([]),
 });
 
 const UpdateNPCSchema = z.object({
@@ -79,7 +85,91 @@ const UpdateNPCSchema = z.object({
   schedule: z.array(ScheduleBlockSchema).optional(),
   mcp_permissions: MCPPermissionsSchema.partial().optional(),
   knowledge_access: KnowledgeAccessSchema.optional(),
+  network: z.array(NPCNetworkEntrySchema).max(5).optional(),
 });
+
+/**
+ * Helper functions for bidirectional network updates
+ */
+
+async function addToOtherNpcNetwork(
+  projectId: string,
+  otherNpcId: string,
+  thisNpcId: string,
+  tier: 1 | 2 | 3
+): Promise<void> {
+  try {
+    const otherNpc = await getDefinition(projectId, otherNpcId);
+    const network = otherNpc.network || [];
+
+    // Check if already in network
+    if (network.find(n => n.npc_id === thisNpcId)) {
+      return;
+    }
+
+    // Check limit
+    if (network.length >= 5) {
+      logger.warn({ projectId, otherNpcId, thisNpcId }, 'Cannot add to network - limit reached');
+      return;
+    }
+
+    network.push({ npc_id: thisNpcId, familiarity_tier: tier });
+    await updateDefinition(projectId, otherNpcId, { network });
+    logger.debug({ projectId, otherNpcId, thisNpcId, tier }, 'Added to other NPC network');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.warn({ projectId, otherNpcId, thisNpcId, error: errorMessage }, 'Failed to add to other NPC network');
+  }
+}
+
+async function removeFromOtherNpcNetwork(
+  projectId: string,
+  otherNpcId: string,
+  thisNpcId: string
+): Promise<void> {
+  try {
+    const otherNpc = await getDefinition(projectId, otherNpcId);
+    const network = otherNpc.network || [];
+
+    const idx = network.findIndex(n => n.npc_id === thisNpcId);
+    if (idx === -1) {
+      return;
+    }
+
+    network.splice(idx, 1);
+    await updateDefinition(projectId, otherNpcId, { network });
+    logger.debug({ projectId, otherNpcId, thisNpcId }, 'Removed from other NPC network');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.warn({ projectId, otherNpcId, thisNpcId, error: errorMessage }, 'Failed to remove from other NPC network');
+  }
+}
+
+async function updateOtherNpcNetworkTier(
+  projectId: string,
+  otherNpcId: string,
+  thisNpcId: string,
+  tier: 1 | 2 | 3
+): Promise<void> {
+  try {
+    const otherNpc = await getDefinition(projectId, otherNpcId);
+    const network = otherNpc.network || [];
+
+    const entry = network.find(n => n.npc_id === thisNpcId);
+    if (!entry) {
+      // Not in their network, add them
+      await addToOtherNpcNetwork(projectId, otherNpcId, thisNpcId, tier);
+      return;
+    }
+
+    entry.familiarity_tier = tier;
+    await updateDefinition(projectId, otherNpcId, { network });
+    logger.debug({ projectId, otherNpcId, thisNpcId, tier }, 'Updated tier in other NPC network');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.warn({ projectId, otherNpcId, thisNpcId, error: errorMessage }, 'Failed to update tier in other NPC network');
+  }
+}
 
 /**
  * NPC routes
@@ -213,11 +303,14 @@ npcRoutes.get('/:npcId', async (c) => {
 
 /**
  * PUT /api/projects/:projectId/npcs/:npcId - Update an NPC
+ * Query params:
+ * - bidirectional: 'true' (default) or 'false' - whether to update network connections bidirectionally
  */
 npcRoutes.put('/:npcId', async (c) => {
   const startTime = Date.now();
   const projectId = c.req.param('projectId');
   const npcId = c.req.param('npcId');
+  const bidirectional = c.req.query('bidirectional') !== 'false';
 
   if (!projectId || !npcId) {
     return c.json({ error: 'Project ID and NPC ID are required' }, 400);
@@ -230,6 +323,49 @@ npcRoutes.put('/:npcId', async (c) => {
     if (!parsed.success) {
       logger.warn({ projectId, npcId, errors: parsed.error.issues }, 'Invalid update NPC request');
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
+    }
+
+    // Handle bidirectional network updates
+    if (bidirectional && parsed.data.network !== undefined) {
+      try {
+        const currentDef = await getDefinition(projectId, npcId);
+        const oldNetwork = currentDef.network || [];
+        const newNetwork = parsed.data.network || [];
+
+        // Find added connections
+        const added = newNetwork.filter(n => !oldNetwork.find(o => o.npc_id === n.npc_id));
+
+        // Find removed connections
+        const removed = oldNetwork.filter(o => !newNetwork.find(n => n.npc_id === o.npc_id));
+
+        // Find tier changes
+        const changed = newNetwork.filter(n => {
+          const old = oldNetwork.find(o => o.npc_id === n.npc_id);
+          return old && old.familiarity_tier !== n.familiarity_tier;
+        });
+
+        // Apply reciprocal changes
+        for (const entry of added) {
+          await addToOtherNpcNetwork(projectId, entry.npc_id, npcId, entry.familiarity_tier);
+        }
+
+        for (const entry of removed) {
+          await removeFromOtherNpcNetwork(projectId, entry.npc_id, npcId);
+        }
+
+        for (const entry of changed) {
+          await updateOtherNpcNetworkTier(projectId, entry.npc_id, npcId, entry.familiarity_tier);
+        }
+
+        logger.debug(
+          { projectId, npcId, added: added.length, removed: removed.length, changed: changed.length },
+          'Bidirectional network updates applied'
+        );
+      } catch (networkError) {
+        // Log but don't fail the main update
+        const errorMessage = networkError instanceof Error ? networkError.message : 'Unknown error';
+        logger.warn({ projectId, npcId, error: errorMessage }, 'Failed to apply some bidirectional network updates');
+      }
     }
 
     const definition = await updateDefinition(projectId, npcId, parsed.data as Parameters<typeof updateDefinition>[2]);

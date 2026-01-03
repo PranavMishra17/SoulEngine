@@ -409,8 +409,20 @@
 
 .action-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .action-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .action-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Settings Modal */
@@ -1413,4 +1425,371 @@
 
 .log-entry.error {
   color: var(--color-error);
+}
+
+/* ========================================
+   MCP Tools Page
+   ======================================== */
+
+.mcp-tools-page {
+  padding: var(--space-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.mcp-tools-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.tools-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.tools-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+
+.tools-section-info h2 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-1);
+}
+
+.tools-section-desc {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tool-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  transition: border-color var(--transition-fast);
+}
+
+.tool-card:hover {
+  border-color: var(--color-border-active);
+}
+
+.tool-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+.tool-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.tool-name {
+  font-weight: var(--font-medium);
+  font-size: var(--text-base);
+}
+
+.tool-id {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  background: var(--color-surface);
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.tool-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.tool-description {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.tool-params {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.tool-params code {
+  background: var(--color-surface);
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.params-label {
+  margin-right: var(--space-1);
+}
+
+/* Tool Modal */
+.tool-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.param-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 1fr auto auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+}
+
+.param-row .param-name {
+  min-width: 100px;
+}
+
+.param-row .param-desc {
+  min-width: 150px;
+}
+
+.param-required {
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.params-empty {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+}
+
+/* Tool Checkbox (in NPC Editor) */
+.tool-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tool-checkbox:hover {
+  border-color: var(--color-border-active);
+}
+
+.tool-checkbox input[type="checkbox"] {
+  margin-top: var(--space-1);
+}
+
+.tool-checkbox-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.tool-checkbox-name {
+  font-weight: var(--font-medium);
+  font-size: var(--text-sm);
+}
+
+.tool-checkbox-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.empty-hint {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.empty-hint a {
+  color: var(--color-accent);
+}
+
+.empty-state-inline {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+
+/* API Key Status Badges */
+.key-status {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-sm);
+  margin-left: var(--space-2);
+}
+
+.key-status.configured {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.key-status.not-configured {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+}
+
+/* ========================================
+   NPC Network Tab
+   ======================================== */
+
+.network-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.network-count {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-medium);
+}
+
+.network-bidirectional {
+  font-size: var(--text-sm);
+}
+
+.network-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.network-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.network-entry:hover {
+  border-color: var(--color-border-hover);
+}
+
+.network-entry.active {
+  border-color: var(--color-accent-primary);
+  background: var(--color-accent-primary-muted);
+}
+
+.network-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  cursor: pointer;
+}
+
+.network-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
+.network-npc-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.network-npc-name {
+  font-weight: var(--font-medium);
+  font-size: var(--text-sm);
+}
+
+.network-npc-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.network-tier {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.network-tier:disabled {
+  opacity: 0.5;
+}
+
+/* Network Tiers Legend */
+.network-tiers-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.tier-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.tier-badge {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  flex-shrink: 0;
+}
+
+.tier-badge.tier-1 {
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+}
+
+.tier-badge.tier-2 {
+  background: var(--color-accent-secondary-muted);
+  color: var(--color-accent-secondary);
+}
+
+.tier-badge.tier-3 {
+  background: var(--color-accent-primary-muted);
+  color: var(--color-accent-primary);
+}
+
+.tier-legend-item strong {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.tier-legend-item p {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin: 0;
 }

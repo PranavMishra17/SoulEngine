@@ -1,0 +1,21 @@
+{
+  "id": "inst_bnBjX21qeHFr",
+  "definition_id": "npc_mjxqkqbn_18i72y",
+  "project_id": "proj_mjxnqpq3_njvz3n",
+  "player_id": "test-player",
+  "created_at": "2026-01-03T03:22:45.147Z",
+  "current_mood": {
+    "valence": 0.5,
+    "arousal": 0.5,
+    "dominance": 0.5
+  },
+  "trait_modifiers": {},
+  "short_term_memory": [],
+  "long_term_memory": [],
+  "relationships": {},
+  "daily_pulse": null,
+  "cycle_metadata": {
+    "last_weekly": null,
+    "last_persona_shift": null
+  }
+}

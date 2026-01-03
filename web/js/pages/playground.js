@@ -53,6 +53,7 @@ export async function initPlaygroundPage(params) {
     { href: `/projects/${projectId}`, label: 'Dashboard' },
     { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
+    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
     { href: `/projects/${projectId}/playground`, label: 'Playground', active: true },
   ]);
 

@@ -445,6 +445,11 @@
   color: var(--color-error);
 }
 
+.badge-info {
+  background: var(--color-accent-secondary-muted);
+  color: var(--color-accent-secondary);
+}
+
 /* ========================================
    Tags & Tag Inputs
    ======================================== */

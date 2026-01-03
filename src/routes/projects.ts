@@ -185,6 +185,43 @@ projectRoutes.put('/:projectId', async (c) => {
 });
 
 /**
+ * GET /api/projects/:projectId/keys - Get API keys status (not the actual keys)
+ */
+projectRoutes.get('/:projectId/keys', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    // Verify project exists
+    await getProject(projectId);
+
+    // Load keys and return masked status
+    const keys = await loadApiKeys(projectId);
+
+    const duration = Date.now() - startTime;
+    logger.debug({ projectId, duration }, 'API keys status retrieved via API');
+
+    return c.json({
+      gemini: keys.gemini ? true : false,
+      deepgram: keys.deepgram ? true : false,
+      cartesia: keys.cartesia ? true : false,
+      elevenlabs: keys.elevenlabs ? true : false,
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      logger.warn({ projectId, duration }, 'Project not found');
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to get API keys status');
+    return c.json({ error: 'Failed to get API keys status', details: errorMessage }, 500);
+  }
+});
+
+/**
  * PUT /api/projects/:projectId/keys - Update API keys
  */
 projectRoutes.put('/:projectId/keys', async (c) => {

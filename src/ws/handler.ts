@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { createLogger } from '../logger.js';
 import { sessionStore } from '../session/store.js';
-import { endSession, getSessionContext, SessionError } from '../session/manager.js';
+import { endSession, getSessionContext } from '../session/manager.js';
 import { createVoicePipeline, VoicePipeline, VoicePipelineEvents } from '../voice/pipeline.js';
 import { decodeClientAudio } from '../voice/audio.js';
 import { canStartConversation } from '../mcp/exit-handler.js';
@@ -136,7 +136,7 @@ export interface VoiceWebSocketDependencies {
 /**
  * Create voice WebSocket routes
  */
-export function createVoiceWebSocketHandler(deps: VoiceWebSocketDependencies): Hono {
+export function createVoiceWebSocketHandler(_deps: VoiceWebSocketDependencies): Hono {
   const routes = new Hono();
 
   /**
@@ -351,6 +351,9 @@ async function handleInitMessage(
       },
       onExitConvo: (reason, cooldownSeconds) => {
         sendMessage(ws, { type: 'exit_convo', reason, cooldown_seconds: cooldownSeconds });
+        // Close WebSocket after exit_convo - session was already ended by pipeline
+        logger.info({ sessionId }, 'Closing WebSocket after exit_convo');
+        ws.close(1000, 'Session ended by NPC');
       },
     };
 
@@ -495,7 +498,7 @@ async function handleEndMessage(connection: VoiceConnection, llmProvider: LLMPro
 /**
  * Clean up a connection on close
  */
-async function cleanupConnection(connection: VoiceConnection, llmProvider: LLMProvider): Promise<void> {
+async function cleanupConnection(connection: VoiceConnection, _llmProvider: LLMProvider): Promise<void> {
   const { sessionId, pipeline } = connection;
 
   if (pipeline && pipeline.active) {

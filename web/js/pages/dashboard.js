@@ -19,6 +19,7 @@ export async function initDashboardPage(params) {
     { href: `/projects/${projectId}`, label: 'Dashboard', active: true },
     { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
+    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
     { href: `/projects/${projectId}/playground`, label: 'Playground' },
   ]);
 
@@ -39,6 +40,11 @@ export async function initDashboardPage(params) {
   document.getElementById('link-playground')?.addEventListener('click', (e) => {
     e.preventDefault();
     router.navigate(`/projects/${projectId}/playground`);
+  });
+
+  document.getElementById('link-mcp-tools')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    router.navigate(`/projects/${projectId}/mcp-tools`);
   });
 
   // Bind settings button
@@ -79,7 +85,17 @@ async function loadProjectData(projectId) {
   }
 }
 
-function openSettingsModal(projectId) {
+async function openSettingsModal(projectId) {
+  // Fetch key status first
+  let keyStatus = { gemini: false, deepgram: false, cartesia: false, elevenlabs: false };
+  try {
+    keyStatus = await projects.getKeyStatus(projectId);
+  } catch (error) {
+    console.warn('Failed to fetch key status:', error);
+  }
+
+  const keyPlaceholder = (isConfigured) => isConfigured ? '•••••••••••••••• (configured)' : 'Enter API key...';
+
   const content = document.createElement('div');
   content.className = 'settings-modal-content';
   content.innerHTML = `
@@ -108,29 +124,29 @@ function openSettingsModal(projectId) {
 
     <div class="settings-section">
       <h3 class="settings-section-title">API Keys</h3>
-      <p class="settings-hint">API keys are encrypted and stored securely.</p>
+      <p class="settings-hint">API keys are encrypted and stored securely. Leave empty to keep existing key.</p>
 
       <div class="form-group">
-        <label for="key-gemini">Gemini API Key</label>
-        <input type="password" id="key-gemini" class="input" placeholder="Enter Gemini API key...">
+        <label for="key-gemini">Gemini API Key ${keyStatus.gemini ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
+        <input type="password" id="key-gemini" class="input" placeholder="${keyPlaceholder(keyStatus.gemini)}">
         <span class="input-hint">LLM provider for NPC cognition</span>
       </div>
 
       <div class="form-group">
-        <label for="key-deepgram">Deepgram API Key</label>
-        <input type="password" id="key-deepgram" class="input" placeholder="Enter Deepgram API key...">
+        <label for="key-deepgram">Deepgram API Key ${keyStatus.deepgram ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
+        <input type="password" id="key-deepgram" class="input" placeholder="${keyPlaceholder(keyStatus.deepgram)}">
         <span class="input-hint">Speech-to-text for voice input</span>
       </div>
 
       <div class="form-group">
-        <label for="key-cartesia">Cartesia API Key</label>
-        <input type="password" id="key-cartesia" class="input" placeholder="Enter Cartesia API key...">
+        <label for="key-cartesia">Cartesia API Key ${keyStatus.cartesia ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
+        <input type="password" id="key-cartesia" class="input" placeholder="${keyPlaceholder(keyStatus.cartesia)}">
         <span class="input-hint">Text-to-speech (default provider)</span>
       </div>
 
       <div class="form-group">
-        <label for="key-elevenlabs">ElevenLabs API Key</label>
-        <input type="password" id="key-elevenlabs" class="input" placeholder="Enter ElevenLabs API key...">
+        <label for="key-elevenlabs">ElevenLabs API Key ${keyStatus.elevenlabs ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
+        <input type="password" id="key-elevenlabs" class="input" placeholder="${keyPlaceholder(keyStatus.elevenlabs)}">
         <span class="input-hint">Text-to-speech (alternative provider)</span>
       </div>
     </div>
