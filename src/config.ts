@@ -23,6 +23,13 @@ const ConfigSchema = z.object({
     maxStmMemories: z.coerce.number().int().positive().default(20),
     maxLtmMemories: z.coerce.number().int().positive().default(50),
   }),
+  // Provider API keys - can be overridden per-project in storage
+  providers: z.object({
+    geminiApiKey: z.string().optional(),
+    deepgramApiKey: z.string().optional(),
+    cartesiaApiKey: z.string().optional(),
+    elevenLabsApiKey: z.string().optional(),
+  }).default({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -54,6 +61,12 @@ export function loadConfig(): Config {
         maxConcurrentSessions: process.env.MAX_CONCURRENT_SESSIONS,
         maxStmMemories: process.env.MAX_STM_MEMORIES,
         maxLtmMemories: process.env.MAX_LTM_MEMORIES,
+      },
+      providers: {
+        geminiApiKey: process.env.GEMINI_API_KEY,
+        deepgramApiKey: process.env.DEEPGRAM_API_KEY,
+        cartesiaApiKey: process.env.CARTESIA_API_KEY,
+        elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
       },
     };
 

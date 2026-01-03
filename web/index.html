@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evolve.NPC - Memory-Driven NPCs for Games</title>
+  <meta name="description" content="Create game characters that remember, evolve, and speak. Memory-driven NPCs with voice interaction and real-time personality evolution.">
+  <link rel="stylesheet" href="/css/design-system.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/pages.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Navigation -->
+    <nav class="main-nav" id="main-nav">
+      <div class="nav-brand">
+        <a href="/" class="brand-link">
+          <span class="brand-icon">◆</span>
+          <span class="brand-text">Evolve<span class="brand-accent">.NPC</span></span>
+        </a>
+      </div>
+      <div class="nav-links" id="nav-links">
+        <!-- Dynamic navigation items -->
+      </div>
+      <div class="nav-actions">
+        <button class="btn btn-ghost" id="theme-toggle" title="Toggle theme">
+          <span class="icon">◐</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main content area -->
+    <main id="main-content">
+      <!-- Dynamic page content -->
+    </main>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="toast-container"></div>
+  </div>
+
+  <!-- Templates -->
+  <template id="template-landing">
+    <div class="landing-page">
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="hero-bg">
+          <div class="grid-lines"></div>
+          <div class="glow-orb orb-1"></div>
+          <div class="glow-orb orb-2"></div>
+        </div>
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span class="badge badge-accent">Open Source</span>
+            <span class="badge badge-outline">v1.0</span>
+          </div>
+          <h1 class="hero-title">
+            NPCs that <span class="text-gradient">remember</span>,
+            <span class="text-gradient">evolve</span>, and
+            <span class="text-gradient">speak</span>
+          </h1>
+          <p class="hero-subtitle">
+            Memory-driven game characters with layered psychological cycles,
+            real-time voice interaction, and emergent personality evolution.
+          </p>
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-lg" id="btn-create-project">
+              <span class="icon">+</span>
+              Create Project
+            </button>
+            <button class="btn btn-outline btn-lg" id="btn-view-projects">
+              <span class="icon">◫</span>
+              View Projects
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Architecture Diagram -->
+      <section class="section section-dark">
+        <div class="container">
+          <h2 class="section-title">The Five Pillars</h2>
+          <p class="section-subtitle">A layered psychological architecture that mirrors human memory formation</p>
+
+          <div class="pillars-diagram">
+            <div class="pillar pillar-core">
+              <div class="pillar-icon">◈</div>
+              <h3>Core Anchor</h3>
+              <p>Immutable psychological DNA. Backstory, principles, and worldview that never change.</p>
+              <span class="pillar-tag">Permanent</span>
+            </div>
+            <div class="pillar pillar-daily">
+              <div class="pillar-icon">◑</div>
+              <h3>Daily Pulse</h3>
+              <p>Mood vectors and single-sentence takeaways. Emotional continuity across short timespans.</p>
+              <span class="pillar-tag">Per Session</span>
+            </div>
+            <div class="pillar pillar-weekly">
+              <div class="pillar-icon">◔</div>
+              <h3>Weekly Whisper</h3>
+              <p>Cyclic memory pruning. High-salience events persist, trivia fades.</p>
+              <span class="pillar-tag">Cycles</span>
+            </div>
+            <div class="pillar pillar-persona">
+              <div class="pillar-icon">◇</div>
+              <h3>Persona Shift</h3>
+              <p>Major personality recalibration. Traits evolve within bounded limits.</p>
+              <span class="pillar-tag">Evolution</span>
+            </div>
+            <div class="pillar pillar-mcp">
+              <div class="pillar-icon">⬡</div>
+              <h3>MCP Actions</h3>
+              <p>NPCs act in the world. Lock doors, call guards, refuse service.</p>
+              <span class="pillar-tag">Agency</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Voice Pipeline -->
+      <section class="section">
+        <div class="container">
+          <h2 class="section-title">Real-Time Voice Pipeline</h2>
+          <p class="section-subtitle">Sub-100ms time-to-first-audio with streaming at every stage</p>
+
+          <div class="pipeline-diagram">
+            <div class="pipeline-stage">
+              <div class="stage-icon">🎤</div>
+              <div class="stage-label">Client Audio</div>
+              <div class="stage-detail">VAD-filtered</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-stage">
+              <div class="stage-icon">◊</div>
+              <div class="stage-label">Deepgram STT</div>
+              <div class="stage-detail">WebSocket</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-stage stage-security">
+              <div class="stage-icon">⬡</div>
+              <div class="stage-label">Security</div>
+              <div class="stage-detail">Sanitize + Moderate</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-stage stage-llm">
+              <div class="stage-icon">◆</div>
+              <div class="stage-label">Gemini LLM</div>
+              <div class="stage-detail">Streaming</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-stage">
+              <div class="stage-icon">◈</div>
+              <div class="stage-label">Cartesia TTS</div>
+              <div class="stage-detail">40ms latency</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+            <div class="pipeline-stage">
+              <div class="stage-icon">🔊</div>
+              <div class="stage-label">Audio Out</div>
+              <div class="stage-detail">Client Speaker</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Grid -->
+      <section class="section section-dark">
+        <div class="container">
+          <h2 class="section-title">Built for Game Developers</h2>
+
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon">◈</div>
+              <h3>Transient Sessions</h3>
+              <p>RAM during conversation, persist only on end. No database writes during chat.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">◇</div>
+              <h3>State History</h3>
+              <p>Git-like versioning for NPC states. Rollback if something goes wrong.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">⬡</div>
+              <h3>Knowledge Tiers</h3>
+              <p>NPCs know different things at different depths. Shopkeepers don't know royal secrets.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">◔</div>
+              <h3>Salience Scoring</h3>
+              <p>Emotionally significant events persist. Trivia fades like real memories.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">◑</div>
+              <h3>Mood Vectors</h3>
+              <p>Valence, arousal, dominance. Mathematical moods that influence behavior.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">⬢</div>
+              <h3>MCP Tools</h3>
+              <p>NPCs can act. Call guards, lock doors, refuse service. Real consequences.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="section section-cta">
+        <div class="container">
+          <h2>Ready to create memorable NPCs?</h2>
+          <p>Start with a project. No signup required.</p>
+          <button class="btn btn-primary btn-lg" id="btn-cta-create">
+            <span class="icon">+</span>
+            Create Your First Project
+          </button>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div class="container">
+          <div class="footer-grid">
+            <div class="footer-brand">
+              <span class="brand-icon">◆</span>
+              <span class="brand-text">Evolve<span class="brand-accent">.NPC</span></span>
+              <p>Memory-driven NPCs for games.</p>
+            </div>
+            <div class="footer-links">
+              <h4>Resources</h4>
+              <a href="https://github.com/aspect-games/evolve-npc" target="_blank">GitHub</a>
+              <a href="/docs">Documentation</a>
+              <a href="/api">API Reference</a>
+            </div>
+            <div class="footer-links">
+              <h4>Product</h4>
+              <a href="#features">Features</a>
+              <a href="#architecture">Architecture</a>
+              <a href="#voice">Voice Pipeline</a>
+            </div>
+          </div>
+          <div class="footer-bottom">
+            <p>© 2024 Evolve.NPC. Open source under MIT license.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </template>
+
+  <template id="template-projects">
+    <div class="projects-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <h1>Projects</h1>
+          <p>Manage your NPC projects</p>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-primary" id="btn-new-project">
+            <span class="icon">+</span>
+            New Project
+          </button>
+        </div>
+      </header>
+
+      <div class="projects-grid" id="projects-grid">
+        <!-- Project cards will be inserted here -->
+      </div>
+
+      <div class="empty-state" id="empty-projects" style="display: none;">
+        <div class="empty-icon">◫</div>
+        <h3>No projects yet</h3>
+        <p>Create your first project to start building NPCs</p>
+        <button class="btn btn-primary" id="btn-empty-create">
+          <span class="icon">+</span>
+          Create Project
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-dashboard">
+    <div class="dashboard-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <span id="project-name">Project</span>
+          </div>
+          <h1 id="dashboard-title">Project Dashboard</h1>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" id="btn-project-settings">
+            <span class="icon">⚙</span>
+            Settings
+          </button>
+        </div>
+      </header>
+
+      <div class="dashboard-grid">
+        <!-- Stats Cards -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon">◇</div>
+            <div class="stat-content">
+              <span class="stat-value" id="stat-npcs">0</span>
+              <span class="stat-label">NPCs</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">◔</div>
+            <div class="stat-content">
+              <span class="stat-value" id="stat-sessions">0</span>
+              <span class="stat-label">Active Sessions</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">◈</div>
+            <div class="stat-content">
+              <span class="stat-value" id="stat-categories">0</span>
+              <span class="stat-label">Knowledge Categories</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="dashboard-section">
+          <h2>Quick Actions</h2>
+          <div class="action-cards">
+            <a href="#" class="action-card" id="link-npcs">
+              <div class="action-icon">◇</div>
+              <div class="action-content">
+                <h3>NPC Editor</h3>
+                <p>Create and edit NPC definitions</p>
+              </div>
+              <span class="action-arrow">→</span>
+            </a>
+            <a href="#" class="action-card" id="link-knowledge">
+              <div class="action-icon">◈</div>
+              <div class="action-content">
+                <h3>Knowledge Base</h3>
+                <p>Manage tiered knowledge categories</p>
+              </div>
+              <span class="action-arrow">→</span>
+            </a>
+            <a href="#" class="action-card" id="link-playground">
+              <div class="action-icon">◑</div>
+              <div class="action-content">
+                <h3>Testing Playground</h3>
+                <p>Chat with NPCs via text or voice</p>
+              </div>
+              <span class="action-arrow">→</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- API Keys -->
+        <div class="dashboard-section">
+          <h2>API Configuration</h2>
+          <div class="api-keys-grid" id="api-keys-grid">
+            <div class="api-key-card">
+              <div class="api-key-header">
+                <span class="api-key-name">Gemini</span>
+                <span class="api-key-status" id="key-gemini-status">Not Set</span>
+              </div>
+              <p class="api-key-desc">LLM provider for NPC cognition</p>
+              <button class="btn btn-sm btn-outline" data-key="gemini">Configure</button>
+            </div>
+            <div class="api-key-card">
+              <div class="api-key-header">
+                <span class="api-key-name">Deepgram</span>
+                <span class="api-key-status" id="key-deepgram-status">Not Set</span>
+              </div>
+              <p class="api-key-desc">Speech-to-text for voice input</p>
+              <button class="btn btn-sm btn-outline" data-key="deepgram">Configure</button>
+            </div>
+            <div class="api-key-card">
+              <div class="api-key-header">
+                <span class="api-key-name">Cartesia</span>
+                <span class="api-key-status" id="key-cartesia-status">Not Set</span>
+              </div>
+              <p class="api-key-desc">Text-to-speech (default)</p>
+              <button class="btn btn-sm btn-outline" data-key="cartesia">Configure</button>
+            </div>
+            <div class="api-key-card">
+              <div class="api-key-header">
+                <span class="api-key-name">ElevenLabs</span>
+                <span class="api-key-status" id="key-elevenlabs-status">Not Set</span>
+              </div>
+              <p class="api-key-desc">Text-to-speech (alternative)</p>
+              <button class="btn btn-sm btn-outline" data-key="elevenlabs">Configure</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-npc-list">
+    <div class="npc-list-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-project">Project</a>
+            <span class="breadcrumb-sep">/</span>
+            <span>NPCs</span>
+          </div>
+          <h1>NPC Definitions</h1>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-primary" id="btn-create-npc">
+            <span class="icon">+</span>
+            Create NPC
+          </button>
+        </div>
+      </header>
+
+      <div class="npc-grid" id="npc-grid">
+        <!-- NPC cards will be inserted here -->
+      </div>
+
+      <div class="empty-state" id="empty-npcs" style="display: none;">
+        <div class="empty-icon">◇</div>
+        <h3>No NPCs defined</h3>
+        <p>Create your first NPC definition</p>
+        <button class="btn btn-primary" id="btn-empty-create-npc">
+          <span class="icon">+</span>
+          Create NPC
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-npc-editor">
+    <div class="npc-editor-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-project">Project</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-npcs">NPCs</a>
+            <span class="breadcrumb-sep">/</span>
+            <span id="breadcrumb-npc">New NPC</span>
+          </div>
+          <h1 id="editor-title">Create NPC</h1>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-outline" id="btn-cancel">Cancel</button>
+          <button class="btn btn-primary" id="btn-save-npc">
+            <span class="icon">✓</span>
+            Save NPC
+          </button>
+        </div>
+      </header>
+
+      <div class="editor-layout">
+        <!-- Editor Sidebar -->
+        <aside class="editor-sidebar">
+          <nav class="editor-nav">
+            <a href="#section-basic" class="editor-nav-item active" data-section="basic">
+              <span class="nav-icon">◇</span>
+              Basic Info
+            </a>
+            <a href="#section-anchor" class="editor-nav-item" data-section="anchor">
+              <span class="nav-icon">◈</span>
+              Core Anchor
+            </a>
+            <a href="#section-personality" class="editor-nav-item" data-section="personality">
+              <span class="nav-icon">◔</span>
+              Personality
+            </a>
+            <a href="#section-voice" class="editor-nav-item" data-section="voice">
+              <span class="nav-icon">🔊</span>
+              Voice
+            </a>
+            <a href="#section-knowledge" class="editor-nav-item" data-section="knowledge">
+              <span class="nav-icon">◑</span>
+              Knowledge Access
+            </a>
+            <a href="#section-tools" class="editor-nav-item" data-section="tools">
+              <span class="nav-icon">⬡</span>
+              Tool Permissions
+            </a>
+          </nav>
+        </aside>
+
+        <!-- Editor Content -->
+        <div class="editor-content">
+          <!-- Basic Info Section -->
+          <section class="editor-section active" id="section-basic">
+            <h2>Basic Information</h2>
+            <div class="form-group">
+              <label for="npc-name">Name</label>
+              <input type="text" id="npc-name" class="input" placeholder="e.g., Elara the Innkeeper">
+            </div>
+            <div class="form-group">
+              <label for="npc-description">Description</label>
+              <textarea id="npc-description" class="input textarea" rows="3" placeholder="A brief description of this NPC..."></textarea>
+            </div>
+          </section>
+
+          <!-- Core Anchor Section -->
+          <section class="editor-section" id="section-anchor">
+            <h2>Core Anchor</h2>
+            <p class="section-desc">Immutable psychological DNA. This never changes after creation.</p>
+
+            <div class="form-group">
+              <label for="anchor-backstory">Backstory</label>
+              <textarea id="anchor-backstory" class="input textarea code" rows="6" placeholder="100-200 tokens encoding the character's fundamental worldview..."></textarea>
+              <span class="input-hint">This should capture childhood context and core experiences that shape their perspective.</span>
+            </div>
+
+            <div class="form-group">
+              <label>Principles</label>
+              <div class="tag-input-container">
+                <div class="tag-input-tags" id="principles-tags"></div>
+                <input type="text" id="principle-input" class="input tag-input" placeholder="Add a principle and press Enter">
+              </div>
+              <span class="input-hint">3-5 unbreakable beliefs (e.g., "Never lie to family", "Protect the innocent")</span>
+            </div>
+
+            <div class="form-group">
+              <label>Trauma Flags</label>
+              <div class="tag-input-container">
+                <div class="tag-input-tags" id="trauma-tags"></div>
+                <input type="text" id="trauma-input" class="input tag-input" placeholder="Add a trauma flag and press Enter">
+              </div>
+              <span class="input-hint">Narrative tracking only - these don't modify the anchor</span>
+            </div>
+          </section>
+
+          <!-- Personality Section -->
+          <section class="editor-section" id="section-personality">
+            <h2>Personality Baseline</h2>
+            <p class="section-desc">Big Five personality traits. These can drift slightly over time.</p>
+
+            <div class="personality-sliders">
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label>Openness</label>
+                  <span class="slider-value" id="val-openness">0.5</span>
+                </div>
+                <div class="slider-labels">
+                  <span>Practical</span>
+                  <span>Curious</span>
+                </div>
+                <input type="range" id="trait-openness" class="slider" min="0" max="1" step="0.05" value="0.5">
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label>Conscientiousness</label>
+                  <span class="slider-value" id="val-conscientiousness">0.5</span>
+                </div>
+                <div class="slider-labels">
+                  <span>Spontaneous</span>
+                  <span>Organized</span>
+                </div>
+                <input type="range" id="trait-conscientiousness" class="slider" min="0" max="1" step="0.05" value="0.5">
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label>Extraversion</label>
+                  <span class="slider-value" id="val-extraversion">0.5</span>
+                </div>
+                <div class="slider-labels">
+                  <span>Reserved</span>
+                  <span>Outgoing</span>
+                </div>
+                <input type="range" id="trait-extraversion" class="slider" min="0" max="1" step="0.05" value="0.5">
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label>Agreeableness</label>
+                  <span class="slider-value" id="val-agreeableness">0.5</span>
+                </div>
+                <div class="slider-labels">
+                  <span>Challenging</span>
+                  <span>Cooperative</span>
+                </div>
+                <input type="range" id="trait-agreeableness" class="slider" min="0" max="1" step="0.05" value="0.5">
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label>Neuroticism</label>
+                  <span class="slider-value" id="val-neuroticism">0.5</span>
+                </div>
+                <div class="slider-labels">
+                  <span>Stable</span>
+                  <span>Sensitive</span>
+                </div>
+                <input type="range" id="trait-neuroticism" class="slider" min="0" max="1" step="0.05" value="0.5">
+              </div>
+            </div>
+
+            <div class="personality-summary" id="personality-summary">
+              <!-- Generated personality description -->
+            </div>
+          </section>
+
+          <!-- Voice Section -->
+          <section class="editor-section" id="section-voice">
+            <h2>Voice Configuration</h2>
+
+            <div class="form-group">
+              <label for="voice-provider">TTS Provider</label>
+              <select id="voice-provider" class="input select">
+                <option value="cartesia">Cartesia (Default)</option>
+                <option value="elevenlabs">ElevenLabs</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="voice-id">Voice ID</label>
+              <input type="text" id="voice-id" class="input" placeholder="Voice ID from provider">
+              <span class="input-hint">Find voice IDs in your TTS provider's dashboard</span>
+            </div>
+
+            <div class="form-group">
+              <label for="voice-speed">Speed</label>
+              <div class="slider-header">
+                <span class="slider-value" id="val-voice-speed">1.0x</span>
+              </div>
+              <input type="range" id="voice-speed" class="slider" min="0.5" max="2" step="0.1" value="1">
+            </div>
+
+            <button class="btn btn-outline" id="btn-preview-voice" disabled>
+              <span class="icon">▶</span>
+              Preview Voice
+            </button>
+          </section>
+
+          <!-- Knowledge Access Section -->
+          <section class="editor-section" id="section-knowledge">
+            <h2>Knowledge Access</h2>
+            <p class="section-desc">What does this NPC know? Set depth levels per category.</p>
+
+            <div class="knowledge-access-grid" id="knowledge-access-grid">
+              <!-- Knowledge categories will be inserted here -->
+              <div class="empty-state-inline" id="empty-knowledge">
+                <p>No knowledge categories defined in this project.</p>
+                <a href="#" id="link-create-knowledge">Create knowledge categories first →</a>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tool Permissions Section -->
+          <section class="editor-section" id="section-tools">
+            <h2>Tool Permissions</h2>
+            <p class="section-desc">Which MCP tools can this NPC use?</p>
+
+            <div class="tools-grid" id="tools-grid">
+              <div class="tool-category">
+                <h3>Conversation Tools</h3>
+                <p class="tool-category-desc">NPC decides when to use these</p>
+                <div class="tool-list" id="conversation-tools-list">
+                  <!-- Tools will be inserted here -->
+                </div>
+              </div>
+
+              <div class="tool-category">
+                <h3>Game Event Tools</h3>
+                <p class="tool-category-desc">Game logic triggers these</p>
+                <div class="tool-list" id="game-tools-list">
+                  <!-- Tools will be inserted here -->
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Live Preview Panel -->
+        <aside class="editor-preview">
+          <div class="preview-header">
+            <h3>Live Preview</h3>
+            <button class="btn btn-sm btn-ghost" id="btn-toggle-preview">
+              <span class="icon">◐</span>
+            </button>
+          </div>
+          <div class="preview-content">
+            <div class="preview-avatar">
+              <span class="avatar-placeholder">◇</span>
+            </div>
+            <h4 id="preview-name">NPC Name</h4>
+            <p id="preview-description" class="preview-description">Description will appear here...</p>
+
+            <div class="preview-traits">
+              <h5>Personality</h5>
+              <div class="trait-bars" id="preview-traits">
+                <!-- Trait bars will be inserted here -->
+              </div>
+            </div>
+
+            <div class="preview-mood">
+              <h5>Default Mood</h5>
+              <div class="mood-indicator" id="preview-mood">
+                <span class="mood-valence">Neutral</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-knowledge">
+    <div class="knowledge-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-project">Project</a>
+            <span class="breadcrumb-sep">/</span>
+            <span>Knowledge Base</span>
+          </div>
+          <h1>Knowledge Base</h1>
+        </div>
+        <div class="page-header-actions">
+          <button class="btn btn-primary" id="btn-add-category">
+            <span class="icon">+</span>
+            Add Category
+          </button>
+        </div>
+      </header>
+
+      <div class="knowledge-layout">
+        <div class="knowledge-categories" id="knowledge-categories">
+          <!-- Categories will be inserted here -->
+        </div>
+
+        <div class="empty-state" id="empty-knowledge" style="display: none;">
+          <div class="empty-icon">◈</div>
+          <h3>No knowledge categories</h3>
+          <p>Create categories to define what NPCs can know</p>
+          <button class="btn btn-primary" id="btn-empty-add-category">
+            <span class="icon">+</span>
+            Add Category
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-playground">
+    <div class="playground-page">
+      <header class="page-header compact">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-project">Project</a>
+            <span class="breadcrumb-sep">/</span>
+            <span>Playground</span>
+          </div>
+          <h1>Testing Playground</h1>
+        </div>
+      </header>
+
+      <div class="playground-layout">
+        <!-- NPC Selection Panel -->
+        <aside class="playground-sidebar">
+          <div class="sidebar-section">
+            <h3>Select NPC</h3>
+            <select id="npc-select" class="input select">
+              <option value="">Choose an NPC...</option>
+            </select>
+          </div>
+
+          <div class="sidebar-section" id="npc-info-panel" style="display: none;">
+            <h3>NPC Info</h3>
+            <div class="npc-info-card">
+              <div class="npc-avatar">◇</div>
+              <h4 id="info-npc-name">NPC Name</h4>
+              <p id="info-npc-description">Description</p>
+            </div>
+
+            <div class="mood-control">
+              <h4>Starting Mood</h4>
+              <div class="mood-sliders">
+                <div class="mini-slider">
+                  <label>Valence</label>
+                  <input type="range" id="mood-valence" min="0" max="1" step="0.1" value="0.5">
+                </div>
+                <div class="mini-slider">
+                  <label>Arousal</label>
+                  <input type="range" id="mood-arousal" min="0" max="1" step="0.1" value="0.5">
+                </div>
+                <div class="mini-slider">
+                  <label>Dominance</label>
+                  <input type="range" id="mood-dominance" min="0" max="1" step="0.1" value="0.5">
+                </div>
+              </div>
+            </div>
+
+            <div class="session-control">
+              <input type="text" id="player-id" class="input" placeholder="Player ID" value="test-player">
+              <button class="btn btn-primary btn-block" id="btn-start-session">
+                <span class="icon">▶</span>
+                Start Session
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-section" id="session-panel" style="display: none;">
+            <h3>Active Session</h3>
+            <div class="session-info">
+              <div class="session-stat">
+                <span class="stat-label">Session ID</span>
+                <code id="session-id-display">-</code>
+              </div>
+              <div class="session-stat">
+                <span class="stat-label">Messages</span>
+                <span id="message-count">0</span>
+              </div>
+            </div>
+
+            <div class="current-mood">
+              <h4>Current Mood</h4>
+              <div class="mood-display" id="current-mood-display">
+                <span class="mood-emoji">😐</span>
+                <span class="mood-label">Neutral</span>
+              </div>
+            </div>
+
+            <button class="btn btn-outline btn-block" id="btn-end-session">
+              <span class="icon">⬛</span>
+              End Session
+            </button>
+          </div>
+        </aside>
+
+        <!-- Chat Area -->
+        <main class="playground-main">
+          <div class="chat-container">
+            <div class="chat-messages" id="chat-messages">
+              <div class="chat-placeholder">
+                <div class="placeholder-icon">◑</div>
+                <p>Select an NPC and start a session to begin chatting</p>
+              </div>
+            </div>
+
+            <div class="chat-input-area" id="chat-input-area" style="display: none;">
+              <div class="input-mode-toggle">
+                <button class="mode-btn active" data-mode="text" id="mode-text">
+                  <span class="icon">⌨</span>
+                  Text
+                </button>
+                <button class="mode-btn" data-mode="voice" id="mode-voice">
+                  <span class="icon">🎤</span>
+                  Voice
+                </button>
+              </div>
+
+              <div class="text-input-container" id="text-input-container">
+                <textarea id="message-input" class="input textarea" rows="2" placeholder="Type a message..."></textarea>
+                <button class="btn btn-primary" id="btn-send">
+                  <span class="icon">↑</span>
+                </button>
+              </div>
+
+              <div class="voice-input-container" id="voice-input-container" style="display: none;">
+                <div class="voice-visualizer" id="voice-visualizer">
+                  <div class="visualizer-bars">
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                  </div>
+                </div>
+                <button class="btn btn-voice" id="btn-voice-toggle">
+                  <span class="icon">🎤</span>
+                  <span class="label">Hold to speak</span>
+                </button>
+                <div class="voice-status" id="voice-status">Ready</div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <!-- X-Ray Panel -->
+        <aside class="playground-xray" id="xray-panel">
+          <div class="xray-header">
+            <h3>X-Ray Mode</h3>
+            <button class="btn btn-sm btn-ghost" id="btn-toggle-xray">
+              <span class="icon">◐</span>
+            </button>
+          </div>
+
+          <div class="xray-content">
+            <div class="xray-section">
+              <h4>Pipeline Trace</h4>
+              <div class="pipeline-trace" id="pipeline-trace">
+                <div class="trace-step" data-step="stt">STT</div>
+                <div class="trace-step" data-step="security">Security</div>
+                <div class="trace-step" data-step="context">Context</div>
+                <div class="trace-step" data-step="llm">LLM</div>
+                <div class="trace-step" data-step="tts">TTS</div>
+              </div>
+            </div>
+
+            <div class="xray-section">
+              <h4>Tool Calls</h4>
+              <div class="tool-calls-log" id="tool-calls-log">
+                <p class="log-empty">No tool calls yet</p>
+              </div>
+            </div>
+
+            <div class="xray-section">
+              <h4>Memory Access</h4>
+              <div class="memory-access-log" id="memory-access-log">
+                <p class="log-empty">No memories accessed</p>
+              </div>
+            </div>
+
+            <div class="xray-section">
+              <h4>Security Events</h4>
+              <div class="security-log" id="security-log">
+                <p class="log-empty">No security events</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </template>
+
+  <!-- Modal Template -->
+  <template id="template-modal">
+    <div class="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title"></h2>
+          <button class="btn btn-ghost modal-close">
+            <span class="icon">✕</span>
+          </button>
+        </div>
+        <div class="modal-body"></div>
+        <div class="modal-footer"></div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Scripts -->
+  <script type="module" src="/js/api.js"></script>
+  <script type="module" src="/js/router.js"></script>
+  <script type="module" src="/js/components.js"></script>
+  <script type="module" src="/js/pages/landing.js"></script>
+  <script type="module" src="/js/pages/projects.js"></script>
+  <script type="module" src="/js/pages/dashboard.js"></script>
+  <script type="module" src="/js/pages/npc-editor.js"></script>
+  <script type="module" src="/js/pages/knowledge.js"></script>
+  <script type="module" src="/js/pages/playground.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

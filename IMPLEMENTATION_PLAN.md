@@ -638,12 +638,12 @@ Create `src/voice/interruption.ts`:
   - [ ] Tool permissions
   - [ ] Knowledge access (checkboxes per category with depth dropdown)
 
-### 9.5 Testing Playground
+### 9.5 Testing Playground - You dont need to test - hand it over to me
 
 - [ ] Select NPC to test
 - [ ] Text chat interface
 - [ ] Voice chat with @ricky0123/vad-web
-- [ ] Mood indicator
+- [ ] Mood indicator - with way to select from drop-down or set before starting convo
 - [ ] Tool call display
 - [ ] Trigger update cycles
 - [ ] View instance state
