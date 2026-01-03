@@ -15,5 +15,9 @@ export interface SecurityContext {
   moderated: boolean;
   rateLimited: boolean;
   exitRequested: boolean;
+  /** Flags from moderation (reasons for flagging) */
+  moderationFlags: string[];
+  /** Violations from input sanitization */
+  inputViolations: string[];
 }
 

@@ -481,70 +481,70 @@ Create `src/session/manager.ts`:
 
 Create `src/routes/projects.ts`:
 
-- [ ] POST /api/projects - Create project (from homepage)
-- [ ] GET /api/projects/:projectId
-- [ ] PUT /api/projects/:projectId
-- [ ] PUT /api/projects/:projectId/keys - Update API keys
-- [ ] DELETE /api/projects/:projectId
+- [*] POST /api/projects - Create project (from homepage)
+- [*] GET /api/projects/:projectId
+- [*] PUT /api/projects/:projectId
+- [*] PUT /api/projects/:projectId/keys - Update API keys
+- [*] DELETE /api/projects/:projectId
 
 ### 7.2 Knowledge Routes
 
 Create `src/routes/knowledge.ts`:
 
-- [ ] GET /api/projects/:projectId/knowledge
-- [ ] PUT /api/projects/:projectId/knowledge
+- [*] GET /api/projects/:projectId/knowledge
+- [*] PUT /api/projects/:projectId/knowledge
 
 ### 7.3 NPC Definition Routes
 
 Create `src/routes/npcs.ts`:
 
-- [ ] POST /api/projects/:projectId/npcs
-- [ ] GET /api/projects/:projectId/npcs
-- [ ] GET /api/projects/:projectId/npcs/:npcId
-- [ ] PUT /api/projects/:projectId/npcs/:npcId
-- [ ] DELETE /api/projects/:projectId/npcs/:npcId
+- [*] POST /api/projects/:projectId/npcs
+- [*] GET /api/projects/:projectId/npcs
+- [*] GET /api/projects/:projectId/npcs/:npcId
+- [*] PUT /api/projects/:projectId/npcs/:npcId
+- [*] DELETE /api/projects/:projectId/npcs/:npcId
 
 ### 7.4 Session Routes
 
 Create `src/routes/session.ts`:
 
-- [ ] POST /api/session/start - { project_id, npc_id, player_id }
-- [ ] POST /api/session/:sessionId/end
-- [ ] GET /api/session/:sessionId (debug)
+- [*] POST /api/session/start - { project_id, npc_id, player_id }
+- [*] POST /api/session/:sessionId/end
+- [*] GET /api/session/:sessionId (debug)
 
 ### 7.5 Conversation Routes
 
 Create `src/routes/conversation.ts`:
 
-- [ ] POST /api/session/:sessionId/message
-  - [ ] Security pipeline
-  - [ ] Context assembly with knowledge
-  - [ ] LLM call
-  - [ ] Tool handling
-  - [ ] Update session state
+- [*] POST /api/session/:sessionId/message
+  - [*] Security pipeline
+  - [*] Context assembly with knowledge
+  - [*] LLM call
+  - [*] Tool handling
+  - [*] Update session state
 
 ### 7.6 Update Cycle Routes
 
 Create `src/routes/cycles.ts`:
 
-- [ ] POST /api/instances/:instanceId/daily-pulse
-- [ ] POST /api/instances/:instanceId/weekly-whisper
-- [ ] POST /api/instances/:instanceId/persona-shift
+- [*] POST /api/instances/:instanceId/daily-pulse
+- [*] POST /api/instances/:instanceId/weekly-whisper
+- [*] POST /api/instances/:instanceId/persona-shift
 
 ### 7.7 History Routes
 
 Create `src/routes/history.ts`:
 
-- [ ] GET /api/instances/:instanceId/history
-- [ ] POST /api/instances/:instanceId/rollback
+- [*] GET /api/instances/:instanceId/history
+- [*] POST /api/instances/:instanceId/rollback
 
 ### 7.8 MCP Handling
 
 Create `src/mcp/registry.ts`, `validator.ts`, `exit-handler.ts`:
 
-- [ ] Tool registry with schemas
-- [ ] Validation against schema
-- [ ] exit_convo special handling
+- [*] Tool registry with schemas
+- [*] Validation against schema
+- [*] exit_convo special handling
 
 **Checkpoint:** Full REST API works. Text conversation functional.
 
@@ -558,34 +558,42 @@ Create `src/mcp/registry.ts`, `validator.ts`, `exit-handler.ts`:
 
 Create `src/voice/pipeline.ts`:
 
-- [ ] VoicePipeline class with STT/TTS sessions
-- [ ] pushAudio() -> STT
-- [ ] onTranscript -> processTurn
-- [ ] processTurn: security -> context (with knowledge) -> LLM -> TTS
-- [ ] handleInterruption: abort LLM, flush TTS
+- [*] VoicePipeline class with STT/TTS sessions
+- [*] pushAudio() -> STT
+- [*] onTranscript -> processTurn
+- [*] processTurn: security -> context (with knowledge) -> LLM -> TTS
+- [*] handleInterruption: abort LLM, flush TTS
 
 ### 8.2 Sentence Detector
 
 Create `src/voice/sentence-detector.ts`:
 
-- [ ] Accumulate tokens until sentence boundary
-- [ ] Handle edge cases (Dr., Mr., decimals)
+- [*] Accumulate tokens until sentence boundary
+- [*] Handle edge cases (Dr., Mr., decimals)
 
 ### 8.3 WebSocket Handler
 
 Create `src/ws/handler.ts`:
 
-- [ ] Handle /ws/voice?project_id=...
-- [ ] Messages: init, audio, commit, interrupt, text, end
-- [ ] Outbound: ready, transcript, text_chunk, audio_chunk, tool_call, generation_end, sync, error
+- [*] Handle /ws/voice?session_id=...
+- [*] Messages: init, audio, commit, interrupt, text, end
+- [*] Outbound: ready, transcript, text_chunk, audio_chunk, tool_call, generation_end, sync, error
 
 ### 8.4 Audio Utilities
 
 Create `src/voice/audio.ts`:
 
-- [ ] Base64 encode/decode
-- [ ] PCM format handling
-- [ ] Sample rate validation
+- [*] Base64 encode/decode
+- [*] PCM format handling
+- [*] Sample rate validation
+
+### 8.5 Interruption Handler (bonus)
+
+Create `src/voice/interruption.ts`:
+
+- [*] InterruptionHandler class with abort controller management
+- [*] State tracking (idle, processing, interrupted, completed)
+- [*] Cleanup callback registration
 
 **Checkpoint:** Voice conversation works end-to-end.
 
@@ -803,8 +811,8 @@ Create `src/voice/audio.ts`:
 | 4 | Storage Layer | Complete |
 | 5 | Core NPC Logic | Complete |
 | 6 | Session Management | Complete |
-| 7 | API Routes | Not Started |
-| 8 | Voice Pipeline | Not Started |
+| 7 | API Routes | Complete |
+| 8 | Voice Pipeline | Complete |
 | 9 | Web Test UI | Not Started |
 | 10 | Deployment | Not Started |
 

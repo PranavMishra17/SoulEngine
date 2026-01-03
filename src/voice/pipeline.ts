@@ -1,0 +1,629 @@
+import { createLogger } from '../logger.js';
+import { sanitize } from '../security/sanitizer.js';
+import { moderate } from '../security/moderator.js';
+import { rateLimiter } from '../security/rate-limiter.js';
+import {
+  getSessionContext,
+  addMessageToSession,
+  updateSessionInstance,
+  SessionContext,
+  SessionError,
+} from '../session/manager.js';
+import { sessionStore } from '../session/store.js';
+import { assembleSystemPrompt, assembleConversationHistory } from '../core/context.js';
+import { getAvailableTools, isExitConvoTool } from '../core/tools.js';
+import { mcpToolRegistry } from '../mcp/registry.js';
+import { handleExitConvo, processExitResult } from '../mcp/exit-handler.js';
+import { validateToolCall, sanitizeToolArguments } from '../mcp/validator.js';
+import { SentenceDetector } from './sentence-detector.js';
+import { encodeTtsAudio } from './audio.js';
+
+import type { SessionID, Message } from '../types/session.js';
+import type { SecurityContext } from '../types/security.js';
+import type { TranscriptEvent, TTSChunk, VoiceConfig } from '../types/voice.js';
+import type { ToolCall, Tool } from '../types/mcp.js';
+import type { STTProvider, STTSession, STTSessionConfig, STTSessionEvents } from '../providers/stt/interface.js';
+import type { TTSProvider, TTSSession, TTSSessionConfig, TTSSessionEvents } from '../providers/tts/interface.js';
+import type { LLMProvider, LLMStreamChunk, LLMMessage, LLMChatRequest } from '../providers/llm/interface.js';
+
+const logger = createLogger('voice-pipeline');
+
+/**
+ * Events emitted by the voice pipeline to the WebSocket handler
+ */
+export interface VoicePipelineEvents {
+  /** Called when STT produces a transcript */
+  onTranscript: (text: string, isFinal: boolean) => void;
+  /** Called when LLM produces text (for UI display) */
+  onTextChunk: (text: string) => void;
+  /** Called when TTS produces audio */
+  onAudioChunk: (audioBase64: string) => void;
+  /** Called when LLM triggers a tool call */
+  onToolCall: (name: string, args: Record<string, unknown>) => void;
+  /** Called when the NPC's turn is complete */
+  onGenerationEnd: () => void;
+  /** Called on error */
+  onError: (code: string, message: string) => void;
+  /** Called when exit_convo is triggered */
+  onExitConvo: (reason: string, cooldownSeconds?: number) => void;
+}
+
+/**
+ * Configuration for creating a voice pipeline
+ */
+export interface VoicePipelineConfig {
+  sessionId: SessionID;
+  sttProvider: STTProvider;
+  ttsProvider: TTSProvider;
+  llmProvider: LLMProvider;
+  voiceConfig: VoiceConfig;
+  events: VoicePipelineEvents;
+}
+
+/**
+ * Internal state for tracking a turn
+ */
+interface TurnState {
+  abortController: AbortController;
+  isProcessing: boolean;
+  exitConvoUsed: boolean;
+}
+
+/**
+ * VoicePipeline orchestrates the full voice conversation flow:
+ * Client audio -> STT -> Security -> Context -> LLM -> TTS -> Client audio
+ *
+ * It manages:
+ * - STT streaming session for audio input
+ * - TTS streaming session for audio output
+ * - LLM streaming for text generation
+ * - Security pipeline integration
+ * - Tool calling and exit_convo handling
+ * - Interruption handling
+ */
+export class VoicePipeline {
+  private readonly sessionId: SessionID;
+  private readonly sttProvider: STTProvider;
+  private readonly ttsProvider: TTSProvider;
+  private readonly llmProvider: LLMProvider;
+  private readonly voiceConfig: VoiceConfig;
+  private readonly events: VoicePipelineEvents;
+
+  private sttSession: STTSession | null = null;
+  private ttsSession: TTSSession | null = null;
+  private sentenceDetector: SentenceDetector;
+  private turnState: TurnState | null = null;
+
+  private accumulatedTranscript: string = '';
+  private isActive: boolean = false;
+
+  constructor(config: VoicePipelineConfig) {
+    this.sessionId = config.sessionId;
+    this.sttProvider = config.sttProvider;
+    this.ttsProvider = config.ttsProvider;
+    this.llmProvider = config.llmProvider;
+    this.voiceConfig = config.voiceConfig;
+    this.events = config.events;
+    this.sentenceDetector = new SentenceDetector();
+
+    logger.info({ sessionId: this.sessionId }, 'VoicePipeline created');
+  }
+
+  /**
+   * Initialize the pipeline - connect STT and TTS sessions
+   */
+  async initialize(): Promise<void> {
+    logger.info({ sessionId: this.sessionId }, 'Initializing voice pipeline');
+
+    try {
+      // Create STT session with callbacks
+      const sttConfig: STTSessionConfig = {
+        sampleRate: 16000,
+        encoding: 'linear16',
+        punctuate: true,
+        interimResults: true,
+      };
+
+      const sttEvents: STTSessionEvents = {
+        onTranscript: (event) => this.handleSTTTranscript(event),
+        onError: (error) => this.handleSTTError(error),
+        onClose: () => this.handleSTTClose(),
+        onOpen: () => logger.debug({ sessionId: this.sessionId }, 'STT session opened'),
+      };
+
+      this.sttSession = await this.sttProvider.createSession(sttConfig, sttEvents);
+
+      // Create TTS session with callbacks
+      const ttsConfig: TTSSessionConfig = {
+        voiceId: this.voiceConfig.voice_id,
+        speed: this.voiceConfig.speed,
+        outputFormat: 'pcm_s16le',
+      };
+
+      const ttsEvents: TTSSessionEvents = {
+        onAudioChunk: (chunk) => this.handleTTSAudioChunk(chunk),
+        onComplete: () => logger.debug({ sessionId: this.sessionId }, 'TTS synthesis complete'),
+        onError: (error) => this.handleTTSError(error),
+      };
+
+      this.ttsSession = await this.ttsProvider.createSession(ttsConfig, ttsEvents);
+
+      this.isActive = true;
+      logger.info({ sessionId: this.sessionId }, 'Voice pipeline initialized');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ sessionId: this.sessionId, error: message }, 'Failed to initialize voice pipeline');
+      throw error;
+    }
+  }
+
+  /**
+   * Push audio data from client to STT
+   */
+  pushAudio(audioBuffer: Buffer): void {
+    if (!this.isActive || !this.sttSession) {
+      logger.warn({ sessionId: this.sessionId }, 'Attempted to push audio to inactive pipeline');
+      return;
+    }
+
+    if (!this.sttSession.isConnected) {
+      logger.warn({ sessionId: this.sessionId }, 'STT session not connected');
+      return;
+    }
+
+    this.sttSession.sendAudio(audioBuffer);
+  }
+
+  /**
+   * Handle pure text input (alternative to audio)
+   */
+  async handleTextInput(text: string): Promise<void> {
+    logger.info({ sessionId: this.sessionId, inputLength: text.length }, 'Processing text input');
+
+    // Create a synthetic "final" transcript event
+    const event: TranscriptEvent = {
+      text,
+      isFinal: true,
+      timestamp: Date.now(),
+    };
+
+    await this.processTranscript(event);
+  }
+
+  /**
+   * Signal that the user has committed their current input
+   * (e.g., finished speaking for this turn)
+   */
+  commit(): void {
+    if (this.sttSession?.isConnected) {
+      this.sttSession.finalize();
+    }
+
+    // If we have accumulated transcript but haven't processed yet,
+    // treat it as final
+    if (this.accumulatedTranscript.trim().length > 0) {
+      const event: TranscriptEvent = {
+        text: this.accumulatedTranscript,
+        isFinal: true,
+        timestamp: Date.now(),
+      };
+      this.accumulatedTranscript = '';
+      this.processTranscript(event).catch((error) => {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error({ sessionId: this.sessionId, error: message }, 'Failed to process committed transcript');
+        this.events.onError('PROCESSING_ERROR', message);
+      });
+    }
+  }
+
+  /**
+   * Handle interruption - stop current generation
+   */
+  async handleInterruption(): Promise<void> {
+    logger.info({ sessionId: this.sessionId }, 'Handling interruption');
+
+    if (this.turnState?.isProcessing) {
+      // Abort LLM generation
+      this.turnState.abortController.abort();
+
+      // Abort TTS
+      if (this.ttsSession) {
+        this.ttsSession.abort();
+      }
+
+      // Clear sentence detector buffer
+      this.sentenceDetector.clear();
+
+      logger.debug({ sessionId: this.sessionId }, 'Interruption handled');
+    }
+  }
+
+  /**
+   * End the pipeline - close all connections
+   */
+  async end(): Promise<void> {
+    logger.info({ sessionId: this.sessionId }, 'Ending voice pipeline');
+
+    this.isActive = false;
+
+    // Abort any ongoing generation
+    if (this.turnState?.isProcessing) {
+      this.turnState.abortController.abort();
+    }
+
+    // Close STT
+    if (this.sttSession) {
+      try {
+        this.sttSession.close();
+      } catch (error) {
+        logger.warn({ sessionId: this.sessionId }, 'Error closing STT session');
+      }
+      this.sttSession = null;
+    }
+
+    // Close TTS
+    if (this.ttsSession) {
+      try {
+        this.ttsSession.close();
+      } catch (error) {
+        logger.warn({ sessionId: this.sessionId }, 'Error closing TTS session');
+      }
+      this.ttsSession = null;
+    }
+
+    logger.info({ sessionId: this.sessionId }, 'Voice pipeline ended');
+  }
+
+  /**
+   * Check if exit_convo was used during conversation
+   */
+  wasExitConvoUsed(): boolean {
+    return this.turnState?.exitConvoUsed ?? false;
+  }
+
+  /**
+   * Check if pipeline is active
+   */
+  get active(): boolean {
+    return this.isActive;
+  }
+
+  // --- Private Methods ---
+
+  /**
+   * Handle STT transcript events
+   */
+  private handleSTTTranscript(event: TranscriptEvent): void {
+    // Emit transcript to client
+    this.events.onTranscript(event.text, event.isFinal);
+
+    if (event.isFinal) {
+      // Process final transcript
+      this.processTranscript(event).catch((error) => {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error({ sessionId: this.sessionId, error: message }, 'Failed to process transcript');
+        this.events.onError('PROCESSING_ERROR', message);
+      });
+    } else {
+      // Accumulate interim transcript
+      this.accumulatedTranscript = event.text;
+    }
+  }
+
+  /**
+   * Handle STT errors
+   */
+  private handleSTTError(error: Error): void {
+    logger.error({ sessionId: this.sessionId, error: error.message }, 'STT error');
+    this.events.onError('STT_ERROR', error.message);
+  }
+
+  /**
+   * Handle STT session close
+   */
+  private handleSTTClose(): void {
+    logger.debug({ sessionId: this.sessionId }, 'STT session closed');
+  }
+
+  /**
+   * Handle TTS audio chunks
+   */
+  private handleTTSAudioChunk(chunk: TTSChunk): void {
+    const audioBase64 = encodeTtsAudio(chunk.audio);
+    this.events.onAudioChunk(audioBase64);
+  }
+
+  /**
+   * Handle TTS errors
+   */
+  private handleTTSError(error: Error): void {
+    logger.error({ sessionId: this.sessionId, error: error.message }, 'TTS error');
+    // TTS errors are not fatal - we can fall back to text-only
+    this.events.onError('TTS_ERROR', error.message);
+  }
+
+  /**
+   * Process a final transcript through the full pipeline
+   */
+  private async processTranscript(event: TranscriptEvent): Promise<void> {
+    const text = event.text.trim();
+    if (text.length === 0) {
+      return;
+    }
+
+    logger.info({ sessionId: this.sessionId, textLength: text.length }, 'Processing transcript');
+
+    // Get session state
+    const stored = sessionStore.get(this.sessionId);
+    if (!stored) {
+      throw new SessionError(`Session not found: ${this.sessionId}`, 'SESSION_NOT_FOUND');
+    }
+
+    const { state } = stored;
+
+    // Security pipeline
+    const securityContext = await this.runSecurityPipeline(
+      text,
+      state.project_id,
+      state.player_id,
+      state.definition_id
+    );
+
+    if (!securityContext) {
+      // Input blocked by security
+      return;
+    }
+
+    // Get session context for LLM
+    const context = await getSessionContext(this.sessionId);
+
+    // Add user message to session history
+    const userMessage: Message = { role: 'user', content: securityContext.sanitized ? text : text };
+    addMessageToSession(this.sessionId, userMessage);
+
+    // Process turn with LLM
+    await this.processTurn(text, context, securityContext);
+  }
+
+  /**
+   * Run the security pipeline on input
+   */
+  private async runSecurityPipeline(
+    input: string,
+    projectId: string,
+    playerId: string,
+    npcId: string
+  ): Promise<SecurityContext | null> {
+    // 1. Sanitize
+    const sanitizeResult = sanitize(input);
+    if (sanitizeResult.violations.length > 0) {
+      logger.warn(
+        { sessionId: this.sessionId, violations: sanitizeResult.violations },
+        'Input sanitization violations'
+      );
+    }
+
+    // 2. Rate limit
+    const rateLimitResult = rateLimiter.checkLimit(projectId, playerId, npcId);
+    if (!rateLimitResult.allowed) {
+      logger.warn({ sessionId: this.sessionId, resetAt: rateLimitResult.resetAt }, 'Rate limit exceeded');
+      this.events.onError('RATE_LIMIT', 'Too many messages. Please wait before sending more.');
+      return null;
+    }
+
+    // 3. Moderate
+    const moderationResult = await moderate(sanitizeResult.sanitized);
+
+    const securityContext: SecurityContext = {
+      sanitized: true,
+      moderated: true,
+      rateLimited: false,
+      exitRequested: moderationResult.action === 'exit',
+      moderationFlags: moderationResult.flagged ? [moderationResult.reason || 'flagged'] : [],
+      inputViolations: sanitizeResult.violations,
+    };
+
+    if (moderationResult.action === 'exit') {
+      logger.warn({ sessionId: this.sessionId, reason: moderationResult.reason }, 'Moderation triggered exit');
+    }
+
+    return securityContext;
+  }
+
+  /**
+   * Process an NPC turn - LLM generation and TTS
+   */
+  private async processTurn(
+    userInput: string,
+    context: SessionContext,
+    securityContext: SecurityContext
+  ): Promise<void> {
+    // Create turn state
+    this.turnState = {
+      abortController: new AbortController(),
+      isProcessing: true,
+      exitConvoUsed: false,
+    };
+
+    try {
+      // Assemble system prompt
+      const systemPrompt = assembleSystemPrompt(
+        context.definition,
+        context.instance,
+        context.resolvedKnowledge,
+        securityContext
+      );
+
+      // Get available tools
+      const projectTools = mcpToolRegistry.getProjectTools(context.project.id);
+      const tools = getAvailableTools(context.definition, securityContext, projectTools);
+
+      // Assemble conversation history
+      const stored = sessionStore.get(this.sessionId);
+      const history = stored?.state.conversation_history ?? [];
+      const llmMessages = assembleConversationHistory(history);
+
+      // Create LLM request
+      const request: LLMChatRequest = {
+        systemPrompt,
+        messages: llmMessages,
+        tools: tools.length > 0 ? tools : undefined,
+        signal: this.turnState.abortController.signal,
+      };
+
+      // Stream LLM response
+      let fullResponse = '';
+      const pendingToolCalls: ToolCall[] = [];
+
+      for await (const chunk of this.llmProvider.streamChat(request)) {
+        if (this.turnState.abortController.signal.aborted) {
+          logger.debug({ sessionId: this.sessionId }, 'LLM stream aborted');
+          break;
+        }
+
+        // Handle text
+        if (chunk.text) {
+          fullResponse += chunk.text;
+          this.events.onTextChunk(chunk.text);
+
+          // Send to sentence detector for TTS
+          const sentences = this.sentenceDetector.addChunk(chunk.text);
+          for (const sentence of sentences) {
+            await this.synthesizeSentence(sentence);
+          }
+        }
+
+        // Collect tool calls
+        if (chunk.toolCalls.length > 0) {
+          pendingToolCalls.push(...chunk.toolCalls);
+        }
+      }
+
+      // Flush remaining text to TTS
+      const remaining = this.sentenceDetector.flush();
+      if (remaining) {
+        await this.synthesizeSentence(remaining);
+      }
+
+      // Flush TTS
+      if (this.ttsSession) {
+        await this.ttsSession.flush();
+      }
+
+      // Handle tool calls
+      await this.handleToolCalls(pendingToolCalls, context, securityContext, projectTools);
+
+      // Add assistant message to session history
+      if (fullResponse.trim().length > 0) {
+        const assistantMessage: Message = { role: 'assistant', content: fullResponse };
+        addMessageToSession(this.sessionId, assistantMessage);
+      }
+
+      // Update instance state if needed
+      updateSessionInstance(this.sessionId, context.instance);
+
+      // Signal end of generation
+      this.events.onGenerationEnd();
+
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.debug({ sessionId: this.sessionId }, 'Turn processing aborted');
+        return;
+      }
+      throw error;
+    } finally {
+      if (this.turnState) {
+        this.turnState.isProcessing = false;
+      }
+    }
+  }
+
+  /**
+   * Synthesize a sentence with TTS
+   */
+  private async synthesizeSentence(sentence: string): Promise<void> {
+    if (!this.ttsSession || !sentence.trim()) {
+      return;
+    }
+
+    try {
+      await this.ttsSession.synthesize(sentence, false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ sessionId: this.sessionId, error: message }, 'TTS synthesis failed');
+      // Don't throw - continue without audio
+    }
+  }
+
+  /**
+   * Handle tool calls from LLM
+   */
+  private async handleToolCalls(
+    toolCalls: ToolCall[],
+    context: SessionContext,
+    securityContext: SecurityContext,
+    projectTools: Record<string, Tool>
+  ): Promise<void> {
+    for (const toolCall of toolCalls) {
+      logger.info({ sessionId: this.sessionId, toolName: toolCall.name }, 'Handling tool call');
+
+      // Check for exit_convo
+      if (isExitConvoTool(toolCall.name)) {
+        const exitResult = handleExitConvo(
+          this.sessionId,
+          { reason: String(toolCall.arguments.reason || 'Conversation ended') },
+          securityContext
+        );
+
+        if (this.turnState) {
+          this.turnState.exitConvoUsed = true;
+        }
+
+        processExitResult(
+          exitResult,
+          context.project.id,
+          sessionStore.get(this.sessionId)?.state.player_id || '',
+          context.definition.id
+        );
+
+        this.events.onExitConvo(exitResult.reason, exitResult.cooldownSeconds);
+        return;
+      }
+
+      // Validate tool call
+      const tool = projectTools[toolCall.name];
+      if (!tool) {
+        logger.warn({ sessionId: this.sessionId, toolName: toolCall.name }, 'Tool not found');
+        continue;
+      }
+
+      const validation = validateToolCall(tool, toolCall);
+      if (!validation.valid) {
+        logger.warn({ sessionId: this.sessionId, errors: validation.errors }, 'Tool call validation failed');
+        continue;
+      }
+
+      // Sanitize arguments
+      const sanitizedArgs = sanitizeToolArguments(toolCall.arguments);
+
+      // Emit tool call event
+      this.events.onToolCall(toolCall.name, sanitizedArgs);
+
+      // Execute tool if handler exists
+      try {
+        await mcpToolRegistry.executeTool(context.project.id, toolCall.name, sanitizedArgs);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error({ sessionId: this.sessionId, toolName: toolCall.name, error: message }, 'Tool execution failed');
+        // Continue - tool failures are logged but don't break the conversation
+      }
+    }
+  }
+}
+
+/**
+ * Create a new voice pipeline instance
+ */
+export function createVoicePipeline(config: VoicePipelineConfig): VoicePipeline {
+  return new VoicePipeline(config);
+}
