@@ -33,6 +33,9 @@ export async function initKnowledgePage(params) {
   // Bind event handlers
   document.getElementById('btn-add-category')?.addEventListener('click', handleAddCategory);
   document.getElementById('btn-empty-add-category')?.addEventListener('click', handleAddCategory);
+  document.getElementById('btn-import-knowledge')?.addEventListener('click', handleImportKnowledge);
+  document.getElementById('btn-export-knowledge')?.addEventListener('click', handleExportKnowledge);
+  document.getElementById('btn-download-kb-template')?.addEventListener('click', handleDownloadTemplate);
 }
 
 async function loadKnowledgeBase(projectId) {
@@ -181,6 +184,7 @@ async function handleAddCategory() {
   // Add category
   currentKnowledgeBase.categories = currentKnowledgeBase.categories || {};
   currentKnowledgeBase.categories[categoryId] = {
+    id: categoryId,
     description: '',
     depths: {
       0: '',
@@ -281,6 +285,155 @@ async function saveKnowledgeBase(showToast = true) {
   } catch (error) {
     toast.error('Failed to Save', error.message);
   }
+}
+
+/**
+ * Import knowledge base from JSON file
+ */
+function handleImportKnowledge() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const imported = JSON.parse(text);
+
+      // Validate structure
+      const errors = validateKnowledgeBase(imported);
+      if (errors.length > 0) {
+        toast.error('Invalid Knowledge Base', errors.join(', '));
+        return;
+      }
+
+      // Confirm if replacing existing data
+      if (Object.keys(currentKnowledgeBase.categories || {}).length > 0) {
+        const confirmed = await modal.confirm(
+          'Replace Knowledge Base',
+          'This will replace all existing categories. Continue?'
+        );
+        if (!confirmed) return;
+      }
+
+      // Merge imported data, ensuring each category has an id field
+      const processedCategories = {};
+      for (const [catId, category] of Object.entries(imported.categories || {})) {
+        processedCategories[catId] = {
+          ...category,
+          id: catId, // Ensure id matches the key
+        };
+      }
+      currentKnowledgeBase = {
+        ...currentKnowledgeBase,
+        categories: processedCategories,
+      };
+
+      await saveKnowledgeBase();
+      toast.success('Knowledge Imported', `Loaded ${Object.keys(imported.categories || {}).length} categories.`);
+    } catch (error) {
+      toast.error('Import Failed', 'Invalid JSON file: ' + error.message);
+    }
+  };
+
+  input.click();
+}
+
+/**
+ * Export knowledge base to JSON file
+ */
+function handleExportKnowledge() {
+  const categories = currentKnowledgeBase.categories || {};
+  if (Object.keys(categories).length === 0) {
+    toast.warning('No Data', 'Add categories before exporting.');
+    return;
+  }
+
+  const exportData = { categories };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `knowledge-base-${currentProjectId}.json`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+  toast.success('Knowledge Exported', `Saved ${Object.keys(categories).length} categories to file.`);
+}
+
+/**
+ * Download knowledge base template JSON
+ */
+async function handleDownloadTemplate() {
+  try {
+    const response = await fetch('/data/templates/knowledge-base.json');
+    if (!response.ok) throw new Error('Template not found');
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'knowledge-template.json';
+    a.click();
+
+    URL.revokeObjectURL(url);
+    toast.success('Template Downloaded', 'Knowledge template saved to file.');
+  } catch (error) {
+    toast.error('Download Failed', error.message);
+  }
+}
+
+/**
+ * Validate knowledge base structure
+ */
+function validateKnowledgeBase(data) {
+  const errors = [];
+
+  if (!data || typeof data !== 'object') {
+    errors.push('Invalid JSON structure');
+    return errors;
+  }
+
+  if (!data.categories || typeof data.categories !== 'object') {
+    errors.push('Missing or invalid "categories" object');
+    return errors;
+  }
+
+  for (const [catId, category] of Object.entries(data.categories)) {
+    // Validate category ID format
+    if (!/^[a-z][a-z0-9_]*$/.test(catId)) {
+      errors.push(`Invalid category ID "${catId}" - use lowercase, numbers, underscores`);
+    }
+
+    if (typeof category !== 'object') {
+      errors.push(`Category "${catId}" must be an object`);
+      continue;
+    }
+
+    if (category.depths) {
+      if (typeof category.depths !== 'object') {
+        errors.push(`Category "${catId}" depths must be an object`);
+      } else {
+        for (const [depth, content] of Object.entries(category.depths)) {
+          const depthNum = parseInt(depth);
+          if (isNaN(depthNum) || depthNum < 0 || depthNum > 4) {
+            errors.push(`Category "${catId}" has invalid depth ${depth} (must be 0-4)`);
+          }
+          if (typeof content !== 'string') {
+            errors.push(`Category "${catId}" depth ${depth} content must be a string`);
+          }
+        }
+      }
+    }
+  }
+
+  return errors;
 }
 
 function escapeHtml(text) {

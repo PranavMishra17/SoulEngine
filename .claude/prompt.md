@@ -46,7 +46,7 @@ PROGRESS TRACKING:
 - Do **not** change the meaning of any existing checklist items.
 
 CURRENT PHASE:
-- The user will specify `CURRENT PHASE` (e.g., “Phase 3: Provider Abstraction”).
+- The user will specify `CURRENT PHASE` (e.g., “Phase 5:”).
 - You must **only** work on the specified phase unless the user explicitly instructs you to move on.
 
 WHEN STARTING A PHASE:
@@ -175,5 +175,3 @@ INTERACTION PATTERN WITH USER:
   - Ask for permission to proceed to the next phase.
 - When blocked by missing spec:
   - Ask targeted, concrete questions (with 2–3 options) rather than open-ended vague questions.
-
-***

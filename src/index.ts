@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
@@ -124,7 +125,19 @@ app.get('/*', async (c) => {
   }
 
   try {
-    // Try to serve static file
+    // Serve template files from data/templates
+    if (path.startsWith('/data/templates/')) {
+      const templatePath = join(process.cwd(), path);
+      if (existsSync(templatePath)) {
+        const content = await readFile(templatePath);
+        return new Response(content, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return c.text('Template not found', 404);
+    }
+
+    // Try to serve static file from web directory
     const webDir = join(process.cwd(), 'web');
     const filePath = join(webDir, path);
 

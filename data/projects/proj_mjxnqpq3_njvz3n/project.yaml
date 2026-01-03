@@ -1,0 +1,17 @@
+id: proj_mjxnqpq3_njvz3n
+name: BLAST
+created_at: '2026-01-03T02:02:15.868Z'
+settings:
+  llm_provider: gemini
+  stt_provider: deepgram
+  tts_provider: cartesia
+  default_voice_id: ''
+  timeouts:
+    session: 1800000
+    llm: 30000
+    stt: 10000
+    tts: 10000
+limits:
+  max_npcs: 10
+  max_categories: 20
+  max_concurrent_sessions: 100

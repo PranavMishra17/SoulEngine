@@ -115,6 +115,28 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
   });
 
   /**
+   * GET /api/session/stats - Get session store statistics
+   * NOTE: This must be defined BEFORE /:sessionId to avoid "stats" being matched as a sessionId
+   */
+  sessionRoutes.get('/stats', async (c) => {
+    const startTime = Date.now();
+
+    try {
+      const stats = getSessionStats();
+
+      const duration = Date.now() - startTime;
+      logger.debug({ duration }, 'Session stats retrieved via API');
+
+      return c.json(stats);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ error: errorMessage, duration }, 'Failed to get session stats');
+      return c.json({ error: 'Failed to get session stats', details: errorMessage }, 500);
+    }
+  });
+
+  /**
    * GET /api/session/:sessionId - Get session state (debug)
    */
   sessionRoutes.get('/:sessionId', async (c) => {
@@ -150,27 +172,6 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ sessionId, error: errorMessage, duration }, 'Failed to get session');
       return c.json({ error: 'Failed to get session', details: errorMessage }, 500);
-    }
-  });
-
-  /**
-   * GET /api/session/stats - Get session store statistics
-   */
-  sessionRoutes.get('/stats', async (c) => {
-    const startTime = Date.now();
-
-    try {
-      const stats = getSessionStats();
-
-      const duration = Date.now() - startTime;
-      logger.debug({ duration }, 'Session stats retrieved via API');
-
-      return c.json(stats);
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ error: errorMessage, duration }, 'Failed to get session stats');
-      return c.json({ error: 'Failed to get session stats', details: errorMessage }, 500);
     }
   });
 

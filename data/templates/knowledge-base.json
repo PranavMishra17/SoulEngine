@@ -1,0 +1,34 @@
+{
+  "categories": {
+    "world_history": {
+      "id": "world_history",
+      "description": "Major historical events and eras known to inhabitants of this world",
+      "depths": {
+        "0": "The Great War happened 100 years ago. The kingdom has been at peace since.",
+        "1": "The Great War was between the Northern Alliance and the Southern Kingdoms. It ended with the Treaty of Silverbrook.",
+        "2": "The war began over control of the Silverbrook mines. King Aldric III led the Northern forces. The treaty ceded mining rights but preserved territorial borders.",
+        "3": "Aldric's general, Thorne Blackwood, committed atrocities at the Siege of Millhaven that the official histories omit. Some veterans still remember."
+      }
+    },
+    "local_gossip": {
+      "id": "local_gossip",
+      "description": "Rumors, scandals, and social dynamics in the local area",
+      "depths": {
+        "0": "The mayor is well-liked. The tavern serves good ale.",
+        "1": "The mayor's son has been seen sneaking out at night. The blacksmith and baker are feuding over a land dispute.",
+        "2": "The mayor's son is meeting someone in the old mill. The blacksmith claims the baker's grandfather stole the land during the flood of '42.",
+        "3": "The mayor's son is involved with a traveling merchant's daughter - scandalous given their arranged engagement to the duke's niece. The land dispute documents were forged by the previous mayor."
+      }
+    },
+    "trade_knowledge": {
+      "id": "trade_knowledge",
+      "description": "Economic information, prices, and merchant networks",
+      "depths": {
+        "0": "Goods can be bought and sold at the market.",
+        "1": "Prices fluctuate seasonally. Iron is expensive due to mine closures.",
+        "2": "The Merchant Guild controls most trade routes. Independent traders pay hefty fees or risk 'accidents'.",
+        "3": "Guild Master Vance has a secret deal with the Northern smugglers. The mine closures were engineered to drive up prices."
+      }
+    }
+  }
+}

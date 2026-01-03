@@ -72,6 +72,8 @@ export const projects = {
     method: 'PUT',
     body: JSON.stringify(keys),
   }),
+
+  getVoices: (projectId, provider = 'cartesia') => request(`/projects/${projectId}/voices?provider=${provider}`),
 };
 
 /**
@@ -195,7 +197,10 @@ export class VoiceClient {
   connect() {
     return new Promise((resolve, reject) => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${protocol}//${window.location.host}/ws/voice?session_id=${this.sessionId}`;
+      // WebSocket server runs on HTTP port + 1 (e.g., HTTP 3000 → WS 3001)
+      const httpPort = parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
+      const wsPort = httpPort + 1;
+      const url = `${protocol}//${window.location.hostname}:${wsPort}/ws/voice?session_id=${this.sessionId}`;
 
       this.ws = new WebSocket(url);
 

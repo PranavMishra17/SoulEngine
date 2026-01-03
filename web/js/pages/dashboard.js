@@ -46,12 +46,6 @@ export async function initDashboardPage(params) {
     openSettingsModal(projectId);
   });
 
-  // Bind API key buttons
-  document.querySelectorAll('[data-key]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      openApiKeyModal(projectId, btn.dataset.key);
-    });
-  });
 }
 
 async function loadProjectData(projectId) {
@@ -87,17 +81,58 @@ async function loadProjectData(projectId) {
 
 function openSettingsModal(projectId) {
   const content = document.createElement('div');
+  content.className = 'settings-modal-content';
   content.innerHTML = `
-    <div class="form-group">
-      <label for="project-name-input">Project Name</label>
-      <input type="text" id="project-name-input" class="input" value="${escapeHtml(currentProject?.name || '')}">
+    <div class="settings-section">
+      <div class="form-group">
+        <label for="project-name-input">Project Name</label>
+        <input type="text" id="project-name-input" class="input" value="${escapeHtml(currentProject?.name || '')}">
+      </div>
+      <div class="form-group">
+        <label>Project ID</label>
+        <div class="input-with-button">
+          <input type="text" id="project-id-display" class="input" value="${projectId}" readonly>
+          <button type="button" class="btn btn-sm btn-outline" id="btn-copy-project-id">Copy</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="tts-provider">Default TTS Provider</label>
+        <select id="tts-provider" class="input select">
+          <option value="cartesia" ${currentProject?.settings?.tts_provider === 'cartesia' ? 'selected' : ''}>Cartesia (Default)</option>
+          <option value="elevenlabs" ${currentProject?.settings?.tts_provider === 'elevenlabs' ? 'selected' : ''}>ElevenLabs</option>
+        </select>
+      </div>
     </div>
-    <div class="form-group">
-      <label for="tts-provider">Default TTS Provider</label>
-      <select id="tts-provider" class="input select">
-        <option value="cartesia" ${currentProject?.settings?.tts_provider === 'cartesia' ? 'selected' : ''}>Cartesia (Default)</option>
-        <option value="elevenlabs" ${currentProject?.settings?.tts_provider === 'elevenlabs' ? 'selected' : ''}>ElevenLabs</option>
-      </select>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-section">
+      <h3 class="settings-section-title">API Keys</h3>
+      <p class="settings-hint">API keys are encrypted and stored securely.</p>
+
+      <div class="form-group">
+        <label for="key-gemini">Gemini API Key</label>
+        <input type="password" id="key-gemini" class="input" placeholder="Enter Gemini API key...">
+        <span class="input-hint">LLM provider for NPC cognition</span>
+      </div>
+
+      <div class="form-group">
+        <label for="key-deepgram">Deepgram API Key</label>
+        <input type="password" id="key-deepgram" class="input" placeholder="Enter Deepgram API key...">
+        <span class="input-hint">Speech-to-text for voice input</span>
+      </div>
+
+      <div class="form-group">
+        <label for="key-cartesia">Cartesia API Key</label>
+        <input type="password" id="key-cartesia" class="input" placeholder="Enter Cartesia API key...">
+        <span class="input-hint">Text-to-speech (default provider)</span>
+      </div>
+
+      <div class="form-group">
+        <label for="key-elevenlabs">ElevenLabs API Key</label>
+        <input type="password" id="key-elevenlabs" class="input" placeholder="Enter ElevenLabs API key...">
+        <span class="input-hint">Text-to-speech (alternative provider)</span>
+      </div>
     </div>
   `;
 
@@ -111,6 +146,21 @@ function openSettingsModal(projectId) {
     title: 'Project Settings',
     content,
     footer,
+    size: 'large',
+  });
+
+  // Copy project ID
+  content.querySelector('#btn-copy-project-id').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(projectId);
+      toast.success('Copied', 'Project ID copied to clipboard.');
+    } catch (err) {
+      // Fallback for older browsers
+      const input = content.querySelector('#project-id-display');
+      input.select();
+      document.execCommand('copy');
+      toast.success('Copied', 'Project ID copied to clipboard.');
+    }
   });
 
   footer.querySelector('[data-action="cancel"]').addEventListener('click', () => {
@@ -121,11 +171,28 @@ function openSettingsModal(projectId) {
     const name = content.querySelector('#project-name-input').value;
     const ttsProvider = content.querySelector('#tts-provider').value;
 
+    // Collect API keys (only non-empty ones)
+    const apiKeys = {};
+    const keyTypes = ['gemini', 'deepgram', 'cartesia', 'elevenlabs'];
+    keyTypes.forEach((keyType) => {
+      const keyValue = content.querySelector(`#key-${keyType}`).value;
+      if (keyValue) {
+        apiKeys[keyType] = keyValue;
+      }
+    });
+
     try {
+      // Update project settings
       await projects.update(projectId, {
         name,
         settings: { tts_provider: ttsProvider },
       });
+
+      // Update API keys if any were provided
+      if (Object.keys(apiKeys).length > 0) {
+        await projects.updateKeys(projectId, apiKeys);
+      }
+
       toast.success('Settings Saved', 'Project settings have been updated.');
       modalInstance.close();
       await loadProjectData(projectId);
@@ -135,63 +202,6 @@ function openSettingsModal(projectId) {
   });
 }
 
-function openApiKeyModal(projectId, keyType) {
-  const keyNames = {
-    gemini: 'Gemini API Key',
-    deepgram: 'Deepgram API Key',
-    cartesia: 'Cartesia API Key',
-    elevenlabs: 'ElevenLabs API Key',
-  };
-
-  const content = document.createElement('div');
-  content.innerHTML = `
-    <div class="form-group">
-      <label for="api-key-input">${keyNames[keyType]}</label>
-      <input type="password" id="api-key-input" class="input" placeholder="Enter API key...">
-      <span class="input-hint">Your API key will be encrypted and stored securely.</span>
-    </div>
-  `;
-
-  const footer = document.createElement('div');
-  footer.innerHTML = `
-    <button class="btn btn-outline" data-action="cancel">Cancel</button>
-    <button class="btn btn-primary" data-action="save">Save Key</button>
-  `;
-
-  const modalInstance = modal.open({
-    title: `Configure ${keyNames[keyType]}`,
-    content,
-    footer,
-  });
-
-  footer.querySelector('[data-action="cancel"]').addEventListener('click', () => {
-    modalInstance.close();
-  });
-
-  footer.querySelector('[data-action="save"]').addEventListener('click', async () => {
-    const apiKey = content.querySelector('#api-key-input').value;
-
-    if (!apiKey) {
-      toast.warning('No Key Entered', 'Please enter an API key.');
-      return;
-    }
-
-    try {
-      await projects.updateKeys(projectId, { [keyType]: apiKey });
-      toast.success('API Key Saved', `${keyNames[keyType]} has been configured.`);
-      modalInstance.close();
-
-      // Update status indicator
-      const statusEl = document.getElementById(`key-${keyType}-status`);
-      if (statusEl) {
-        statusEl.textContent = 'Configured';
-        statusEl.classList.add('configured');
-      }
-    } catch (error) {
-      toast.error('Failed to Save API Key', error.message);
-    }
-  });
-}
 
 function escapeHtml(text) {
   const div = document.createElement('div');

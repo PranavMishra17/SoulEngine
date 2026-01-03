@@ -1,0 +1,100 @@
+{
+  "presets": [
+    {
+      "id": "warm_friendly",
+      "name": "Warm & Friendly",
+      "description": "Outgoing, sociable, genuinely kind to everyone",
+      "traits": {
+        "openness": 0.6,
+        "conscientiousness": 0.55,
+        "extraversion": 0.8,
+        "agreeableness": 0.85,
+        "neuroticism": 0.25
+      }
+    },
+    {
+      "id": "reserved_sweet",
+      "name": "Reserved & Sweet",
+      "description": "Quiet, gentle, thoughtful - kind but not forward",
+      "traits": {
+        "openness": 0.5,
+        "conscientiousness": 0.65,
+        "extraversion": 0.25,
+        "agreeableness": 0.8,
+        "neuroticism": 0.3
+      }
+    },
+    {
+      "id": "short_tempered",
+      "name": "Short-Tempered",
+      "description": "Quick to anger, impatient, easily frustrated",
+      "traits": {
+        "openness": 0.4,
+        "conscientiousness": 0.5,
+        "extraversion": 0.6,
+        "agreeableness": 0.25,
+        "neuroticism": 0.75
+      }
+    },
+    {
+      "id": "volatile_unpredictable",
+      "name": "Volatile & Unpredictable",
+      "description": "Emotionally unstable, mood swings, chaotic energy",
+      "traits": {
+        "openness": 0.65,
+        "conscientiousness": 0.2,
+        "extraversion": 0.7,
+        "agreeableness": 0.35,
+        "neuroticism": 0.9
+      }
+    },
+    {
+      "id": "honorable_principled",
+      "name": "Honorable & Principled",
+      "description": "Strong moral code, reliable, keeps promises",
+      "traits": {
+        "openness": 0.45,
+        "conscientiousness": 0.9,
+        "extraversion": 0.5,
+        "agreeableness": 0.6,
+        "neuroticism": 0.2
+      }
+    },
+    {
+      "id": "curious_intellectual",
+      "name": "Curious & Intellectual",
+      "description": "Always questioning, loves learning, open-minded",
+      "traits": {
+        "openness": 0.95,
+        "conscientiousness": 0.6,
+        "extraversion": 0.5,
+        "agreeableness": 0.55,
+        "neuroticism": 0.35
+      }
+    },
+    {
+      "id": "cautious_anxious",
+      "name": "Cautious & Anxious",
+      "description": "Worrier, overthinks, prefers safety and routine",
+      "traits": {
+        "openness": 0.3,
+        "conscientiousness": 0.7,
+        "extraversion": 0.3,
+        "agreeableness": 0.6,
+        "neuroticism": 0.8
+      }
+    },
+    {
+      "id": "bold_confident",
+      "name": "Bold & Confident",
+      "description": "Self-assured, takes charge, doesn't back down",
+      "traits": {
+        "openness": 0.6,
+        "conscientiousness": 0.65,
+        "extraversion": 0.85,
+        "agreeableness": 0.4,
+        "neuroticism": 0.15
+      }
+    }
+  ]
+}

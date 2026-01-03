@@ -338,7 +338,7 @@
             <a href="#" class="action-card" id="link-knowledge">
               <div class="action-icon">◈</div>
               <div class="action-content">
-                <h3>Knowledge Base</h3>
+                <h3>World Knowledge Base</h3>
                 <p>Manage tiered knowledge categories</p>
               </div>
               <span class="action-arrow">→</span>
@@ -354,44 +354,6 @@
           </div>
         </div>
 
-        <!-- API Keys -->
-        <div class="dashboard-section">
-          <h2>API Configuration</h2>
-          <div class="api-keys-grid" id="api-keys-grid">
-            <div class="api-key-card">
-              <div class="api-key-header">
-                <span class="api-key-name">Gemini</span>
-                <span class="api-key-status" id="key-gemini-status">Not Set</span>
-              </div>
-              <p class="api-key-desc">LLM provider for NPC cognition</p>
-              <button class="btn btn-sm btn-outline" data-key="gemini">Configure</button>
-            </div>
-            <div class="api-key-card">
-              <div class="api-key-header">
-                <span class="api-key-name">Deepgram</span>
-                <span class="api-key-status" id="key-deepgram-status">Not Set</span>
-              </div>
-              <p class="api-key-desc">Speech-to-text for voice input</p>
-              <button class="btn btn-sm btn-outline" data-key="deepgram">Configure</button>
-            </div>
-            <div class="api-key-card">
-              <div class="api-key-header">
-                <span class="api-key-name">Cartesia</span>
-                <span class="api-key-status" id="key-cartesia-status">Not Set</span>
-              </div>
-              <p class="api-key-desc">Text-to-speech (default)</p>
-              <button class="btn btn-sm btn-outline" data-key="cartesia">Configure</button>
-            </div>
-            <div class="api-key-card">
-              <div class="api-key-header">
-                <span class="api-key-name">ElevenLabs</span>
-                <span class="api-key-status" id="key-elevenlabs-status">Not Set</span>
-              </div>
-              <p class="api-key-desc">Text-to-speech (alternative)</p>
-              <button class="btn btn-sm btn-outline" data-key="elevenlabs">Configure</button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </template>
@@ -449,6 +411,18 @@
           <h1 id="editor-title">Create NPC</h1>
         </div>
         <div class="page-header-actions">
+          <button class="btn btn-ghost" id="btn-download-template" title="Download template">
+            <span class="icon">↓</span>
+            Template
+          </button>
+          <button class="btn btn-ghost" id="btn-import-npc" title="Import from JSON">
+            <span class="icon">↑</span>
+            Import
+          </button>
+          <button class="btn btn-ghost" id="btn-export-npc" title="Export to JSON">
+            <span class="icon">↓</span>
+            Export
+          </button>
           <button class="btn btn-outline" id="btn-cancel">Cancel</button>
           <button class="btn btn-primary" id="btn-save-npc">
             <span class="icon">✓</span>
@@ -480,6 +454,10 @@
             <a href="#section-knowledge" class="editor-nav-item" data-section="knowledge">
               <span class="nav-icon">◑</span>
               Knowledge Access
+            </a>
+            <a href="#section-schedule" class="editor-nav-item" data-section="schedule">
+              <span class="nav-icon">◷</span>
+              Schedule & State
             </a>
             <a href="#section-tools" class="editor-nav-item" data-section="tools">
               <span class="nav-icon">⬡</span>
@@ -537,6 +515,21 @@
           <section class="editor-section" id="section-personality">
             <h2>Personality Baseline</h2>
             <p class="section-desc">Big Five personality traits. These can drift slightly over time.</p>
+
+            <div class="form-group">
+              <label for="personality-preset">Personality Template</label>
+              <select id="personality-preset" class="input select">
+                <option value="">Custom (manual adjustment)</option>
+                <option value="warm_friendly">Warm & Friendly - Outgoing, sociable, genuinely kind</option>
+                <option value="reserved_sweet">Reserved & Sweet - Quiet, gentle, thoughtful</option>
+                <option value="short_tempered">Short-Tempered - Quick to anger, impatient</option>
+                <option value="volatile_unpredictable">Volatile & Unpredictable - Mood swings, chaotic</option>
+                <option value="honorable_principled">Honorable & Principled - Strong moral code, reliable</option>
+                <option value="curious_intellectual">Curious & Intellectual - Always questioning, open-minded</option>
+                <option value="cautious_anxious">Cautious & Anxious - Worrier, prefers safety</option>
+                <option value="bold_confident">Bold & Confident - Self-assured, takes charge</option>
+              </select>
+            </div>
 
             <div class="personality-sliders">
               <div class="slider-group">
@@ -618,9 +611,18 @@
             </div>
 
             <div class="form-group">
-              <label for="voice-id">Voice ID</label>
-              <input type="text" id="voice-id" class="input" placeholder="Voice ID from provider">
-              <span class="input-hint">Find voice IDs in your TTS provider's dashboard</span>
+              <label for="voice-select">Voice</label>
+              <div class="voice-select-container">
+                <select id="voice-select" class="input select">
+                  <option value="">Select a voice...</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline" id="btn-refresh-voices" title="Refresh voice list">↻</button>
+              </div>
+              <span class="input-hint" id="voice-hint">
+                <span id="voice-loading" style="display: none;">Loading voices...</span>
+                <span id="voice-error" style="display: none; color: var(--color-error);"></span>
+                <a href="#" id="link-voice-library" target="_blank" rel="noopener">Browse full voice library →</a>
+              </span>
             </div>
 
             <div class="form-group">
@@ -635,6 +637,7 @@
               <span class="icon">▶</span>
               Preview Voice
             </button>
+            <audio id="voice-preview-audio" style="display: none;"></audio>
           </section>
 
           <!-- Knowledge Access Section -->
@@ -648,6 +651,40 @@
                 <p>No knowledge categories defined in this project.</p>
                 <a href="#" id="link-create-knowledge">Create knowledge categories first →</a>
               </div>
+            </div>
+          </section>
+
+          <!-- Schedule & State Section -->
+          <section class="editor-section" id="section-schedule">
+            <h2>Schedule & Default State</h2>
+            <p class="section-desc">Optional settings for the NPC's routine and starting emotional state.</p>
+
+            <div class="form-group">
+              <label for="default-mood">Default Mood</label>
+              <select id="default-mood" class="input select">
+                <option value="">Not set (use neutral)</option>
+                <option value="neutral">Neutral - Calm, balanced</option>
+                <option value="happy">Happy - Cheerful, positive</option>
+                <option value="sad">Sad - Down, melancholic</option>
+                <option value="angry">Angry - Irritated, hostile</option>
+                <option value="fearful">Fearful - Anxious, worried</option>
+                <option value="excited">Excited - Energetic, enthusiastic</option>
+                <option value="tired">Tired - Weary, low energy</option>
+                <option value="content">Content - Satisfied, at peace</option>
+              </select>
+              <span class="input-hint">The NPC's emotional state when a session begins</span>
+            </div>
+
+            <div class="form-group">
+              <label>Daily Schedule</label>
+              <p class="input-hint" style="margin-bottom: var(--space-2);">Define time blocks for where this NPC can be found</p>
+              <div id="schedule-blocks">
+                <!-- Schedule blocks will be inserted here -->
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" id="btn-add-schedule">
+                <span class="icon">+</span>
+                Add Time Block
+              </button>
             </div>
           </section>
 
@@ -724,6 +761,18 @@
           <h1>Knowledge Base</h1>
         </div>
         <div class="page-header-actions">
+          <button class="btn btn-ghost" id="btn-download-kb-template" title="Download template">
+            <span class="icon">↓</span>
+            Template
+          </button>
+          <button class="btn btn-ghost" id="btn-import-knowledge" title="Import from JSON">
+            <span class="icon">↑</span>
+            Import
+          </button>
+          <button class="btn btn-ghost" id="btn-export-knowledge" title="Export to JSON">
+            <span class="icon">↓</span>
+            Export
+          </button>
           <button class="btn btn-primary" id="btn-add-category">
             <span class="icon">+</span>
             Add Category
@@ -784,20 +833,30 @@
 
             <div class="mood-control">
               <h4>Starting Mood</h4>
-              <div class="mood-sliders">
-                <div class="mini-slider">
-                  <label>Valence</label>
-                  <input type="range" id="mood-valence" min="0" max="1" step="0.1" value="0.5">
-                </div>
-                <div class="mini-slider">
-                  <label>Arousal</label>
-                  <input type="range" id="mood-arousal" min="0" max="1" step="0.1" value="0.5">
-                </div>
-                <div class="mini-slider">
-                  <label>Dominance</label>
-                  <input type="range" id="mood-dominance" min="0" max="1" step="0.1" value="0.5">
-                </div>
-              </div>
+              <select id="starting-mood" class="input select">
+                <option value="neutral">Neutral - Calm, balanced</option>
+                <option value="happy">Happy - Cheerful, positive</option>
+                <option value="sad">Sad - Down, melancholic</option>
+                <option value="angry">Angry - Irritated, hostile</option>
+                <option value="fearful">Fearful - Anxious, worried</option>
+                <option value="excited">Excited - Energetic, enthusiastic</option>
+                <option value="tired">Tired - Weary, low energy</option>
+                <option value="content">Content - Satisfied, at peace</option>
+              </select>
+            </div>
+
+            <div class="task-control">
+              <h4>Current Task</h4>
+              <select id="current-task" class="input select">
+                <option value="idle">Idle / Relaxing</option>
+                <option value="working">Working</option>
+                <option value="trading">Trading / Shopping</option>
+                <option value="patrolling">Patrolling</option>
+                <option value="resting">Resting</option>
+                <option value="socializing">Socializing</option>
+                <option value="custom">Custom...</option>
+              </select>
+              <input type="text" id="custom-task" class="input" placeholder="Describe the task..." style="display: none; margin-top: var(--space-2);">
             </div>
 
             <div class="session-control">
@@ -867,20 +926,32 @@
               </div>
 
               <div class="voice-input-container" id="voice-input-container" style="display: none;">
-                <div class="voice-visualizer" id="voice-visualizer">
-                  <div class="visualizer-bars">
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
-                    <span class="bar"></span>
+                <div class="voice-live-indicator">
+                  <div class="vad-indicator" id="vad-indicator">
+                    <span class="vad-dot"></span>
+                    <span class="vad-label">Listening</span>
+                  </div>
+                  <div class="voice-visualizer" id="voice-visualizer">
+                    <div class="visualizer-bars">
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                    </div>
                   </div>
                 </div>
-                <button class="btn btn-voice" id="btn-voice-toggle">
-                  <span class="icon">🎤</span>
-                  <span class="label">Hold to speak</span>
-                </button>
+                <div class="voice-controls">
+                  <button class="btn btn-voice" id="btn-voice-toggle">
+                    <span class="icon">🎤</span>
+                    <span class="label">Start Live Voice</span>
+                  </button>
+                  <button class="btn btn-ghost btn-sm" id="btn-voice-interrupt" title="Interrupt NPC">
+                    <span class="icon">⏹</span>
+                  </button>
+                </div>
                 <div class="voice-status" id="voice-status">Ready</div>
+                <p class="voice-hint">Voice is live - just speak naturally. VAD detects when you're talking.</p>
               </div>
             </div>
           </div>

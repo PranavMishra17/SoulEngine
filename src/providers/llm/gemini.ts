@@ -179,9 +179,12 @@ export class GeminiLlmProvider implements LLMProvider {
         history: contents.slice(0, -1), // All but the last message
       };
 
-      // Add system instruction as a string (simplest format)
+      // Add system instruction as Content object (required by Gemini API)
       if (request.systemPrompt) {
-        chatConfig.systemInstruction = request.systemPrompt;
+        chatConfig.systemInstruction = {
+          role: 'user',
+          parts: [{ text: request.systemPrompt }],
+        };
       }
 
       // Add tools if provided

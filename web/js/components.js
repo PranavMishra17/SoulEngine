@@ -75,10 +75,15 @@ export const modal = {
   activeModal: null,
 
   open(options) {
-    const { title, content, footer, onClose } = options;
+    const { title, content, footer, onClose, size } = options;
 
     const template = document.getElementById('template-modal');
     const modalEl = template.content.cloneNode(true).querySelector('.modal-overlay');
+
+    // Apply size class if specified
+    if (size === 'large') {
+      modalEl.querySelector('.modal').classList.add('modal-large');
+    }
 
     modalEl.querySelector('.modal-title').textContent = title;
 

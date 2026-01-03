@@ -413,47 +413,130 @@
   gap: var(--space-4);
 }
 
-.api-keys-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+/* Settings Modal */
+.settings-modal-content {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 
-.api-key-card {
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-section-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-medium);
+  margin: 0;
+}
+
+.settings-hint {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.settings-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-2) 0;
+}
+
+.input-with-button {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+.input-with-button input[readonly] {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+/* Voice Select Container */
+.voice-select-container {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.voice-select-container select {
+  flex: 1;
+}
+
+.voice-select-container button {
+  flex-shrink: 0;
+}
+
+/* Schedule Blocks */
+.schedule-block {
   background: var(--color-bg-tertiary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
-.api-key-header {
+.schedule-block-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-.api-key-name {
+.schedule-time {
   font-weight: var(--font-medium);
+  font-size: var(--text-sm);
 }
 
-.api-key-status {
-  font-size: var(--text-xs);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-full);
-  background: var(--color-warning-muted);
-  color: var(--color-warning);
+.schedule-block-fields {
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.api-key-status.configured {
-  background: var(--color-success-muted);
-  color: var(--color-success);
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-.api-key-desc {
+.form-row input[type="time"] {
+  flex: 1;
+}
+
+.time-separator {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.empty-state-small {
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
-  margin-bottom: var(--space-3);
+  font-style: italic;
+  padding: var(--space-4);
+  text-align: center;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-lg);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: var(--space-1);
+}
+
+.btn-ghost:hover {
+  color: var(--color-error);
 }
 
 /* ========================================
@@ -1164,6 +1247,61 @@
 .voice-status {
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
+}
+
+.voice-live-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.vad-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-tertiary);
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+}
+
+.vad-indicator.speaking {
+  background: var(--color-success);
+  color: white;
+}
+
+.vad-indicator.speaking .vad-dot {
+  background: white;
+  animation: pulse-vad 1s ease-in-out infinite;
+}
+
+.vad-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  transition: background var(--transition-fast);
+}
+
+@keyframes pulse-vad {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+.voice-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.voice-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-align: center;
+  margin: 0;
 }
 
 /* X-Ray Panel */

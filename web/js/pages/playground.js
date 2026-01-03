@@ -11,11 +11,35 @@ let currentNpcId = null;
 let currentSessionId = null;
 let currentMode = 'text';
 let voiceClient = null;
-let isRecording = false;
+let isVoiceActive = false;
 let audioContext = null;
 let mediaStream = null;
+let audioProcessor = null;
+let audioSource = null;
 let messageCount = 0;
 let responseBuffer = '';
+
+// VAD (Voice Activity Detection) state
+const vadState = {
+  isSpeaking: false,
+  silenceStart: null,
+  speechStart: null,
+  energyThreshold: 0.015,     // Minimum energy to consider as speech
+  silenceTimeout: 700,        // ms of silence before committing
+  speechMinDuration: 150,     // ms of speech before we consider it valid
+};
+
+// Mood presets (VAD values: valence, arousal, dominance)
+const MOOD_PRESETS = {
+  neutral:  { valence: 0.5, arousal: 0.5, dominance: 0.5, emoji: '😐', label: 'Neutral' },
+  happy:    { valence: 0.8, arousal: 0.6, dominance: 0.6, emoji: '😊', label: 'Happy' },
+  sad:      { valence: 0.2, arousal: 0.3, dominance: 0.3, emoji: '😢', label: 'Sad' },
+  angry:    { valence: 0.2, arousal: 0.8, dominance: 0.7, emoji: '😠', label: 'Angry' },
+  fearful:  { valence: 0.2, arousal: 0.7, dominance: 0.2, emoji: '😨', label: 'Fearful' },
+  excited:  { valence: 0.8, arousal: 0.9, dominance: 0.7, emoji: '🤩', label: 'Excited' },
+  tired:    { valence: 0.4, arousal: 0.2, dominance: 0.3, emoji: '😴', label: 'Tired' },
+  content:  { valence: 0.7, arousal: 0.3, dominance: 0.5, emoji: '😌', label: 'Content' },
+};
 
 export async function initPlaygroundPage(params) {
   const { projectId } = params;
@@ -85,6 +109,14 @@ function bindEventHandlers() {
     });
   });
 
+  // Custom task toggle
+  document.getElementById('current-task')?.addEventListener('change', (e) => {
+    const customInput = document.getElementById('custom-task');
+    if (customInput) {
+      customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+    }
+  });
+
   // Text input
   document.getElementById('btn-send')?.addEventListener('click', handleSendMessage);
   document.getElementById('message-input')?.addEventListener('keydown', (e) => {
@@ -94,12 +126,11 @@ function bindEventHandlers() {
     }
   });
 
-  // Voice input
-  document.getElementById('btn-voice-toggle')?.addEventListener('mousedown', startVoiceRecording);
-  document.getElementById('btn-voice-toggle')?.addEventListener('mouseup', stopVoiceRecording);
-  document.getElementById('btn-voice-toggle')?.addEventListener('mouseleave', stopVoiceRecording);
-  document.getElementById('btn-voice-toggle')?.addEventListener('touchstart', startVoiceRecording);
-  document.getElementById('btn-voice-toggle')?.addEventListener('touchend', stopVoiceRecording);
+  // Voice input - toggle live voice mode
+  document.getElementById('btn-voice-toggle')?.addEventListener('click', toggleLiveVoice);
+
+  // Interrupt button
+  document.getElementById('btn-voice-interrupt')?.addEventListener('click', handleVoiceInterrupt);
 
   // X-Ray toggle
   document.getElementById('btn-toggle-xray')?.addEventListener('click', () => {
@@ -130,12 +161,17 @@ async function handleStartSession() {
   btn.innerHTML = '<span class="spinner"></span>';
 
   try {
-    // Get mood settings
-    const valence = parseFloat(document.getElementById('mood-valence')?.value || 0.5);
-    const arousal = parseFloat(document.getElementById('mood-arousal')?.value || 0.5);
-    const dominance = parseFloat(document.getElementById('mood-dominance')?.value || 0.5);
+    // Get mood from dropdown
+    const moodKey = document.getElementById('starting-mood')?.value || 'neutral';
+    const moodPreset = MOOD_PRESETS[moodKey] || MOOD_PRESETS.neutral;
+    const { valence, arousal, dominance } = moodPreset;
 
-    // Start session
+    // Get task
+    const taskSelect = document.getElementById('current-task')?.value || 'idle';
+    const customTask = document.getElementById('custom-task')?.value || '';
+    const task = taskSelect === 'custom' ? customTask : taskSelect;
+
+    // Start session (mood and task can be passed to server in the future)
     const result = await session.start(currentProjectId, currentNpcId, playerId);
     currentSessionId = result.session_id;
 
@@ -151,8 +187,9 @@ async function handleStartSession() {
     const messages = document.getElementById('chat-messages');
     messages.innerHTML = '';
 
-    // Add system message
-    addChatMessage('system', `Session started. You are now chatting with ${result.npc_name}.`);
+    // Add system message with context
+    const taskLabel = taskSelect === 'custom' ? customTask : taskSelect.replace('_', ' ');
+    addChatMessage('system', `Session started. You are now chatting with ${result.npc_name}. (Mood: ${moodPreset.label}, Task: ${taskLabel})`);
 
     // Update mood display
     updateMoodDisplay(valence, arousal, dominance);
@@ -175,6 +212,11 @@ async function handleEndSession() {
   if (!currentSessionId) return;
 
   try {
+    // Stop live voice if active
+    if (isVoiceActive) {
+      stopLiveVoice();
+    }
+
     // End session
     await session.end(currentSessionId);
 
@@ -288,9 +330,10 @@ async function connectVoice() {
     voiceClient = new VoiceClient(currentSessionId);
 
     voiceClient
-      .on('ready', (data) => {
+      .on('ready', async (data) => {
         updateVoiceStatus('Connected');
-        toast.success('Voice Connected', 'Ready for voice conversation');
+        // Auto-start live voice after connection
+        await startLiveVoice();
       })
       .on('transcript', (text, isFinal) => {
         updatePipelineStep('stt', isFinal ? 'complete' : 'active');
@@ -344,9 +387,25 @@ async function connectVoice() {
   }
 }
 
-async function startVoiceRecording(e) {
-  e.preventDefault();
-  if (!voiceClient || isRecording) return;
+/**
+ * Toggle live voice mode on/off
+ */
+async function toggleLiveVoice() {
+  if (isVoiceActive) {
+    stopLiveVoice();
+  } else {
+    await startLiveVoice();
+  }
+}
+
+/**
+ * Start live voice with VAD
+ */
+async function startLiveVoice() {
+  if (!voiceClient) {
+    toast.warning('Voice Not Connected', 'Please wait for voice connection.');
+    return;
+  }
 
   try {
     // Initialize audio context
@@ -354,6 +413,11 @@ async function startVoiceRecording(e) {
       audioContext = new (window.AudioContext || window.webkitAudioContext)({
         sampleRate: 16000,
       });
+    }
+
+    // Resume audio context if suspended (browser autoplay policy)
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
     }
 
     // Get microphone stream
@@ -366,41 +430,109 @@ async function startVoiceRecording(e) {
       },
     });
 
-    // Create processor
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    // Create audio processing pipeline
+    audioSource = audioContext.createMediaStreamSource(mediaStream);
+    audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    processor.onaudioprocess = (e) => {
-      if (!isRecording) return;
+    // Process audio with VAD
+    audioProcessor.onaudioprocess = (e) => {
+      if (!isVoiceActive) return;
 
       const inputData = e.inputBuffer.getChannelData(0);
-      const pcm16 = float32ToPcm16(inputData);
-      const base64 = arrayBufferToBase64(pcm16.buffer);
 
-      voiceClient.sendAudio(base64);
+      // Calculate energy level for VAD
+      const energy = calculateEnergy(inputData);
+      const isSpeech = energy > vadState.energyThreshold;
+      const now = Date.now();
 
       // Update visualizer
       updateVisualizer(inputData);
+
+      if (isSpeech) {
+        // Speech detected
+        if (!vadState.isSpeaking) {
+          // Start of speech
+          vadState.speechStart = now;
+          vadState.silenceStart = null;
+        }
+
+        // Check if speech has been going long enough
+        if (vadState.speechStart && (now - vadState.speechStart) > vadState.speechMinDuration) {
+          if (!vadState.isSpeaking) {
+            vadState.isSpeaking = true;
+            updateVadIndicator(true);
+            updatePipelineStep('stt', 'active');
+          }
+
+          // Send audio to server
+          const pcm16 = float32ToPcm16(inputData);
+          const base64 = arrayBufferToBase64(pcm16.buffer);
+          voiceClient.sendAudio(base64);
+        }
+      } else {
+        // Silence detected
+        if (vadState.isSpeaking) {
+          if (!vadState.silenceStart) {
+            vadState.silenceStart = now;
+          }
+
+          // Still send audio during brief silence (might be mid-word pause)
+          const pcm16 = float32ToPcm16(inputData);
+          const base64 = arrayBufferToBase64(pcm16.buffer);
+          voiceClient.sendAudio(base64);
+
+          // Check if silence has lasted long enough to commit
+          if ((now - vadState.silenceStart) > vadState.silenceTimeout) {
+            // End of utterance - commit
+            vadState.isSpeaking = false;
+            vadState.speechStart = null;
+            vadState.silenceStart = null;
+            updateVadIndicator(false);
+            voiceClient.commit();
+            updateVoiceStatus('Processing...');
+          }
+        }
+      }
     };
 
-    source.connect(processor);
-    processor.connect(audioContext.destination);
+    audioSource.connect(audioProcessor);
+    audioProcessor.connect(audioContext.destination);
 
-    isRecording = true;
-    document.getElementById('btn-voice-toggle')?.classList.add('active');
-    updateVoiceStatus('Recording...');
-    updatePipelineStep('stt', 'active');
+    isVoiceActive = true;
+
+    // Update UI
+    const btn = document.getElementById('btn-voice-toggle');
+    btn?.classList.add('active');
+    btn.querySelector('.label').textContent = 'Stop Voice';
+    updateVoiceStatus('Listening...');
+
+    toast.success('Live Voice Active', 'Speak naturally - VAD will detect your speech.');
   } catch (error) {
     toast.error('Microphone Access Failed', error.message);
+    stopLiveVoice();
   }
 }
 
-function stopVoiceRecording() {
-  if (!isRecording) return;
+/**
+ * Stop live voice mode
+ */
+function stopLiveVoice() {
+  isVoiceActive = false;
 
-  isRecording = false;
-  document.getElementById('btn-voice-toggle')?.classList.remove('active');
-  updateVoiceStatus('Processing...');
+  // Reset VAD state
+  vadState.isSpeaking = false;
+  vadState.speechStart = null;
+  vadState.silenceStart = null;
+
+  // Disconnect audio processing
+  if (audioProcessor) {
+    audioProcessor.disconnect();
+    audioProcessor = null;
+  }
+  if (audioSource) {
+    audioSource.disconnect();
+    audioSource = null;
+  }
 
   // Stop media stream
   if (mediaStream) {
@@ -408,9 +540,50 @@ function stopVoiceRecording() {
     mediaStream = null;
   }
 
-  // Commit the utterance
+  // Update UI
+  const btn = document.getElementById('btn-voice-toggle');
+  btn?.classList.remove('active');
+  btn.querySelector('.label').textContent = 'Start Live Voice';
+  updateVadIndicator(false);
+  updateVoiceStatus('Stopped');
+  resetPipelineTrace();
+}
+
+/**
+ * Handle voice interrupt (stop NPC from speaking)
+ */
+function handleVoiceInterrupt() {
   if (voiceClient) {
-    voiceClient.commit();
+    voiceClient.interrupt();
+    toast.info('Interrupted', 'NPC speech stopped.');
+  }
+}
+
+/**
+ * Calculate RMS energy of audio buffer
+ */
+function calculateEnergy(audioData) {
+  let sum = 0;
+  for (let i = 0; i < audioData.length; i++) {
+    sum += audioData[i] * audioData[i];
+  }
+  return Math.sqrt(sum / audioData.length);
+}
+
+/**
+ * Update VAD indicator UI
+ */
+function updateVadIndicator(speaking) {
+  const indicator = document.getElementById('vad-indicator');
+  const label = indicator?.querySelector('.vad-label');
+
+  if (speaking) {
+    indicator?.classList.add('speaking');
+    if (label) label.textContent = 'Speaking';
+    updateVoiceStatus('Listening...');
+  } else {
+    indicator?.classList.remove('speaking');
+    if (label) label.textContent = 'Listening';
   }
 }
 

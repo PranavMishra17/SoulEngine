@@ -274,3 +274,99 @@ projectRoutes.delete('/:projectId', async (c) => {
     return c.json({ error: 'Failed to delete project', details: errorMessage }, 500);
   }
 });
+
+/**
+ * GET /api/projects/:projectId/voices - Fetch available voices from TTS provider
+ */
+projectRoutes.get('/:projectId/voices', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+  const provider = c.req.query('provider') || 'cartesia';
+
+  try {
+    // Verify project exists and load API keys
+    await getProject(projectId);
+    const apiKeys = await loadApiKeys(projectId);
+
+    let voices: Array<{ id: string; name: string; description?: string; preview_url?: string }> = [];
+
+    if (provider === 'cartesia') {
+      const apiKey = apiKeys.cartesia;
+      if (!apiKey) {
+        return c.json({ error: 'Cartesia API key not configured' }, 400);
+      }
+
+      // Request preview_file_url expansion for voice previews
+      const response = await fetch('https://api.cartesia.ai/voices?expand[]=preview_file_url', {
+        headers: {
+          'X-API-Key': apiKey,
+          'Cartesia-Version': '2024-06-10',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        logger.warn({ projectId, provider, status: response.status, error }, 'Failed to fetch Cartesia voices');
+        return c.json({ error: 'Failed to fetch voices from Cartesia' }, 502);
+      }
+
+      const data = (await response.json()) as Array<{ id: string; name: string; description?: string; preview_file_url?: string | null }>;
+      voices = (data || []).map((v) => ({
+        id: v.id,
+        name: v.name,
+        description: v.description || '',
+        // Cartesia preview URLs require auth - we'll proxy them or handle client-side
+        preview_url: v.preview_file_url || undefined,
+      }));
+    } else if (provider === 'elevenlabs') {
+      const apiKey = apiKeys.elevenlabs;
+      if (!apiKey) {
+        return c.json({ error: 'ElevenLabs API key not configured' }, 400);
+      }
+
+      const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+        headers: {
+          'xi-api-key': apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        logger.warn({ projectId, provider, status: response.status, error }, 'Failed to fetch ElevenLabs voices');
+        return c.json({ error: 'Failed to fetch voices from ElevenLabs' }, 502);
+      }
+
+      const data = (await response.json()) as { voices: Array<{ voice_id: string; name: string; description?: string; preview_url?: string }> };
+      voices = (data.voices || []).map((v) => ({
+        id: v.voice_id,
+        name: v.name,
+        description: v.description || '',
+        preview_url: v.preview_url,
+      }));
+    } else {
+      return c.json({ error: 'Invalid provider. Use "cartesia" or "elevenlabs"' }, 400);
+    }
+
+    const duration = Date.now() - startTime;
+    logger.debug({ projectId, provider, count: voices.length, duration }, 'Voices fetched via API');
+
+    return c.json({
+      provider,
+      voices,
+      library_url: provider === 'cartesia'
+        ? 'https://play.cartesia.ai/voices'
+        : 'https://elevenlabs.io/voice-library',
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      logger.warn({ projectId, duration }, 'Project not found');
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, provider, error: errorMessage, duration }, 'Failed to fetch voices');
+    return c.json({ error: 'Failed to fetch voices', details: errorMessage }, 500);
+  }
+});
