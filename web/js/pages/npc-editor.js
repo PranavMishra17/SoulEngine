@@ -786,9 +786,31 @@ function applyPersonalityPreset(presetId) {
 }
 
 async function handleSaveNpc() {
-  // Validate
-  if (!currentDefinition.name.trim()) {
-    toast.warning('Name Required', 'Please enter a name for the NPC.');
+  // Validate required fields
+  const errors = [];
+
+  if (!currentDefinition.name?.trim()) {
+    errors.push('Name is required');
+  }
+
+  if (!currentDefinition.description?.trim()) {
+    errors.push('Description is required');
+  }
+
+  if (!currentDefinition.core_anchor?.backstory?.trim()) {
+    errors.push('Backstory is required (Core Anchor section)');
+  }
+
+  if (!currentDefinition.core_anchor?.principles?.length) {
+    errors.push('At least one principle is required (Core Anchor section)');
+  }
+
+  if (!currentDefinition.voice?.voice_id) {
+    errors.push('Voice selection is required (Voice section)');
+  }
+
+  if (errors.length > 0) {
+    toast.warning('Missing Required Fields', errors.join('\n'));
     return;
   }
 
