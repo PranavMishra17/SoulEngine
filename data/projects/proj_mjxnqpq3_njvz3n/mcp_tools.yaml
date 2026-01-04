@@ -1,0 +1,91 @@
+conversation_tools:
+  - id: lock_door
+    name: Lock Door
+    description: Lock a nearby door to prevent others from entering. Use when feeling threatened or wanting privacy.
+    parameters:
+      type: object
+      properties:
+        door_id:
+          type: string
+          description: The ID of the door to lock
+      required:
+        - door_id
+  - id: call_guards
+    name: Call Guards
+    description: Summon nearby guards for assistance. Use when witnessing a crime or feeling in danger.
+    parameters:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: The reason for calling guards
+        urgency:
+          type: string
+          description: How urgent the situation is (low, medium, high)
+      required:
+        - reason
+  - id: give_item
+    name: Give Item
+    description: Give an item from inventory to the player. Use when rewarding or trading.
+    parameters:
+      type: object
+      properties:
+        item_id:
+          type: string
+          description: The ID of the item to give
+        quantity:
+          type: number
+          description: How many to give
+      required:
+        - item_id
+game_event_tools:
+  - id: receive_gift
+    name: Receive Gift
+    description: Called when the player gives this NPC a gift. Affects mood and relationship.
+    parameters:
+      type: object
+      properties:
+        item_id:
+          type: string
+          description: The ID of the item received
+        item_name:
+          type: string
+          description: The display name of the item
+        value:
+          type: number
+          description: The monetary value of the item
+      required:
+        - item_id
+        - item_name
+  - id: witness_crime
+    name: Witness Crime
+    description: Called when this NPC witnesses a crime. May affect trust and trigger reactions.
+    parameters:
+      type: object
+      properties:
+        crime_type:
+          type: string
+          description: Type of crime (theft, assault, vandalism, etc.)
+        perpetrator_id:
+          type: string
+          description: ID of who committed the crime
+        victim_id:
+          type: string
+          description: ID of the victim, if any
+      required:
+        - crime_type
+        - perpetrator_id
+  - id: time_of_day_change
+    name: Time of Day Change
+    description: Called when the game time changes significantly (morning, afternoon, evening, night).
+    parameters:
+      type: object
+      properties:
+        time_period:
+          type: string
+          description: The new time period (morning, afternoon, evening, night)
+        game_hour:
+          type: number
+          description: The current hour in game time (0-23)
+      required:
+        - time_period

@@ -20,7 +20,7 @@ personality_baseline:
   neuroticism: 0.35
 voice:
   provider: cartesia
-  voice_id: your-voice-id-here
+  voice_id: 81db94f2-ea76-4e5a-94bf-c92be997270d
   speed: 1
 schedule:
   - start: '06:00'

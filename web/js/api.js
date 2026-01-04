@@ -194,6 +194,7 @@ export class VoiceClient {
   constructor(sessionId) {
     this.sessionId = sessionId;
     this.ws = null;
+    this.connectionState = 'disconnected'; // Track connection state
     this.callbacks = {
       onReady: () => {},
       onTranscript: () => {},
@@ -210,32 +211,61 @@ export class VoiceClient {
 
   connect() {
     return new Promise((resolve, reject) => {
+      // Prevent duplicate connections
+      if (this.connectionState === 'connecting' || this.connectionState === 'connected') {
+        console.warn('[VoiceClient] Already connecting/connected, state:', this.connectionState);
+        return resolve();
+      }
+
+      this.connectionState = 'connecting';
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       // WebSocket server runs on HTTP port + 1 (e.g., HTTP 3000 → WS 3001)
       const httpPort = parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
       const wsPort = httpPort + 1;
       const url = `${protocol}//${window.location.hostname}:${wsPort}/ws/voice?session_id=${this.sessionId}`;
 
+      // Debug logging
+      console.log('[VoiceClient] Connecting to:', url);
+      console.log('[VoiceClient] Session ID:', this.sessionId);
+      console.log('[VoiceClient] HTTP Port:', httpPort, '→ WS Port:', wsPort);
+
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
+        console.log('[VoiceClient] WebSocket OPEN');
+        this.connectionState = 'connected';
         this.send({ type: 'init', session_id: this.sessionId });
       };
 
       this.ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
+        console.log('[VoiceClient] Message received:', message.type);
         this.handleMessage(message, resolve, reject);
       };
 
       this.ws.onerror = (error) => {
+        console.error('[VoiceClient] WebSocket ERROR:', error);
+        this.connectionState = 'error';
         reject(error);
         this.callbacks.onError('CONNECTION_ERROR', 'WebSocket connection error');
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
+        console.log('[VoiceClient] WebSocket CLOSE:', event.code, event.reason);
+        this.connectionState = 'disconnected';
         this.callbacks.onClose();
       };
     });
+  }
+
+  /**
+   * Check if the client is ready to send/receive
+   */
+  isReady() {
+    return this.connectionState === 'connected' &&
+           this.ws &&
+           this.ws.readyState === WebSocket.OPEN;
   }
 
   handleMessage(message, resolveConnect, rejectConnect) {

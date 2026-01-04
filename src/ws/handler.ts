@@ -312,50 +312,72 @@ async function handleInitMessage(
 ): Promise<void> {
   const { sessionId, ws } = connection;
 
+  logger.info({ sessionId, messageSessionId: message.session_id }, 'handleInitMessage: start');
+
   // Validate session ID matches
   if (message.session_id !== sessionId) {
+    logger.error({ sessionId, messageSessionId: message.session_id }, 'handleInitMessage: session mismatch');
     sendMessage(ws, { type: 'error', code: 'SESSION_MISMATCH', message: 'Session ID does not match' });
     return;
   }
 
   // Check if already initialized
   if (connection.pipeline) {
+    logger.warn({ sessionId }, 'handleInitMessage: already initialized');
     sendMessage(ws, { type: 'error', code: 'ALREADY_INITIALIZED', message: 'Pipeline already initialized' });
     return;
   }
 
   try {
+    logger.info({ sessionId }, 'handleInitMessage: getting session context');
+
     // Get session context to get voice config
     const context = await getSessionContext(sessionId);
     const voiceConfig = context.definition.voice;
 
+    logger.info({
+      sessionId,
+      voiceProvider: voiceConfig.provider,
+      voiceId: voiceConfig.voice_id,
+      speed: voiceConfig.speed
+    }, 'handleInitMessage: voice config loaded');
+
     // Create pipeline events
     const events: VoicePipelineEvents = {
       onTranscript: (text, isFinal) => {
+        logger.debug({ sessionId, text: text.slice(0, 50), isFinal }, 'Pipeline event: transcript');
         sendMessage(ws, { type: 'transcript', text, is_final: isFinal });
       },
       onTextChunk: (text) => {
+        logger.debug({ sessionId, chunkLength: text.length }, 'Pipeline event: text_chunk');
         sendMessage(ws, { type: 'text_chunk', text });
       },
       onAudioChunk: (audioBase64) => {
+        logger.debug({ sessionId, audioLength: audioBase64.length }, 'Pipeline event: audio_chunk');
         sendMessage(ws, { type: 'audio_chunk', data: audioBase64 });
       },
       onToolCall: (name, args) => {
+        logger.info({ sessionId, toolName: name }, 'Pipeline event: tool_call');
         sendMessage(ws, { type: 'tool_call', name, args });
       },
       onGenerationEnd: () => {
+        logger.info({ sessionId }, 'Pipeline event: generation_end');
         sendMessage(ws, { type: 'generation_end' });
       },
       onError: (code, message) => {
+        logger.error({ sessionId, code, message }, 'Pipeline event: error');
         sendMessage(ws, { type: 'error', code, message });
       },
       onExitConvo: (reason, cooldownSeconds) => {
+        logger.info({ sessionId, reason, cooldownSeconds }, 'Pipeline event: exit_convo');
         sendMessage(ws, { type: 'exit_convo', reason, cooldown_seconds: cooldownSeconds });
         // Close WebSocket after exit_convo - session was already ended by pipeline
         logger.info({ sessionId }, 'Closing WebSocket after exit_convo');
         ws.close(1000, 'Session ended by NPC');
       },
     };
+
+    logger.info({ sessionId }, 'handleInitMessage: creating pipeline');
 
     // Create and initialize pipeline
     const pipeline = createVoicePipeline({
@@ -367,8 +389,12 @@ async function handleInitMessage(
       events,
     });
 
+    logger.info({ sessionId }, 'handleInitMessage: initializing pipeline');
+
     await pipeline.initialize();
     connection.pipeline = pipeline;
+
+    logger.info({ sessionId }, 'handleInitMessage: sending ready message');
 
     // Send ready message
     sendMessage(ws, {
@@ -378,10 +404,17 @@ async function handleInitMessage(
       voice_config: voiceConfig,
     });
 
-    logger.info({ sessionId }, 'Voice pipeline initialized');
+    logger.info({ sessionId, npcName: context.definition.name }, 'handleInitMessage: complete');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ sessionId, error: errorMessage }, 'Failed to initialize voice pipeline');
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    logger.error({
+      sessionId,
+      error: errorMessage,
+      stack: errorStack
+    }, 'handleInitMessage: failed');
+
     sendMessage(ws, { type: 'error', code: 'INIT_FAILED', message: errorMessage });
   }
 }

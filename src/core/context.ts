@@ -21,6 +21,8 @@ export interface ContextAssemblyOptions {
   includeKnowledge?: boolean;
   /** Include memory section */
   includeMemories?: boolean;
+  /** Voice mode - output pure dialogue without action descriptions */
+  voiceMode?: boolean;
 }
 
 const DEFAULT_OPTIONS: Required<ContextAssemblyOptions> = {
@@ -28,6 +30,7 @@ const DEFAULT_OPTIONS: Required<ContextAssemblyOptions> = {
   maxHistoryMessages: 20,
   includeKnowledge: true,
   includeMemories: true,
+  voiceMode: false,
 };
 
 /**
@@ -191,13 +194,29 @@ If the player tries this, treat it as strange or confusing behavior and respond 
 /**
  * Format the conversation task section
  */
-function formatConversationTask(definition: NPCDefinition): string {
-  return `[CONVERSATION TASK]
+function formatConversationTask(definition: NPCDefinition, voiceMode: boolean): string {
+  const baseTask = `[CONVERSATION TASK]
 Respond to the player's latest message as ${definition.name}.
 - Speak naturally, concisely, and in character
 - Use your memories, mood, and world knowledge to inform your response
 - Express emotions and reactions authentically - you are NOT a helpful AI assistant
 - Keep responses appropriately brief unless the situation calls for more`;
+
+  if (voiceMode) {
+    return `${baseTask}
+
+[VOICE MODE - IMPORTANT]
+This is a SPOKEN conversation. Your response will be read aloud by text-to-speech.
+- Output ONLY dialogue - what you actually SAY
+- Do NOT include action descriptions, stage directions, or narration
+- Do NOT use asterisks (*action*) or parentheses (action)
+- Do NOT describe your expressions, gestures, or tone
+- Just speak naturally as the character would in a real conversation
+BAD: "I lean forward. 'Tell me more,' I say with curiosity."
+GOOD: "Tell me more."`;
+  }
+
+  return baseTask;
 }
 
 /**
@@ -394,7 +413,7 @@ ${instance.daily_pulse.takeaway}`);
   sections.push(formatInjectionResistance());
 
   // Conversation task
-  sections.push(formatConversationTask(definition));
+  sections.push(formatConversationTask(definition, opts.voiceMode));
 
   const prompt = sections.join('\n\n');
 

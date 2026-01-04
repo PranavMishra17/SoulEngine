@@ -11,9 +11,8 @@ import type {
 
 const logger = createLogger('cartesia-provider');
 
-const DEFAULT_MODEL = 'sonic-2024-10-01';
+const DEFAULT_MODEL = 'sonic-2';
 const DEFAULT_SAMPLE_RATE = 44100;
-const DEFAULT_LANGUAGE = 'en';
 
 /**
  * Cartesia TTS Session implementation
@@ -52,8 +51,16 @@ class CartesiaSession implements TTSSession {
   async connect(): Promise<void> {
     const startTime = Date.now();
 
+    logger.info({
+      voiceId: this.config.voiceId,
+      model: this.config.model ?? DEFAULT_MODEL,
+      sampleRate: this.config.sampleRate ?? DEFAULT_SAMPLE_RATE
+    }, 'CartesiaSession.connect: starting');
+
     try {
       const outputFormat = this.mapOutputFormat(this.config.outputFormat);
+
+      logger.debug({ outputFormat }, 'CartesiaSession.connect: creating WebSocket');
 
       this.websocket = this.client.tts.websocket({
         container: 'raw',
@@ -61,17 +68,29 @@ class CartesiaSession implements TTSSession {
         sampleRate: this.config.sampleRate ?? DEFAULT_SAMPLE_RATE,
       });
 
+      // Explicitly connect the WebSocket (required by Cartesia SDK)
+      logger.debug('CartesiaSession.connect: awaiting websocket.connect()');
+      await this.websocket.connect();
+
       this._isConnected = true;
 
       const duration = Date.now() - startTime;
-      logger.info(
-        { duration, voiceId: this.config.voiceId, model: this.config.model ?? DEFAULT_MODEL },
-        'Cartesia session connected'
-      );
+      logger.info({
+        duration,
+        voiceId: this.config.voiceId,
+        model: this.config.model ?? DEFAULT_MODEL
+      }, 'CartesiaSession.connect: success');
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ duration, error: errorMessage }, 'Failed to connect Cartesia session');
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      logger.error({
+        duration,
+        error: errorMessage,
+        stack: errorStack
+      }, 'CartesiaSession.connect: failed');
+
       throw new CartesiaConnectionError(errorMessage);
     }
   }
@@ -88,15 +107,23 @@ class CartesiaSession implements TTSSession {
 
   async synthesize(text: string, isContinuation = false): Promise<void> {
     if (!this.websocket || !this._isConnected) {
+      logger.error('CartesiaSession.synthesize: not connected');
       throw new CartesiaError('Session not connected');
     }
 
     if (!text || text.trim() === '') {
+      logger.debug('CartesiaSession.synthesize: empty text, skipping');
       return;
     }
 
     const startTime = Date.now();
     this.abortController = new AbortController();
+
+    logger.info({
+      textLength: text.length,
+      isContinuation,
+      contextId: this.contextId
+    }, 'CartesiaSession.synthesize: starting');
 
     try {
       const response = await this.websocket.send({
@@ -106,51 +133,69 @@ class CartesiaSession implements TTSSession {
           id: this.config.voiceId,
         },
         transcript: text,
-        language: this.config.language ?? DEFAULT_LANGUAGE,
         contextId: this.contextId,
         continue: isContinuation,
       });
 
-      // Process audio chunks from the response
-      // Define the expected message structure from Cartesia
-      interface CartesiaMessage {
-        audio?: string;
-        done?: boolean;
-        error?: string;
-      }
+      logger.debug('CartesiaSession.synthesize: request sent, reading from source');
 
-      for await (const rawMessage of response.events('message')) {
-        // Check if aborted
-        if (this.abortController?.signal.aborted) {
-          logger.debug('Cartesia synthesis aborted');
-          break;
-        }
+      // The Cartesia SDK streams audio to response.source buffer
+      const source = response.source;
+      let chunkCount = 0;
+      let lastReadPos = 0;
 
-        // Type the message properly
-        const message = rawMessage as CartesiaMessage;
+      // Helper to read and emit any new audio
+      const emitNewAudio = () => {
+        const currentWritePos = source.writeIndex;
+        if (currentWritePos > lastReadPos) {
+          chunkCount++;
+          const newAudio = source.buffer.subarray(lastReadPos, currentWritePos);
+          // Convert TypedArray to Buffer
+          const audioBuffer = Buffer.from(newAudio.buffer, newAudio.byteOffset, newAudio.byteLength);
 
-        if (message.error) {
-          throw new CartesiaError(message.error);
-        }
+          logger.debug({
+            chunkCount,
+            audioBytes: audioBuffer.length,
+            readPos: lastReadPos,
+            writePos: currentWritePos
+          }, 'CartesiaSession.synthesize: audio chunk received');
 
-        if (message.audio) {
-          const audioBuffer = Buffer.from(message.audio, 'base64');
           const chunk: TTSChunk = {
             audio: audioBuffer,
             text,
-            isComplete: message.done === true,
+            isComplete: false,
             timestamp: Date.now(),
           };
           this.events.onAudioChunk(chunk);
+          lastReadPos = currentWritePos;
         }
+      };
 
-        if (message.done) {
-          break;
-        }
-      }
+      // Wait for source to close (synthesis complete)
+      await new Promise<void>((resolve) => {
+        // Poll for new audio and check for close
+        const checkInterval = setInterval(() => {
+          if (this.abortController?.signal.aborted) {
+            clearInterval(checkInterval);
+            resolve();
+            return;
+          }
+          emitNewAudio();
+        }, 50);
+
+        source.once('close').then(() => {
+          clearInterval(checkInterval);
+          emitNewAudio(); // Get any remaining audio
+          resolve();
+        });
+      });
 
       const duration = Date.now() - startTime;
-      logger.debug({ duration, textLength: text.length }, 'Cartesia synthesis completed');
+      logger.info({
+        duration,
+        textLength: text.length,
+        chunkCount
+      }, 'CartesiaSession.synthesize: complete');
     } catch (error) {
       if (this.abortController?.signal.aborted) {
         return;
@@ -158,7 +203,7 @@ class CartesiaSession implements TTSSession {
 
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ duration, error: errorMessage }, 'Cartesia synthesis failed');
+      logger.error({ duration, error: errorMessage }, 'CartesiaSession.synthesize: failed');
 
       const cartesiaError = error instanceof CartesiaError ? error : new CartesiaError(errorMessage);
       this.events.onError(cartesiaError);
@@ -180,7 +225,6 @@ class CartesiaSession implements TTSSession {
           id: this.config.voiceId,
         },
         transcript: '',
-        language: this.config.language ?? DEFAULT_LANGUAGE,
         contextId: this.contextId,
         continue: false,
       });

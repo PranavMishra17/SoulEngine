@@ -43,7 +43,11 @@ class ElevenLabsSession implements TTSSession {
     const startTime = Date.now();
 
     try {
-      const wsUrl = `${ELEVENLABS_WS_BASE}/${this.config.voiceId}/stream-input?model_id=${this.config.model ?? DEFAULT_MODEL}`;
+      // ElevenLabs WebSocket URL requires output_format parameter
+      const model = this.config.model ?? DEFAULT_MODEL;
+      const wsUrl = `${ELEVENLABS_WS_BASE}/${this.config.voiceId}/stream-input?model_id=${model}&output_format=pcm_16000`;
+
+      logger.info({ wsUrl: wsUrl.replace(/xi_api_key=[^&]+/, 'xi_api_key=***'), voiceId: this.config.voiceId, model }, 'ElevenLabs connecting to WebSocket');
 
       this.ws = new WebSocket(wsUrl);
 
@@ -53,7 +57,7 @@ class ElevenLabsSession implements TTSSession {
 
       const duration = Date.now() - startTime;
       logger.info(
-        { duration, voiceId: this.config.voiceId, model: this.config.model ?? DEFAULT_MODEL },
+        { duration, voiceId: this.config.voiceId, model },
         'ElevenLabs session connected'
       );
     } catch (error) {
@@ -78,6 +82,10 @@ class ElevenLabsSession implements TTSSession {
       this.ws.on('open', () => {
         clearTimeout(timeout);
         this.setupEventHandlers();
+
+        // Send BOS (Begin of Stream) message to initialize the stream
+        this.sendBOS();
+
         resolve();
       });
 
@@ -88,6 +96,28 @@ class ElevenLabsSession implements TTSSession {
     });
   }
 
+  /**
+   * Send Begin of Stream message to initialize ElevenLabs streaming
+   */
+  private sendBOS(): void {
+    if (!this.ws) return;
+
+    const bosMessage = {
+      text: ' ',  // Space character to initialize
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75,
+      },
+      generation_config: {
+        chunk_length_schedule: [120, 160, 250, 290],
+      },
+      xi_api_key: this.providerConfig.apiKey,
+    };
+
+    this.ws.send(JSON.stringify(bosMessage));
+    logger.info('ElevenLabs BOS message sent');
+  }
+
   private setupEventHandlers(): void {
     if (!this.ws) return;
 
@@ -95,6 +125,7 @@ class ElevenLabsSession implements TTSSession {
       try {
         // Check if it's binary audio data
         if (data instanceof Buffer) {
+          logger.info({ audioBytes: data.length }, 'ElevenLabs binary audio chunk received');
           const chunk: TTSChunk = {
             audio: data,
             text: this.currentText,
@@ -112,12 +143,14 @@ class ElevenLabsSession implements TTSSession {
           };
 
           if (message.error) {
+            logger.error({ error: message.error }, 'ElevenLabs server error');
             this.events.onError(new ElevenLabsError(message.error));
             return;
           }
 
           if (message.audio) {
             const audioBuffer = Buffer.from(message.audio, 'base64');
+            logger.info({ audioBytes: audioBuffer.length, isFinal: message.isFinal }, 'ElevenLabs JSON audio chunk received');
             const chunk: TTSChunk = {
               audio: audioBuffer,
               text: this.currentText,
@@ -128,12 +161,14 @@ class ElevenLabsSession implements TTSSession {
           }
 
           if (message.isFinal) {
+            logger.info('ElevenLabs stream complete');
             this.events.onComplete();
           }
         }
       } catch (error) {
         // Binary data that isn't a Buffer - treat as audio
         if (data instanceof ArrayBuffer) {
+          logger.info({ audioBytes: (data as ArrayBuffer).byteLength }, 'ElevenLabs ArrayBuffer audio received');
           const chunk: TTSChunk = {
             audio: Buffer.from(data),
             text: this.currentText,
@@ -145,9 +180,9 @@ class ElevenLabsSession implements TTSSession {
       }
     });
 
-    this.ws.on('close', () => {
+    this.ws.on('close', (code: number, reason: Buffer) => {
       this._isConnected = false;
-      logger.debug('ElevenLabs WebSocket closed');
+      logger.info({ code, reason: reason?.toString() }, 'ElevenLabs WebSocket closed');
     });
 
     this.ws.on('error', (error) => {
@@ -157,7 +192,7 @@ class ElevenLabsSession implements TTSSession {
     });
   }
 
-  async synthesize(text: string, isContinuation = false): Promise<void> {
+  async synthesize(text: string, _isContinuation = false): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new ElevenLabsError('Session not connected');
     }
@@ -170,29 +205,16 @@ class ElevenLabsSession implements TTSSession {
     const startTime = Date.now();
 
     try {
-      const message: {
-        text: string;
-        voice_settings?: { stability: number; similarity_boost: number };
-        xi_api_key: string;
-        try_trigger_generation?: boolean;
-      } = {
+      // Voice settings already sent in BOS message
+      const message = {
         text,
-        xi_api_key: this.providerConfig.apiKey,
         try_trigger_generation: true,
       };
-
-      // Add voice settings on first message
-      if (!isContinuation) {
-        message.voice_settings = {
-          stability: 0.5,
-          similarity_boost: 0.75,
-        };
-      }
 
       this.ws.send(JSON.stringify(message));
 
       const duration = Date.now() - startTime;
-      logger.debug({ duration, textLength: text.length }, 'ElevenLabs synthesis message sent');
+      logger.info({ duration, textLength: text.length }, 'ElevenLabs synthesis message sent');
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -203,19 +225,18 @@ class ElevenLabsSession implements TTSSession {
 
   async flush(): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      logger.warn('ElevenLabs flush: WebSocket not open');
       return;
     }
 
     try {
-      // Send empty text with flush flag to signal end of input
+      // Send EOS (End of Stream) message - empty string signals end of input
       const message = {
         text: '',
-        xi_api_key: this.providerConfig.apiKey,
-        flush: true,
       };
 
       this.ws.send(JSON.stringify(message));
-      logger.debug('ElevenLabs flush sent');
+      logger.info('ElevenLabs EOS (flush) sent');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ error: errorMessage }, 'ElevenLabs flush failed');

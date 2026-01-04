@@ -24,12 +24,14 @@ import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/hand
 import { GeminiLlmProvider } from './providers/llm/gemini.js';
 import { DeepgramSttProvider } from './providers/stt/deepgram.js';
 import { createTtsProvider } from './providers/tts/factory.js';
+import type { TTSProviderType } from './providers/tts/interface.js';
 
 // MCP
 import { mcpToolRegistry } from './mcp/registry.js';
 
 // Session cleanup
 import { sessionStore } from './session/store.js';
+import { getDefinition } from './storage/definitions.js';
 
 const logger = createLogger('server');
 const config = getConfig();
@@ -210,21 +212,39 @@ const server = serve({
 // Create WebSocket server on a separate port (or use the same server with ws upgrade)
 const wss = new WebSocketServer({ port: port + 1 });
 
-logger.info({ wsPort: port + 1 }, 'WebSocket server started');
+logger.info({ wsPort: port + 1 }, 'WebSocket server starting...');
+
+wss.on('listening', () => {
+  logger.info({ wsPort: port + 1 }, 'WebSocket server now listening');
+});
 
 // Handle WebSocket connections
 wss.on('connection', (ws, req) => {
+  const clientIp = req.socket.remoteAddress;
   const url = new URL(req.url || '', `http://localhost:${port + 1}`);
+
+  logger.info({
+    clientIp,
+    path: url.pathname,
+    query: Object.fromEntries(url.searchParams),
+    headers: {
+      origin: req.headers.origin,
+      host: req.headers.host,
+    }
+  }, 'WebSocket connection received');
 
   // Only handle /ws/voice connections
   if (url.pathname !== '/ws/voice') {
+    logger.warn({ path: url.pathname }, 'Unsupported WebSocket path');
     ws.close(1003, 'Unsupported path');
     return;
   }
 
   const sessionId = url.searchParams.get('session_id');
+  logger.info({ sessionId }, 'Voice WebSocket: checking session');
 
   if (!sessionId) {
+    logger.warn('Voice WebSocket: missing session_id');
     ws.close(1008, 'session_id query parameter required');
     return;
   }
@@ -232,33 +252,97 @@ wss.on('connection', (ws, req) => {
   // Verify session exists
   const stored = sessionStore.get(sessionId);
   if (!stored) {
+    logger.warn({ sessionId }, 'Voice WebSocket: session not found');
     ws.close(1008, 'Session not found');
     return;
   }
 
-  logger.info({ sessionId }, 'Voice WebSocket connected');
+  logger.info({ sessionId }, 'Voice WebSocket: session verified');
 
   // Get API keys from config
   const deepgramKey = config.providers.deepgramApiKey;
   const cartesiaKey = config.providers.cartesiaApiKey;
   const geminiKey = config.providers.geminiApiKey;
 
+  logger.info({
+    hasDeepgram: !!deepgramKey,
+    hasCartesia: !!cartesiaKey,
+    hasGemini: !!geminiKey,
+  }, 'Voice WebSocket: API key status');
+
   // Check if all required keys are available
   if (!deepgramKey || !cartesiaKey || !geminiKey) {
-    logger.warn({ sessionId }, 'Voice WebSocket closed - missing API keys');
+    logger.error({
+      sessionId,
+      missingKeys: {
+        deepgram: !deepgramKey,
+        cartesia: !cartesiaKey,
+        gemini: !geminiKey,
+      }
+    }, 'Voice WebSocket: missing API keys');
     ws.close(1008, 'Voice providers not configured. Set DEEPGRAM_API_KEY, CARTESIA_API_KEY, and GEMINI_API_KEY.');
     return;
   }
 
-  // Create providers with configured API keys
-  const deps: VoiceWebSocketDependencies = {
-    sttProvider: new DeepgramSttProvider({ apiKey: deepgramKey }),
-    ttsProvider: createTtsProvider({ provider: 'cartesia', apiKey: cartesiaKey }),
-    llmProvider: new GeminiLlmProvider({ apiKey: geminiKey }),
-  };
+  logger.info({ sessionId }, 'Voice WebSocket: loading NPC definition for voice config');
 
-  // Handle the voice WebSocket connection
-  handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);
+  // Load NPC definition to get voice config (async)
+  const projectId = stored.state.project_id;
+  const npcId = stored.state.definition_id;
+
+  getDefinition(projectId, npcId).then((definition) => {
+    const voiceConfig = definition.voice;
+    const ttsProviderType = (voiceConfig.provider || 'cartesia') as TTSProviderType;
+    const ttsApiKey = ttsProviderType === 'elevenlabs' ? config.providers.elevenLabsApiKey : cartesiaKey;
+
+    if (!ttsApiKey) {
+      logger.error({ sessionId, ttsProvider: ttsProviderType }, 'Voice WebSocket: TTS API key not configured');
+      ws.close(1008, `${ttsProviderType} API key not configured`);
+      return;
+    }
+
+    logger.info({ sessionId, ttsProvider: ttsProviderType, voiceId: voiceConfig.voice_id }, 'Voice WebSocket: using TTS provider');
+
+    try {
+      // Create providers with configured API keys
+      const deps: VoiceWebSocketDependencies = {
+        sttProvider: new DeepgramSttProvider({ apiKey: deepgramKey }),
+        ttsProvider: createTtsProvider({ provider: ttsProviderType, apiKey: ttsApiKey }),
+        llmProvider: new GeminiLlmProvider({ apiKey: geminiKey }),
+      };
+
+      logger.info({ sessionId }, 'Voice WebSocket: providers created, calling handler');
+
+      // Handle the voice WebSocket connection
+      handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ sessionId, error: errorMessage }, 'Voice WebSocket: provider creation failed');
+      ws.close(1011, 'Provider initialization failed');
+    }
+  }).catch((error) => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    logger.error({
+      sessionId,
+      error: errorMessage,
+      stack: errorStack
+    }, 'Voice WebSocket: provider creation failed');
+
+    // Send error to client before closing
+    try {
+      ws.send(JSON.stringify({
+        type: 'error',
+        code: 'PROVIDER_INIT_FAILED',
+        message: `Failed to initialize voice providers: ${errorMessage}`
+      }));
+    } catch (sendError) {
+      logger.warn('Failed to send error message to client');
+    }
+
+    ws.close(1011, 'Provider initialization failed');
+  });
 });
 
 wss.on('error', (error) => {

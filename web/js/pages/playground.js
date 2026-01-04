@@ -12,21 +12,19 @@ let currentSessionId = null;
 let currentMode = 'text';
 let voiceClient = null;
 let isVoiceActive = false;
-let audioContext = null;
-let mediaStream = null;
-let audioProcessor = null;
-let audioSource = null;
+let micVAD = null; // @ricky0123/vad-web instance
 let messageCount = 0;
 let responseBuffer = '';
 
-// VAD (Voice Activity Detection) state
+// Audio playback state
+let audioContext = null;
+let audioQueue = [];
+let isPlayingAudio = false;
+let currentVoiceConfig = null; // Stores sample rate from server
+
+// VAD state for UI updates
 const vadState = {
   isSpeaking: false,
-  silenceStart: null,
-  speechStart: null,
-  energyThreshold: 0.015,     // Minimum energy to consider as speech
-  silenceTimeout: 700,        // ms of silence before committing
-  speechMinDuration: 150,     // ms of speech before we consider it valid
 };
 
 // Mood presets (VAD values: valence, arousal, dominance)
@@ -218,6 +216,9 @@ async function handleEndSession() {
       stopLiveVoice();
     }
 
+    // Stop any audio playback
+    stopAudioPlayback();
+
     // End session
     await session.end(currentSessionId);
 
@@ -243,6 +244,7 @@ async function handleEndSession() {
 }
 
 function setMode(mode) {
+  console.log('[Playground] setMode() called:', mode);
   currentMode = mode;
 
   // Update button states
@@ -255,8 +257,20 @@ function setMode(mode) {
   document.getElementById('voice-input-container').style.display = mode === 'voice' ? 'flex' : 'none';
 
   // Connect voice if session active and switching to voice
-  if (mode === 'voice' && currentSessionId && !voiceClient) {
-    connectVoice();
+  // FIX: Check if voice client is actually connected, not just exists
+  if (mode === 'voice' && currentSessionId) {
+    const needsConnection = !voiceClient ||
+                            !voiceClient.ws ||
+                            voiceClient.ws.readyState !== WebSocket.OPEN;
+
+    console.log('[Playground] Voice mode selected, needs connection:', needsConnection);
+    console.log('[Playground] voiceClient:', !!voiceClient);
+    console.log('[Playground] ws readyState:', voiceClient?.ws?.readyState);
+
+    if (needsConnection) {
+      console.log('[Playground] Voice mode selected, connecting...');
+      connectVoice();
+    }
   }
 }
 
@@ -326,12 +340,26 @@ async function handleSendMessage() {
 }
 
 async function connectVoice() {
+  console.log('[Playground] connectVoice() called');
+  console.log('[Playground] Current session ID:', currentSessionId);
+
+  if (!currentSessionId) {
+    console.error('[Playground] No session ID - cannot connect voice');
+    toast.error('No Session', 'Start a session first before enabling voice.');
+    return;
+  }
+
   try {
     updateVoiceStatus('Connecting...');
+    console.log('[Playground] Creating VoiceClient...');
     voiceClient = new VoiceClient(currentSessionId);
 
     voiceClient
       .on('ready', async (data) => {
+        console.log('[Playground] Voice ready:', data);
+        // Store voice config for audio playback (contains provider info for sample rate)
+        currentVoiceConfig = data.voice_config;
+        console.log('[Playground] Voice config:', currentVoiceConfig);
         updateVoiceStatus('Connected');
         // Auto-start live voice after connection
         await startLiveVoice();
@@ -350,7 +378,8 @@ async function connectVoice() {
       })
       .on('audioChunk', (data) => {
         updatePipelineStep('tts', 'active');
-        // Audio playback would go here
+        // Play the audio chunk
+        queueAudioChunk(data);
       })
       .on('toolCall', (name, args) => {
         addToolCallLog(name, args);
@@ -371,17 +400,22 @@ async function connectVoice() {
         }
       })
       .on('error', (code, message) => {
+        console.error('[Playground] Voice error:', code, message);
         toast.error('Voice Error', message);
         addSecurityLog('error', `${code}: ${message}`);
         updateVoiceStatus('Error');
       })
       .on('close', () => {
+        console.log('[Playground] Voice connection closed');
         updateVoiceStatus('Disconnected');
         voiceClient = null;
       });
 
+    console.log('[Playground] Calling voiceClient.connect()...');
     await voiceClient.connect();
+    console.log('[Playground] voiceClient.connect() completed');
   } catch (error) {
+    console.error('[Playground] connectVoice() error:', error);
     toast.error('Voice Connection Failed', error.message);
     updateVoiceStatus('Failed');
     voiceClient = null;
@@ -392,6 +426,10 @@ async function connectVoice() {
  * Toggle live voice mode on/off
  */
 async function toggleLiveVoice() {
+  console.log('[Playground] toggleLiveVoice() called');
+  console.log('[Playground] isVoiceActive:', isVoiceActive);
+  console.log('[Playground] voiceClient:', !!voiceClient);
+
   if (isVoiceActive) {
     stopLiveVoice();
   } else {
@@ -400,105 +438,102 @@ async function toggleLiveVoice() {
 }
 
 /**
- * Start live voice with VAD
+ * Start live voice with Silero VAD (@ricky0123/vad-web)
  */
 async function startLiveVoice() {
-  if (!voiceClient) {
+  console.log('[Playground] startLiveVoice() called');
+  console.log('[Playground] voiceClient exists:', !!voiceClient);
+  console.log('[Playground] voiceClient.isReady():', voiceClient?.isReady?.());
+
+  if (!voiceClient || !voiceClient.isReady()) {
+    console.warn('[Playground] VoiceClient not ready');
     toast.warning('Voice Not Connected', 'Please wait for voice connection.');
     return;
   }
 
+  // Check if vad-web is loaded
+  if (typeof vad === 'undefined') {
+    console.error('[Playground] vad-web library not loaded');
+    toast.error('VAD Not Available', 'Voice activity detection library failed to load.');
+    return;
+  }
+
   try {
-    // Initialize audio context
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: 16000,
-      });
-    }
+    console.log('[Playground] Initializing Silero VAD...');
+    updateVoiceStatus('Loading VAD model...');
 
-    // Resume audio context if suspended (browser autoplay policy)
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
+    let audioChunkCount = 0;
 
-    // Get microphone stream
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000,
-        echoCancellation: true,
-        noiseSuppression: true,
+    // Create MicVAD instance with Silero model
+    micVAD = await vad.MicVAD.new({
+      // Speech detection thresholds (Silero model outputs 0-1 probability)
+      positiveSpeechThreshold: 0.5,  // Start speech when probability > 0.5
+      negativeSpeechThreshold: 0.35, // End speech when probability < 0.35
+
+      // Timing settings
+      minSpeechFrames: 3,            // Min frames (30ms each) to confirm speech start
+      redemptionFrames: 8,           // Frames of silence before ending speech (~240ms)
+      preSpeechPadFrames: 1,         // Include 1 frame before speech start
+
+      // Called when speech starts
+      onSpeechStart: () => {
+        console.log('[VAD] Speech started (Silero)');
+        vadState.isSpeaking = true;
+        updateVadIndicator(true);
+        updatePipelineStep('stt', 'active');
+        audioChunkCount = 0;
+      },
+
+      // Called when speech ends - commit for STT processing
+      onSpeechEnd: (audio) => {
+        console.log('[VAD] Speech ended, total samples:', audio.length);
+        vadState.isSpeaking = false;
+        updateVadIndicator(false);
+
+        // Check if voiceClient still exists (WebSocket may have closed)
+        if (!voiceClient) {
+          console.warn('[VAD] Speech ended but voiceClient is null, stopping VAD');
+          stopLiveVoice();
+          return;
+        }
+
+        // Note: Audio was already streamed via onFrameProcessed
+        // Just commit to signal end of utterance
+        voiceClient.commit();
+        updateVoiceStatus('Processing...');
+      },
+
+      // Called for each frame - use for real-time streaming and visualization
+      onFrameProcessed: (probabilities, frame) => {
+        // Update visualizer with current audio frame
+        if (frame) {
+          updateVisualizer(frame);
+        }
+
+        // Stream audio while speaking (for real-time STT)
+        if (vadState.isSpeaking && frame) {
+          // Check if voiceClient still exists (WebSocket may have closed)
+          if (!voiceClient) {
+            console.warn('[VAD] Frame processed but voiceClient is null, stopping VAD');
+            stopLiveVoice();
+            return;
+          }
+
+          const pcm16 = float32ToPcm16(frame);
+          const base64 = arrayBufferToBase64(pcm16.buffer);
+          voiceClient.sendAudio(base64);
+          audioChunkCount++;
+
+          // Log every 50 chunks (~1.5 seconds at 30ms frames)
+          if (audioChunkCount % 50 === 0) {
+            console.log('[VAD] Streaming audio, chunks sent:', audioChunkCount, 'speech prob:', probabilities.isSpeech.toFixed(3));
+          }
+        }
       },
     });
 
-    // Create audio processing pipeline
-    audioSource = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-
-    // Process audio with VAD
-    audioProcessor.onaudioprocess = (e) => {
-      if (!isVoiceActive) return;
-
-      const inputData = e.inputBuffer.getChannelData(0);
-
-      // Calculate energy level for VAD
-      const energy = calculateEnergy(inputData);
-      const isSpeech = energy > vadState.energyThreshold;
-      const now = Date.now();
-
-      // Update visualizer
-      updateVisualizer(inputData);
-
-      if (isSpeech) {
-        // Speech detected
-        if (!vadState.isSpeaking) {
-          // Start of speech
-          vadState.speechStart = now;
-          vadState.silenceStart = null;
-        }
-
-        // Check if speech has been going long enough
-        if (vadState.speechStart && (now - vadState.speechStart) > vadState.speechMinDuration) {
-          if (!vadState.isSpeaking) {
-            vadState.isSpeaking = true;
-            updateVadIndicator(true);
-            updatePipelineStep('stt', 'active');
-          }
-
-          // Send audio to server
-          const pcm16 = float32ToPcm16(inputData);
-          const base64 = arrayBufferToBase64(pcm16.buffer);
-          voiceClient.sendAudio(base64);
-        }
-      } else {
-        // Silence detected
-        if (vadState.isSpeaking) {
-          if (!vadState.silenceStart) {
-            vadState.silenceStart = now;
-          }
-
-          // Still send audio during brief silence (might be mid-word pause)
-          const pcm16 = float32ToPcm16(inputData);
-          const base64 = arrayBufferToBase64(pcm16.buffer);
-          voiceClient.sendAudio(base64);
-
-          // Check if silence has lasted long enough to commit
-          if ((now - vadState.silenceStart) > vadState.silenceTimeout) {
-            // End of utterance - commit
-            vadState.isSpeaking = false;
-            vadState.speechStart = null;
-            vadState.silenceStart = null;
-            updateVadIndicator(false);
-            voiceClient.commit();
-            updateVoiceStatus('Processing...');
-          }
-        }
-      }
-    };
-
-    audioSource.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
-
+    // Start the VAD
+    await micVAD.start();
     isVoiceActive = true;
 
     // Update UI
@@ -507,9 +542,19 @@ async function startLiveVoice() {
     btn.querySelector('.label').textContent = 'Stop Voice';
     updateVoiceStatus('Listening...');
 
-    toast.success('Live Voice Active', 'Speak naturally - VAD will detect your speech.');
+    console.log('[Playground] Silero VAD started successfully');
+    toast.success('Live Voice Active', 'Speak naturally - Silero VAD will detect your speech.');
   } catch (error) {
-    toast.error('Microphone Access Failed', error.message);
+    console.error('[Playground] startLiveVoice() error:', error);
+
+    if (error.name === 'NotAllowedError') {
+      toast.error('Microphone Denied', 'Please allow microphone access in your browser.');
+    } else if (error.name === 'NotFoundError') {
+      toast.error('No Microphone', 'No microphone found on this device.');
+    } else {
+      toast.error('Microphone Error', error.message);
+    }
+
     stopLiveVoice();
   }
 }
@@ -522,23 +567,12 @@ function stopLiveVoice() {
 
   // Reset VAD state
   vadState.isSpeaking = false;
-  vadState.speechStart = null;
-  vadState.silenceStart = null;
 
-  // Disconnect audio processing
-  if (audioProcessor) {
-    audioProcessor.disconnect();
-    audioProcessor = null;
-  }
-  if (audioSource) {
-    audioSource.disconnect();
-    audioSource = null;
-  }
-
-  // Stop media stream
-  if (mediaStream) {
-    mediaStream.getTracks().forEach((track) => track.stop());
-    mediaStream = null;
+  // Destroy micVAD instance (handles mic cleanup internally)
+  if (micVAD) {
+    micVAD.destroy();
+    micVAD = null;
+    console.log('[Playground] MicVAD destroyed');
   }
 
   // Update UI
@@ -556,19 +590,9 @@ function stopLiveVoice() {
 function handleVoiceInterrupt() {
   if (voiceClient) {
     voiceClient.interrupt();
+    stopAudioPlayback(); // Stop any audio currently playing
     toast.info('Interrupted', 'NPC speech stopped.');
   }
-}
-
-/**
- * Calculate RMS energy of audio buffer
- */
-function calculateEnergy(audioData) {
-  let sum = 0;
-  for (let i = 0; i < audioData.length; i++) {
-    sum += audioData[i] * audioData[i];
-  }
-  return Math.sqrt(sum / audioData.length);
 }
 
 /**
@@ -595,6 +619,118 @@ function float32ToPcm16(float32Array) {
     pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
   }
   return pcm16;
+}
+
+/**
+ * Initialize AudioContext for playback
+ */
+function initAudioContext(sampleRate = 44100) {
+  if (!audioContext || audioContext.state === 'closed') {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+    console.log('[Audio] AudioContext created, sample rate:', audioContext.sampleRate);
+  }
+  // Resume if suspended (browser autoplay policy)
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  return audioContext;
+}
+
+/**
+ * Convert base64 PCM to Float32Array for Web Audio API
+ */
+function base64ToFloat32(base64, isFloat32 = false) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  if (isFloat32) {
+    // Already float32, just create view
+    return new Float32Array(bytes.buffer);
+  } else {
+    // PCM s16le - convert to float32
+    const int16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 32768.0;
+    }
+    return float32;
+  }
+}
+
+/**
+ * Queue and play audio chunk
+ */
+function queueAudioChunk(base64Data) {
+  if (!currentVoiceConfig) {
+    console.warn('[Audio] No voice config, cannot determine sample rate');
+    return;
+  }
+
+  // Determine sample rate based on provider
+  // Cartesia: 44100 Hz, ElevenLabs: 16000 Hz
+  const provider = currentVoiceConfig.provider || 'cartesia';
+  const sampleRate = provider === 'elevenlabs' ? 16000 : 44100;
+
+  // Initialize audio context with correct sample rate
+  const ctx = initAudioContext(sampleRate);
+
+  // Convert base64 PCM to float32
+  const audioData = base64ToFloat32(base64Data, false);
+
+  if (audioData.length === 0) {
+    return;
+  }
+
+  // Create audio buffer
+  const audioBuffer = ctx.createBuffer(1, audioData.length, sampleRate);
+  audioBuffer.getChannelData(0).set(audioData);
+
+  // Queue the buffer
+  audioQueue.push(audioBuffer);
+
+  // Start playback if not already playing
+  if (!isPlayingAudio) {
+    playNextInQueue();
+  }
+}
+
+/**
+ * Play next audio buffer in queue
+ */
+function playNextInQueue() {
+  if (audioQueue.length === 0) {
+    isPlayingAudio = false;
+    return;
+  }
+
+  isPlayingAudio = true;
+  const buffer = audioQueue.shift();
+
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioContext.destination);
+
+  source.onended = () => {
+    playNextInQueue();
+  };
+
+  source.start(0);
+}
+
+/**
+ * Stop all audio playback
+ */
+function stopAudioPlayback() {
+  audioQueue = [];
+  isPlayingAudio = false;
+  if (audioContext && audioContext.state !== 'closed') {
+    // Create new context to stop all sounds
+    audioContext.close();
+    audioContext = null;
+  }
 }
 
 function arrayBufferToBase64(buffer) {

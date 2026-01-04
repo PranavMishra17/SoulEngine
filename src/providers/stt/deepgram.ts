@@ -16,6 +16,7 @@ const DEFAULT_SAMPLE_RATE = 16000;
 const DEFAULT_LANGUAGE = 'en';
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 1000;
+const KEEPALIVE_INTERVAL_MS = 5000; // Send keepalive every 5 seconds
 
 /**
  * Deepgram STT Session implementation
@@ -24,6 +25,7 @@ class DeepgramSession implements STTSession {
   private connection: ListenLiveClient | null = null;
   private _isConnected = false;
   private reconnectAttempts = 0;
+  private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
   private readonly events: STTSessionEvents;
   private readonly config: Required<STTSessionConfig>;
   private readonly providerConfig: STTProviderConfig;
@@ -51,8 +53,16 @@ class DeepgramSession implements STTSession {
   async connect(): Promise<void> {
     const startTime = Date.now();
 
+    logger.info({
+      model: this.providerConfig.model ?? DEFAULT_MODEL,
+      sampleRate: this.config.sampleRate,
+      language: this.config.language
+    }, 'DeepgramSession.connect: starting');
+
     try {
       const client = createClient(this.providerConfig.apiKey);
+
+      logger.debug('DeepgramSession.connect: client created, starting live connection');
 
       this.connection = client.listen.live({
         model: this.providerConfig.model ?? DEFAULT_MODEL,
@@ -61,50 +71,84 @@ class DeepgramSession implements STTSession {
         sample_rate: this.config.sampleRate,
         language: this.config.language,
         interim_results: this.config.interimResults,
+        // Keep connection alive during silence (prevents idle timeout)
+        keep_alive: true,
       });
 
       this.setupEventHandlers();
+
+      logger.debug('DeepgramSession.connect: waiting for WebSocket open');
 
       // Wait for connection to open
       await this.waitForOpen();
 
       const duration = Date.now() - startTime;
-      logger.info({ duration, model: this.providerConfig.model ?? DEFAULT_MODEL }, 'Deepgram session connected');
+      logger.info({
+        duration,
+        model: this.providerConfig.model ?? DEFAULT_MODEL
+      }, 'DeepgramSession.connect: success');
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ duration, error: errorMessage }, 'Failed to connect Deepgram session');
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      logger.error({
+        duration,
+        error: errorMessage,
+        stack: errorStack
+      }, 'DeepgramSession.connect: failed');
+
       throw new DeepgramConnectionError(errorMessage);
     }
   }
 
   private setupEventHandlers(): void {
-    if (!this.connection) return;
+    if (!this.connection) {
+      logger.warn('DeepgramSession.setupEventHandlers: no connection');
+      return;
+    }
+
+    logger.debug('DeepgramSession.setupEventHandlers: setting up handlers');
 
     this.connection.on(LiveTranscriptionEvents.Open, () => {
       this._isConnected = true;
       this.reconnectAttempts = 0;
-      logger.debug('Deepgram connection opened');
+      logger.info('DeepgramSession: connection OPEN');
+
+      // Start keepalive interval to prevent idle timeout
+      this.startKeepalive();
+
       this.events.onOpen?.();
     });
 
     this.connection.on(LiveTranscriptionEvents.Transcript, (data) => {
+      logger.debug({
+        hasChannel: !!(data as Record<string, unknown>)?.channel,
+        isFinal: (data as Record<string, unknown>)?.is_final,
+        speechFinal: (data as Record<string, unknown>)?.speech_final
+      }, 'DeepgramSession: transcript event received');
+
       try {
         const transcript = this.parseTranscript(data);
         if (transcript) {
+          logger.debug({
+            text: transcript.text.slice(0, 30),
+            isFinal: transcript.isFinal
+          }, 'DeepgramSession: parsed transcript');
           this.events.onTranscript(transcript);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error({ error: errorMessage }, 'Error parsing Deepgram transcript');
+        logger.error({ error: errorMessage }, 'DeepgramSession: error parsing transcript');
       }
     });
 
     this.connection.on(LiveTranscriptionEvents.Error, (error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error({ error: errorMessage }, 'Deepgram transcription error');
+      logger.error({ error: errorMessage }, 'DeepgramSession: transcription error');
 
       if (this.shouldReconnect(errorMessage)) {
+        logger.info('DeepgramSession: attempting reconnect');
         this.attemptReconnect();
       } else {
         this.events.onError(new DeepgramError(errorMessage));
@@ -113,9 +157,48 @@ class DeepgramSession implements STTSession {
 
     this.connection.on(LiveTranscriptionEvents.Close, () => {
       this._isConnected = false;
-      logger.debug('Deepgram connection closed');
-      this.events.onClose();
+      this.stopKeepalive();
+      logger.info('DeepgramSession: connection CLOSE');
+
+      // Attempt reconnect on unexpected close
+      if (this.shouldReconnect('connection closed')) {
+        logger.info('DeepgramSession: attempting reconnect after close');
+        this.attemptReconnect();
+      } else {
+        this.events.onClose();
+      }
     });
+  }
+
+  /**
+   * Start sending keepalive messages to prevent idle timeout
+   */
+  private startKeepalive(): void {
+    this.stopKeepalive(); // Clear any existing interval
+
+    this.keepaliveInterval = setInterval(() => {
+      if (this.connection && this._isConnected) {
+        try {
+          this.connection.keepAlive();
+          logger.debug('DeepgramSession: keepalive sent');
+        } catch (error) {
+          logger.warn('DeepgramSession: failed to send keepalive');
+        }
+      }
+    }, KEEPALIVE_INTERVAL_MS);
+
+    logger.debug('DeepgramSession: keepalive interval started');
+  }
+
+  /**
+   * Stop the keepalive interval
+   */
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+      logger.debug('DeepgramSession: keepalive interval stopped');
+    }
   }
 
   private parseTranscript(data: unknown): TranscriptEvent | null {
@@ -246,26 +329,27 @@ class DeepgramSession implements STTSession {
   }
 
   finalize(): void {
-    if (!this.connection) return;
-
-    try {
-      // Request final transcription before closing
-      this.connection.requestClose();
-      logger.debug('Deepgram finalize requested');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ error: errorMessage }, 'Error finalizing Deepgram session');
-    }
+    // For continuous conversation, we do NOT close the connection on finalize.
+    // Deepgram will send final transcripts based on speech_final detection.
+    // The connection stays open for the next utterance.
+    // Only close() should actually terminate the connection.
+    logger.debug('Deepgram finalize called (no-op for continuous mode)');
   }
 
   close(): void {
+    // Stop keepalive first
+    this.stopKeepalive();
+
+    // Reset reconnect attempts to prevent auto-reconnect on intentional close
+    this.reconnectAttempts = MAX_RECONNECT_ATTEMPTS;
+
     if (!this.connection) return;
 
     try {
       this._isConnected = false;
       this.connection.requestClose();
       this.connection = null;
-      logger.debug('Deepgram session closed');
+      logger.info('Deepgram session closed');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ error: errorMessage }, 'Error closing Deepgram session');
