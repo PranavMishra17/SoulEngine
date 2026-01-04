@@ -223,10 +223,10 @@ class DeepgramSession implements STTSession {
       return null;
     }
 
-    // is_final: true means this transcript chunk is final for its audio segment
-    // speech_final: true means the speaker has finished their utterance
-    // We treat either as a signal to process the transcript
-    const isFinal = transcriptData.is_final === true || transcriptData.speech_final === true;
+    // is_final: true means this transcript chunk is final for its audio segment (can fire multiple times)
+    // speech_final: true means the speaker has finished their complete utterance (fires once per turn)
+    // ONLY use speech_final to trigger processing - using OR causes duplicate LLM calls and overlapping audio
+    const isFinal = transcriptData.speech_final === true;
 
     logger.debug(
       {

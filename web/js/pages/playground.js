@@ -691,6 +691,9 @@ function queueAudioChunk(base64Data) {
   // Queue the buffer
   audioQueue.push(audioBuffer);
 
+  const durationMs = (audioData.length / sampleRate) * 1000;
+  console.log(`[Audio] Queued: ${audioData.length} samples (${durationMs.toFixed(0)}ms), queue: ${audioQueue.length}`);
+
   // Start playback if not already playing
   if (!isPlayingAudio) {
     playNextInQueue();
@@ -703,11 +706,14 @@ function queueAudioChunk(base64Data) {
 function playNextInQueue() {
   if (audioQueue.length === 0) {
     isPlayingAudio = false;
+    console.log('[Audio] Queue empty, playback stopped');
     return;
   }
 
   isPlayingAudio = true;
   const buffer = audioQueue.shift();
+  const durationMs = (buffer.length / buffer.sampleRate) * 1000;
+  console.log(`[Audio] Playing: ${buffer.length} samples (${durationMs.toFixed(0)}ms), remaining: ${audioQueue.length}`);
 
   const source = audioContext.createBufferSource();
   source.buffer = buffer;

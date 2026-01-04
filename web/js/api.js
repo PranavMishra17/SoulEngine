@@ -212,7 +212,7 @@ export class VoiceClient {
   connect() {
     return new Promise((resolve, reject) => {
       // Prevent duplicate connections
-      if (this.connectionState === 'connecting' || this.connectionState === 'connected') {
+      if (this.connectionState === 'connecting' || this.connectionState === 'initializing' || this.connectionState === 'ready') {
         console.warn('[VoiceClient] Already connecting/connected, state:', this.connectionState);
         return resolve();
       }
@@ -234,7 +234,8 @@ export class VoiceClient {
 
       this.ws.onopen = () => {
         console.log('[VoiceClient] WebSocket OPEN');
-        this.connectionState = 'connected';
+        // Don't set 'connected' yet - wait for 'ready' message from server
+        this.connectionState = 'initializing';
         this.send({ type: 'init', session_id: this.sessionId });
       };
 
@@ -261,9 +262,10 @@ export class VoiceClient {
 
   /**
    * Check if the client is ready to send/receive
+   * Only returns true after server sends 'ready' message (pipeline initialized)
    */
   isReady() {
-    return this.connectionState === 'connected' &&
+    return this.connectionState === 'ready' &&
            this.ws &&
            this.ws.readyState === WebSocket.OPEN;
   }
@@ -271,6 +273,9 @@ export class VoiceClient {
   handleMessage(message, resolveConnect, rejectConnect) {
     switch (message.type) {
       case 'ready':
+        // Pipeline is now ready - safe to send audio
+        this.connectionState = 'ready';
+        console.log('[VoiceClient] Pipeline ready, state:', this.connectionState);
         resolveConnect(message);
         this.callbacks.onReady(message);
         break;

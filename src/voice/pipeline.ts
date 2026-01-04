@@ -98,6 +98,11 @@ export class VoicePipeline {
   private accumulatedTranscript: string = '';
   private isActive: boolean = false;
 
+  // Deduplication: prevent processing same transcript twice
+  private lastProcessedTimestamp: number = 0;
+  private lastProcessedText: string = '';
+  private static readonly DEDUP_WINDOW_MS = 1000; // Ignore duplicate transcripts within 1 second
+
   constructor(config: VoicePipelineConfig) {
     this.sessionId = config.sessionId;
     this.sttProvider = config.sttProvider;
@@ -360,6 +365,25 @@ export class VoicePipeline {
     this.events.onTranscript(event.text, event.isFinal);
 
     if (event.isFinal) {
+      // Deduplication: check if this is a duplicate of the last processed transcript
+      const now = Date.now();
+      const timeSinceLast = now - this.lastProcessedTimestamp;
+      const textSimilar = this.isSimilarText(event.text, this.lastProcessedText);
+
+      if (timeSinceLast < VoicePipeline.DEDUP_WINDOW_MS && textSimilar) {
+        logger.warn({
+          sessionId: this.sessionId,
+          timeSinceLast,
+          newText: event.text.slice(0, 30),
+          lastText: this.lastProcessedText.slice(0, 30)
+        }, 'Duplicate transcript detected, skipping');
+        return;
+      }
+
+      // Update deduplication state
+      this.lastProcessedTimestamp = now;
+      this.lastProcessedText = event.text;
+
       // Process final transcript
       this.processTranscript(event).catch((error) => {
         const message = error instanceof Error ? error.message : 'Unknown error';
@@ -370,6 +394,32 @@ export class VoicePipeline {
       // Accumulate interim transcript
       this.accumulatedTranscript = event.text;
     }
+  }
+
+  /**
+   * Check if two texts are similar (for deduplication)
+   */
+  private isSimilarText(text1: string, text2: string): boolean {
+    if (!text1 || !text2) return false;
+
+    const t1 = text1.toLowerCase().trim();
+    const t2 = text2.toLowerCase().trim();
+
+    // Exact match
+    if (t1 === t2) return true;
+
+    // One is a substring of the other (common with Deepgram partial vs final)
+    if (t1.includes(t2) || t2.includes(t1)) return true;
+
+    // Calculate similarity ratio (Jaccard-like: shared words / total words)
+    const words1 = new Set(t1.split(/\s+/));
+    const words2 = new Set(t2.split(/\s+/));
+    const intersection = [...words1].filter(w => words2.has(w)).length;
+    const union = new Set([...words1, ...words2]).size;
+    const similarity = union > 0 ? intersection / union : 0;
+
+    // Consider similar if >70% word overlap
+    return similarity > 0.7;
   }
 
   /**
