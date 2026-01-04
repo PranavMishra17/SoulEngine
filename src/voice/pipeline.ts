@@ -278,6 +278,27 @@ export class VoicePipeline {
       this.sttSession.finalize();
     }
 
+    // If we have accumulated interim transcript, add it to aggregator for proper handling
+    // This prevents double-processing when STT's speech_final comes in after VAD commit
+    if (this.accumulatedTranscript.trim()) {
+      const text = this.accumulatedTranscript.trim();
+      this.accumulatedTranscript = '';
+
+      // Add to aggregator if not already there (prevents duplicates)
+      if (!this.transcriptAggregator.text.includes(text)) {
+        if (this.transcriptAggregator.text) {
+          this.transcriptAggregator.text += ' ' + text;
+        } else {
+          this.transcriptAggregator.text = text;
+        }
+        logger.debug({
+          sessionId: this.sessionId,
+          addedLength: text.length,
+          totalLength: this.transcriptAggregator.text.length
+        }, 'Commit: added interim to aggregator');
+      }
+    }
+
     // Flush any pending aggregated transcript immediately (don't wait for timer)
     if (this.transcriptAggregator.text.trim()) {
       logger.info({
@@ -292,29 +313,7 @@ export class VoicePipeline {
       return;
     }
 
-    // Only use fallback if we have accumulated text AND no recent final was processed
-    // This prevents double-processing when STT's speech_final already handled it
-    const timeSinceLastProcess = Date.now() - this.lastProcessedTimestamp;
-    const hasStaleAccumulated = this.accumulatedTranscript.trim().length > 0
-                              && timeSinceLastProcess > 500; // 500ms grace period
-
-    if (hasStaleAccumulated) {
-      logger.info({
-        sessionId: this.sessionId,
-        textLength: this.accumulatedTranscript.length,
-        timeSinceLastProcess
-      }, 'Using commit fallback for stale accumulated transcript');
-
-      const event: TranscriptEvent = {
-        text: this.accumulatedTranscript,
-        isFinal: true,
-        timestamp: Date.now(),
-      };
-      this.accumulatedTranscript = '';
-      this.processTranscriptWithLock(event);
-    } else {
-      logger.debug({ sessionId: this.sessionId }, 'Commit called - STT finalize sent');
-    }
+    logger.debug({ sessionId: this.sessionId }, 'Commit called - STT finalize sent');
   }
 
   /**
