@@ -100,8 +100,20 @@ export class VoicePipeline {
 
   // Deduplication: prevent processing same transcript twice
   private lastProcessedTimestamp: number = 0;
-  private lastProcessedText: string = '';
+  private lastProcessedHash: string = '';
   private static readonly DEDUP_WINDOW_MS = 1000; // Ignore duplicate transcripts within 1 second
+
+  // Processing lock: prevent concurrent transcript processing
+  private isProcessingTranscript: boolean = false;
+  private pendingTranscript: TranscriptEvent | null = null;
+
+  // Transcript aggregation: combine fragmented speech into complete utterances
+  private transcriptAggregator: {
+    text: string;
+    timer: NodeJS.Timeout | null;
+    lastTimestamp: number;
+  } = { text: '', timer: null, lastTimestamp: 0 };
+  private static readonly AGGREGATION_WINDOW_MS = 1500; // Wait 1.5s after last speech_final
 
   constructor(config: VoicePipelineConfig) {
     this.sessionId = config.sessionId;
@@ -266,20 +278,42 @@ export class VoicePipeline {
       this.sttSession.finalize();
     }
 
-    // If we have accumulated transcript but haven't processed yet,
-    // treat it as final
-    if (this.accumulatedTranscript.trim().length > 0) {
+    // Flush any pending aggregated transcript immediately (don't wait for timer)
+    if (this.transcriptAggregator.text.trim()) {
+      logger.info({
+        sessionId: this.sessionId,
+        textLength: this.transcriptAggregator.text.length
+      }, 'Commit: flushing aggregated transcript');
+
+      if (this.transcriptAggregator.timer) {
+        clearTimeout(this.transcriptAggregator.timer);
+      }
+      this.processAggregatedTranscript();
+      return;
+    }
+
+    // Only use fallback if we have accumulated text AND no recent final was processed
+    // This prevents double-processing when STT's speech_final already handled it
+    const timeSinceLastProcess = Date.now() - this.lastProcessedTimestamp;
+    const hasStaleAccumulated = this.accumulatedTranscript.trim().length > 0
+                              && timeSinceLastProcess > 500; // 500ms grace period
+
+    if (hasStaleAccumulated) {
+      logger.info({
+        sessionId: this.sessionId,
+        textLength: this.accumulatedTranscript.length,
+        timeSinceLastProcess
+      }, 'Using commit fallback for stale accumulated transcript');
+
       const event: TranscriptEvent = {
         text: this.accumulatedTranscript,
         isFinal: true,
         timestamp: Date.now(),
       };
       this.accumulatedTranscript = '';
-      this.processTranscript(event).catch((error) => {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.error({ sessionId: this.sessionId, error: message }, 'Failed to process committed transcript');
-        this.events.onError('PROCESSING_ERROR', message);
-      });
+      this.processTranscriptWithLock(event);
+    } else {
+      logger.debug({ sessionId: this.sessionId }, 'Commit called - STT finalize sent');
     }
   }
 
@@ -288,6 +322,13 @@ export class VoicePipeline {
    */
   async handleInterruption(): Promise<void> {
     logger.info({ sessionId: this.sessionId }, 'Handling interruption');
+
+    // Clear transcript aggregator to prevent processing partial speech
+    if (this.transcriptAggregator.timer) {
+      clearTimeout(this.transcriptAggregator.timer);
+    }
+    this.transcriptAggregator.text = '';
+    this.transcriptAggregator.timer = null;
 
     if (this.turnState?.isProcessing) {
       // Abort LLM generation
@@ -312,6 +353,13 @@ export class VoicePipeline {
     logger.info({ sessionId: this.sessionId }, 'Ending voice pipeline');
 
     this.isActive = false;
+
+    // Clear aggregator timer
+    if (this.transcriptAggregator.timer) {
+      clearTimeout(this.transcriptAggregator.timer);
+      this.transcriptAggregator.timer = null;
+    }
+    this.transcriptAggregator.text = '';
 
     // Abort any ongoing generation
     if (this.turnState?.isProcessing) {
@@ -365,31 +413,13 @@ export class VoicePipeline {
     this.events.onTranscript(event.text, event.isFinal);
 
     if (event.isFinal) {
-      // Deduplication: check if this is a duplicate of the last processed transcript
-      const now = Date.now();
-      const timeSinceLast = now - this.lastProcessedTimestamp;
-      const textSimilar = this.isSimilarText(event.text, this.lastProcessedText);
+      // CRITICAL: Clear accumulated transcript since STT provided final
+      // This prevents commit() from re-processing the same text
+      this.accumulatedTranscript = '';
 
-      if (timeSinceLast < VoicePipeline.DEDUP_WINDOW_MS && textSimilar) {
-        logger.warn({
-          sessionId: this.sessionId,
-          timeSinceLast,
-          newText: event.text.slice(0, 30),
-          lastText: this.lastProcessedText.slice(0, 30)
-        }, 'Duplicate transcript detected, skipping');
-        return;
-      }
-
-      // Update deduplication state
-      this.lastProcessedTimestamp = now;
-      this.lastProcessedText = event.text;
-
-      // Process final transcript
-      this.processTranscript(event).catch((error) => {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.error({ sessionId: this.sessionId, error: message }, 'Failed to process transcript');
-        this.events.onError('PROCESSING_ERROR', message);
-      });
+      // Aggregate transcripts instead of immediate processing
+      // This handles fragmented speech (brief pauses causing multiple speech_final events)
+      this.aggregateTranscript(event);
     } else {
       // Accumulate interim transcript
       this.accumulatedTranscript = event.text;
@@ -397,30 +427,81 @@ export class VoicePipeline {
   }
 
   /**
-   * Check if two texts are similar (for deduplication)
+   * Aggregate transcript chunks with a debounce window
+   * This combines fragmented speech into complete utterances
    */
-  private isSimilarText(text1: string, text2: string): boolean {
-    if (!text1 || !text2) return false;
+  private aggregateTranscript(event: TranscriptEvent): void {
+    const text = event.text.trim();
+    if (!text) return;
 
-    const t1 = text1.toLowerCase().trim();
-    const t2 = text2.toLowerCase().trim();
+    // Clear existing timer
+    if (this.transcriptAggregator.timer) {
+      clearTimeout(this.transcriptAggregator.timer);
+    }
 
-    // Exact match
-    if (t1 === t2) return true;
+    // Append to aggregated text (with space if needed)
+    if (this.transcriptAggregator.text) {
+      this.transcriptAggregator.text += ' ' + text;
+    } else {
+      this.transcriptAggregator.text = text;
+    }
+    this.transcriptAggregator.lastTimestamp = Date.now();
 
-    // One is a substring of the other (common with Deepgram partial vs final)
-    if (t1.includes(t2) || t2.includes(t1)) return true;
+    logger.debug({
+      sessionId: this.sessionId,
+      aggregatedLength: this.transcriptAggregator.text.length,
+      latestChunk: text.slice(0, 30)
+    }, 'Transcript aggregated, waiting for more');
 
-    // Calculate similarity ratio (Jaccard-like: shared words / total words)
-    const words1 = new Set(t1.split(/\s+/));
-    const words2 = new Set(t2.split(/\s+/));
-    const intersection = [...words1].filter(w => words2.has(w)).length;
-    const union = new Set([...words1, ...words2]).size;
-    const similarity = union > 0 ? intersection / union : 0;
-
-    // Consider similar if >70% word overlap
-    return similarity > 0.7;
+    // Set timer to process after window expires
+    this.transcriptAggregator.timer = setTimeout(() => {
+      this.processAggregatedTranscript();
+    }, VoicePipeline.AGGREGATION_WINDOW_MS);
   }
+
+  /**
+   * Process the aggregated transcript after the debounce window
+   */
+  private processAggregatedTranscript(): void {
+    const aggregatedText = this.transcriptAggregator.text.trim();
+
+    // Reset aggregator
+    this.transcriptAggregator.text = '';
+    this.transcriptAggregator.timer = null;
+
+    if (!aggregatedText) return;
+
+    logger.info({
+      sessionId: this.sessionId,
+      textLength: aggregatedText.length,
+      text: aggregatedText.slice(0, 50)
+    }, 'Processing aggregated transcript');
+
+    // Deduplication check
+    const hash = aggregatedText.toLowerCase().trim();
+    const now = Date.now();
+    const timeSinceLast = now - this.lastProcessedTimestamp;
+
+    if (timeSinceLast < VoicePipeline.DEDUP_WINDOW_MS && hash === this.lastProcessedHash) {
+      logger.warn({ sessionId: this.sessionId }, 'Duplicate aggregated transcript, skipping');
+      return;
+    }
+
+    // Update deduplication state
+    this.lastProcessedTimestamp = now;
+    this.lastProcessedHash = hash;
+
+    // Create synthetic event with combined text
+    const event: TranscriptEvent = {
+      text: aggregatedText,
+      isFinal: true,
+      timestamp: now,
+    };
+
+    // Process with lock
+    this.processTranscriptWithLock(event);
+  }
+
 
   /**
    * Handle STT errors
@@ -453,6 +534,38 @@ export class VoicePipeline {
     logger.error({ sessionId: this.sessionId, error: error.message }, 'TTS error');
     // TTS errors are not fatal - we can fall back to text-only
     this.events.onError('TTS_ERROR', error.message);
+  }
+
+  /**
+   * Process transcript with lock to prevent concurrent processing
+   * This ensures only one transcript is processed at a time
+   */
+  private processTranscriptWithLock(event: TranscriptEvent): void {
+    // If already processing, queue this one (only keep latest)
+    if (this.isProcessingTranscript) {
+      logger.debug({ sessionId: this.sessionId }, 'Transcript queued - already processing');
+      this.pendingTranscript = event;
+      return;
+    }
+
+    this.isProcessingTranscript = true;
+
+    this.processTranscript(event)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error({ sessionId: this.sessionId, error: message }, 'Failed to process transcript');
+        this.events.onError('PROCESSING_ERROR', message);
+      })
+      .finally(() => {
+        this.isProcessingTranscript = false;
+
+        // Process queued transcript if any
+        if (this.pendingTranscript) {
+          const pending = this.pendingTranscript;
+          this.pendingTranscript = null;
+          this.processTranscriptWithLock(pending);
+        }
+      });
   }
 
   /**

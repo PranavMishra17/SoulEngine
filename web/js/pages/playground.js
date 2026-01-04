@@ -2,13 +2,14 @@
  * Testing Playground Page Handler
  */
 
-import { npcs, session, conversation, VoiceClient } from '../api.js';
-import { toast, renderTemplate, updateNav, getMoodEmoji, getMoodLabel } from '../components.js';
+import { npcs, session, conversation, cycles, VoiceClient } from '../api.js';
+import { toast, renderTemplate, updateNav, getMoodEmoji, getMoodLabel, modal } from '../components.js';
 import { router } from '../router.js';
 
 let currentProjectId = null;
 let currentNpcId = null;
 let currentSessionId = null;
+let currentInstanceId = null; // For cycles - stored after session or fetched
 let currentMode = 'text';
 let voiceClient = null;
 let isVoiceActive = false;
@@ -21,6 +22,7 @@ let audioContext = null;
 let audioQueue = [];
 let isPlayingAudio = false;
 let currentVoiceConfig = null; // Stores sample rate from server
+let currentAudioSource = null; // Track current playing source for interruption
 
 // VAD state for UI updates
 const vadState = {
@@ -86,12 +88,16 @@ function bindEventHandlers() {
   document.getElementById('npc-select')?.addEventListener('change', async (e) => {
     currentNpcId = e.target.value || null;
     const infoPanel = document.getElementById('npc-info-panel');
+    const cyclesPanel = document.getElementById('cycles-panel');
 
     if (currentNpcId) {
       infoPanel.style.display = 'block';
+      cyclesPanel.style.display = 'block';
       await loadNpcInfo(currentNpcId);
+      updateCyclesPanel(); // Enable/disable based on session state
     } else {
       infoPanel.style.display = 'none';
+      cyclesPanel.style.display = 'none';
     }
   });
 
@@ -135,6 +141,17 @@ function bindEventHandlers() {
   document.getElementById('btn-toggle-xray')?.addEventListener('click', () => {
     document.getElementById('xray-panel')?.classList.toggle('collapsed');
   });
+
+  // Memory Cycles buttons
+  document.getElementById('btn-daily-pulse')?.addEventListener('click', () => handleCycle('daily-pulse'));
+  document.getElementById('btn-weekly-whisper')?.addEventListener('click', () => handleCycle('weekly-whisper'));
+  document.getElementById('btn-persona-shift')?.addEventListener('click', () => handleCycle('persona-shift'));
+
+  // Cycles info modal
+  document.getElementById('btn-cycles-info')?.addEventListener('click', showCyclesInfoModal);
+
+  // Mind viewer
+  document.getElementById('btn-view-mind')?.addEventListener('click', showMindViewer);
 }
 
 async function loadNpcInfo(npcId) {
@@ -198,6 +215,9 @@ async function handleStartSession() {
       await connectVoice();
     }
 
+    // Update cycles panel (disable during session)
+    updateCyclesPanel();
+
     toast.success('Session Started', `Connected to ${result.npc_name}`);
   } catch (error) {
     toast.error('Failed to Start Session', error.message);
@@ -237,6 +257,10 @@ async function handleEndSession() {
     addChatMessage('system', 'Session ended. State has been saved.');
 
     currentSessionId = null;
+
+    // Update cycles panel (enable after session ends)
+    updateCyclesPanel();
+
     toast.success('Session Ended', 'Conversation has been saved.');
   } catch (error) {
     toast.error('Failed to End Session', error.message);
@@ -706,6 +730,7 @@ function queueAudioChunk(base64Data) {
 function playNextInQueue() {
   if (audioQueue.length === 0) {
     isPlayingAudio = false;
+    currentAudioSource = null;
     console.log('[Audio] Queue empty, playback stopped');
     return;
   }
@@ -719,7 +744,13 @@ function playNextInQueue() {
   source.buffer = buffer;
   source.connect(audioContext.destination);
 
+  // Track current source for interruption
+  currentAudioSource = source;
+
   source.onended = () => {
+    if (currentAudioSource === source) {
+      currentAudioSource = null;
+    }
     playNextInQueue();
   };
 
@@ -730,13 +761,27 @@ function playNextInQueue() {
  * Stop all audio playback
  */
 function stopAudioPlayback() {
+  // Stop current playing source immediately
+  if (currentAudioSource) {
+    try {
+      currentAudioSource.stop();
+    } catch (e) {
+      // Already stopped
+    }
+    currentAudioSource = null;
+  }
+
+  // Clear queue
   audioQueue = [];
   isPlayingAudio = false;
+
+  // Close audio context
   if (audioContext && audioContext.state !== 'closed') {
-    // Create new context to stop all sounds
     audioContext.close();
     audioContext = null;
   }
+
+  console.log('[Audio] Playback interrupted and queue cleared');
 }
 
 function arrayBufferToBase64(buffer) {
@@ -849,6 +894,330 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text || '';
   return div.innerHTML;
+}
+
+// ========================================
+// Memory Cycles & Mind Viewer Functions
+// ========================================
+
+/**
+ * Update cycles panel - enable/disable buttons based on session state
+ */
+function updateCyclesPanel() {
+  const hasSession = !!currentSessionId;
+  const hasNpc = !!currentNpcId;
+
+  // Cycles only work when NO active session
+  const cyclesEnabled = hasNpc && !hasSession;
+
+  document.getElementById('btn-daily-pulse').disabled = !cyclesEnabled;
+  document.getElementById('btn-weekly-whisper').disabled = !cyclesEnabled;
+  document.getElementById('btn-persona-shift').disabled = !cyclesEnabled;
+  document.getElementById('btn-view-mind').disabled = !hasNpc;
+
+  // Update hint text
+  const hint = document.querySelector('.cycles-hint');
+  if (hint) {
+    hint.textContent = hasSession
+      ? 'End session to run cycles'
+      : 'Run between sessions only';
+  }
+}
+
+/**
+ * Handle running a memory cycle
+ */
+async function handleCycle(cycleType) {
+  if (!currentNpcId || !currentProjectId) {
+    toast.warning('No NPC Selected', 'Please select an NPC first.');
+    return;
+  }
+
+  if (currentSessionId) {
+    toast.warning('Session Active', 'End the current session before running memory cycles.');
+    return;
+  }
+
+  const playerId = document.getElementById('player-id')?.value || 'test-player';
+  const btn = document.getElementById(`btn-${cycleType}`);
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  try {
+    // Get or create instance first
+    const instance = await session.getInstance(currentProjectId, currentNpcId, playerId);
+    currentInstanceId = instance.id;
+
+    let result;
+    switch (cycleType) {
+      case 'daily-pulse':
+        result = await cycles.dailyPulse(instance.id);
+        toast.success('Daily Pulse Complete', `Mood updated: ${getMoodLabel(result.new_mood?.valence, result.new_mood?.arousal, result.new_mood?.dominance)}`);
+        break;
+      case 'weekly-whisper':
+        result = await cycles.weeklyWhisper(instance.id);
+        toast.success('Weekly Whisper Complete', `Consolidated ${result.consolidated_count || 0} memories`);
+        break;
+      case 'persona-shift':
+        result = await cycles.personaShift(instance.id);
+        toast.success('Persona Shift Complete', 'Traits have been adjusted based on experiences');
+        break;
+    }
+
+    console.log(`[Playground] ${cycleType} result:`, result);
+  } catch (error) {
+    console.error(`[Playground] ${cycleType} error:`, error);
+    toast.error('Cycle Failed', error.message);
+  } finally {
+    btn.classList.remove('loading');
+    updateCyclesPanel();
+  }
+}
+
+/**
+ * Show cycles info modal
+ */
+function showCyclesInfoModal() {
+  const content = `
+    <div class="cycles-info-content">
+      <p>Memory Cycles permanently modify NPC state. Run these between sessions, not during active conversations.</p>
+
+      <div class="cycles-info-list">
+        <div class="cycles-info-item">
+          <span class="cycles-info-icon">◑</span>
+          <div class="cycles-info-text">
+            <h4>Daily Pulse</h4>
+            <p>Captures mood baseline and a single-sentence takeaway from recent interactions. Updates the NPC's emotional state.</p>
+          </div>
+        </div>
+
+        <div class="cycles-info-item">
+          <span class="cycles-info-icon">◔</span>
+          <div class="cycles-info-text">
+            <h4>Weekly Whisper</h4>
+            <p>Consolidates short-term memories into long-term storage. Prunes low-salience memories to keep the NPC's mind focused.</p>
+          </div>
+        </div>
+
+        <div class="cycles-info-item">
+          <span class="cycles-info-icon">◇</span>
+          <div class="cycles-info-text">
+            <h4>Persona Shift</h4>
+            <p>Recalibrates personality traits based on accumulated experiences. Can modify relationships and behavioral tendencies.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.open({ title: 'Memory Cycles', content });
+}
+
+/**
+ * Show NPC Mind Viewer modal
+ */
+async function showMindViewer() {
+  if (!currentNpcId || !currentProjectId) {
+    toast.warning('No NPC Selected', 'Please select an NPC first.');
+    return;
+  }
+
+  const playerId = document.getElementById('player-id')?.value || 'test-player';
+
+  try {
+    const instance = await session.getInstance(currentProjectId, currentNpcId, playerId);
+    currentInstanceId = instance.id;
+
+    const content = renderMindViewerContent(instance);
+    modal.open({ title: 'NPC Mind Viewer', content, large: true });
+  } catch (error) {
+    console.error('[Playground] Mind viewer error:', error);
+    toast.error('Failed to Load', error.message);
+  }
+}
+
+/**
+ * Render mind viewer modal content
+ */
+function renderMindViewerContent(instance) {
+  const mood = instance.current_mood || { valence: 0.5, arousal: 0.5, dominance: 0.5 };
+  const traitMods = instance.trait_modifiers || {};
+  const shortMem = instance.short_term_memory || [];
+  const longMem = instance.long_term_memory || [];
+  const relationships = instance.relationships || {};
+  const cycleMeta = instance.cycle_metadata || {};
+
+  // Mood section
+  const moodHtml = `
+    <div class="mind-section">
+      <h4><span class="icon">◐</span> Current Mood</h4>
+      <div class="mood-bars">
+        <div class="mood-bar">
+          <span class="mood-bar-label">Valence</span>
+          <div class="mood-bar-track">
+            <div class="mood-bar-fill valence" style="width: ${mood.valence * 100}%"></div>
+          </div>
+          <span class="mood-bar-value">${mood.valence.toFixed(2)}</span>
+        </div>
+        <div class="mood-bar">
+          <span class="mood-bar-label">Arousal</span>
+          <div class="mood-bar-track">
+            <div class="mood-bar-fill arousal" style="width: ${mood.arousal * 100}%"></div>
+          </div>
+          <span class="mood-bar-value">${mood.arousal.toFixed(2)}</span>
+        </div>
+        <div class="mood-bar">
+          <span class="mood-bar-label">Dominance</span>
+          <div class="mood-bar-track">
+            <div class="mood-bar-fill dominance" style="width: ${mood.dominance * 100}%"></div>
+          </div>
+          <span class="mood-bar-value">${mood.dominance.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Trait modifiers section
+  const traitModsEntries = Object.entries(traitMods);
+  const traitModsHtml = `
+    <div class="mind-section">
+      <h4><span class="icon">◈</span> Trait Modifiers</h4>
+      ${traitModsEntries.length > 0 ? `
+        <div class="trait-modifiers-list">
+          ${traitModsEntries.map(([trait, value]) => `
+            <span class="trait-modifier ${value >= 0 ? 'positive' : 'negative'}">
+              ${trait}: ${value >= 0 ? '+' : ''}${value.toFixed(2)}
+            </span>
+          `).join('')}
+        </div>
+      ` : '<p class="trait-modifier-empty">No active modifiers</p>'}
+    </div>
+  `;
+
+  // Short-term memory section
+  const shortMemHtml = `
+    <div class="mind-section">
+      <h4><span class="icon">◔</span> Short-Term Memory (${shortMem.length})</h4>
+      ${shortMem.length > 0 ? `
+        <div class="memory-list">
+          ${shortMem.slice(0, 5).map(mem => `
+            <div class="memory-item">
+              <div class="memory-item-content">${escapeHtml(mem.content)}</div>
+              <div class="memory-item-meta">
+                <span>${formatTimestamp(mem.timestamp)}</span>
+                <span class="memory-item-salience">
+                  Salience:
+                  <span class="salience-bar">
+                    <span class="salience-fill" style="width: ${(mem.salience || 0.5) * 100}%"></span>
+                  </span>
+                </span>
+              </div>
+            </div>
+          `).join('')}
+          ${shortMem.length > 5 ? `<p class="memory-empty">+ ${shortMem.length - 5} more...</p>` : ''}
+        </div>
+      ` : '<p class="memory-empty">No short-term memories</p>'}
+    </div>
+  `;
+
+  // Long-term memory section
+  const longMemHtml = `
+    <div class="mind-section">
+      <h4><span class="icon">◑</span> Long-Term Memory (${longMem.length})</h4>
+      ${longMem.length > 0 ? `
+        <div class="memory-list">
+          ${longMem.slice(0, 5).map(mem => `
+            <div class="memory-item">
+              <div class="memory-item-content">${escapeHtml(mem.content)}</div>
+              <div class="memory-item-meta">
+                <span>${formatTimestamp(mem.timestamp)}</span>
+                <span class="memory-item-salience">
+                  Salience:
+                  <span class="salience-bar">
+                    <span class="salience-fill" style="width: ${(mem.salience || 0.5) * 100}%"></span>
+                  </span>
+                </span>
+              </div>
+            </div>
+          `).join('')}
+          ${longMem.length > 5 ? `<p class="memory-empty">+ ${longMem.length - 5} more...</p>` : ''}
+        </div>
+      ` : '<p class="memory-empty">No long-term memories</p>'}
+    </div>
+  `;
+
+  // Relationships section
+  const relationshipEntries = Object.entries(relationships);
+  const relationshipsHtml = `
+    <div class="mind-section">
+      <h4><span class="icon">◇</span> Relationships (${relationshipEntries.length})</h4>
+      ${relationshipEntries.length > 0 ? `
+        <div class="relationships-list">
+          ${relationshipEntries.map(([entityId, rel]) => `
+            <div class="relationship-item">
+              <span class="relationship-name">${escapeHtml(entityId)}</span>
+              <div class="relationship-stats">
+                <span class="relationship-stat">
+                  <span class="relationship-stat-label">Trust:</span> ${(rel.trust || 0).toFixed(2)}
+                </span>
+                <span class="relationship-stat">
+                  <span class="relationship-stat-label">Familiarity:</span> ${(rel.familiarity || 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : '<p class="memory-empty">No relationships recorded</p>'}
+    </div>
+  `;
+
+  // Cycle metadata section
+  const cycleMetaHtml = `
+    <div class="mind-section">
+      <h4><span class="icon">◐</span> Cycle History</h4>
+      <div class="cycle-metadata-list">
+        <div class="cycle-meta-item">
+          <span class="cycle-meta-label">Last Daily Pulse</span>
+          <span class="cycle-meta-value ${!instance.daily_pulse ? 'never' : ''}">
+            ${instance.daily_pulse ? formatTimestamp(instance.daily_pulse.timestamp) : 'Never'}
+          </span>
+        </div>
+        <div class="cycle-meta-item">
+          <span class="cycle-meta-label">Last Weekly Whisper</span>
+          <span class="cycle-meta-value ${!cycleMeta.last_weekly ? 'never' : ''}">
+            ${cycleMeta.last_weekly ? formatTimestamp(cycleMeta.last_weekly) : 'Never'}
+          </span>
+        </div>
+        <div class="cycle-meta-item">
+          <span class="cycle-meta-label">Last Persona Shift</span>
+          <span class="cycle-meta-value ${!cycleMeta.last_persona_shift ? 'never' : ''}">
+            ${cycleMeta.last_persona_shift ? formatTimestamp(cycleMeta.last_persona_shift) : 'Never'}
+          </span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="mind-viewer-content">
+      ${moodHtml}
+      ${traitModsHtml}
+      ${shortMemHtml}
+      ${longMemHtml}
+      ${relationshipsHtml}
+      ${cycleMetaHtml}
+    </div>
+  `;
+}
+
+/**
+ * Format a timestamp for display
+ */
+function formatTimestamp(timestamp) {
+  if (!timestamp) return 'Unknown';
+  const date = new Date(timestamp);
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export default { initPlaygroundPage };

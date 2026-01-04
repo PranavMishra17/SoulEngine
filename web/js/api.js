@@ -142,6 +142,9 @@ export const session = {
   get: (sessionId) => request(`/session/${sessionId}`),
 
   getStats: () => request('/session/stats'),
+
+  getInstance: (projectId, npcId, playerId) =>
+    request(`/session/instance?project_id=${projectId}&npc_id=${npcId}&player_id=${playerId}`),
 };
 
 /**

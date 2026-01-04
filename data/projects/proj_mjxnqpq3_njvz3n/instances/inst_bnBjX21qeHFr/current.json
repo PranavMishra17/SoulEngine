@@ -9,13 +9,19 @@
     "arousal": 0.5,
     "dominance": 0.5
   },
-  "trait_modifiers": {},
+  "trait_modifiers": {
+    "openness": -0.08,
+    "extraversion": -0.08,
+    "agreeableness": -0.09,
+    "neuroticism": 0.08,
+    "conscientiousness": 0.02
+  },
   "short_term_memory": [
     {
-      "id": "mem_1767466107259_u6sj5b0",
-      "content": "I was met with harsh, unkind words from someone who showed little respect. It's disheartening when people speak that way, as I believe true worth and respect are earned through honest actions, not through such careless talk.",
-      "timestamp": "2026-01-03T18:48:27.259Z",
-      "salience": 0.4640775,
+      "id": "mem_1767547803908_c394kly",
+      "content": "Pranav came to me with unsettling talk of the towntry\" or pick a side without knowing the whole truth.",
+      "timestamp": "2026-01-04T17:30:03.908Z",
+      "salience": 0.7417499999999999,
       "type": "short_term"
     },
     {
@@ -24,13 +30,36 @@
       "timestamp": "2026-01-03T23:43:06.593Z",
       "salience": 0.5387004166666667,
       "type": "short_term"
+    },
+    {
+      "id": "mem_1767543851754_79nmr8e",
+      "content": "I was quite put off when someone repeatedly called me a name that wasn't mine, showing a clear lack of respect despite my corrections. Then they just said a strange word, leaving me confused and wondering how any honest interaction could begin this way.",
+      "timestamp": "2026-01-04T16:24:11.754Z",
+      "salience": 0.5300466666666667,
+      "type": "short_term"
     }
   ],
-  "long_term_memory": [],
+  "long_term_memory": [
+    {
+      "id": "mem_1767547803908_c394kly",
+      "content": "Pranav came to me with unsettling talk of the towntry\" or pick a side without knowing the whole truth.",
+      "timestamp": "2026-01-04T17:30:03.908Z",
+      "salience": 0.7417499999999999,
+      "type": "long_term"
+    }
+  ],
   "relationships": {},
-  "daily_pulse": null,
+  "daily_pulse": {
+    "mood": {
+      "valence": 0.5,
+      "arousal": 0.5,
+      "dominance": 0.5
+    },
+    "takeaway": "All this confusing talk and being misnamed just left me feeling adrift and unsure how to make sense of anything today.",
+    "timestamp": "2026-01-04T17:36:20.731Z"
+  },
   "cycle_metadata": {
-    "last_weekly": null,
-    "last_persona_shift": null
+    "last_weekly": "2026-01-04T17:36:15.745Z",
+    "last_persona_shift": "2026-01-04T17:36:32.824Z"
   }
 }

@@ -8,6 +8,8 @@ import {
   getSessionStats,
   SessionError,
 } from '../session/manager.js';
+import { getOrCreateInstance } from '../storage/instances.js';
+import { StorageNotFoundError } from '../storage/interface.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
 
 const logger = createLogger('routes-session');
@@ -111,6 +113,41 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ sessionId, error: errorMessage, duration }, 'Failed to end session');
       return c.json({ error: 'Failed to end session', details: errorMessage }, 500);
+    }
+  });
+
+  /**
+   * GET /api/session/instance - Get instance by project/npc/player
+   * Used by Mind Viewer and cycles to get instance state without active session
+   */
+  sessionRoutes.get('/instance', async (c) => {
+    const startTime = Date.now();
+    const projectId = c.req.query('project_id');
+    const npcId = c.req.query('npc_id');
+    const playerId = c.req.query('player_id');
+
+    if (!projectId || !npcId || !playerId) {
+      return c.json({ error: 'project_id, npc_id, and player_id query parameters are required' }, 400);
+    }
+
+    try {
+      const instance = await getOrCreateInstance(projectId, npcId, playerId);
+
+      const duration = Date.now() - startTime;
+      logger.debug({ projectId, npcId, playerId, instanceId: instance.id, duration }, 'Instance retrieved via API');
+
+      return c.json(instance);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      if (error instanceof StorageNotFoundError) {
+        logger.warn({ projectId, npcId, playerId, duration }, 'NPC definition not found');
+        return c.json({ error: 'NPC not found' }, 404);
+      }
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ projectId, npcId, playerId, error: errorMessage, duration }, 'Failed to get instance');
+      return c.json({ error: 'Failed to get instance', details: errorMessage }, 500);
     }
   });
 

@@ -73,6 +73,9 @@ class DeepgramSession implements STTSession {
         interim_results: this.config.interimResults,
         // Keep connection alive during silence (prevents idle timeout)
         keep_alive: true,
+        // Longer utterance detection window to reduce fragmented speech
+        utterance_end_ms: 1500,  // Wait 1.5s of silence before utterance_end
+        endpointing: 500,        // Minimum silence for endpoint (ms)
       });
 
       this.setupEventHandlers();

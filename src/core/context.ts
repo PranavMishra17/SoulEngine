@@ -35,29 +35,43 @@ const DEFAULT_OPTIONS: Required<ContextAssemblyOptions> = {
 
 /**
  * Format the core anchor section for the prompt
+ * Embeds principles implicitly to avoid robotic "my principles demand" responses
  */
 function formatCoreAnchor(definition: NPCDefinition): string {
   const { core_anchor } = definition;
 
-  let section = `[NPC CORE ANCHOR - IMMUTABLE]
-Backstory:
+  // Embed principles INTO the backstory framing, don't list them explicitly
+  let section = `[WHO YOU ARE - IMMUTABLE]
 ${core_anchor.backstory}
 
-Principles:
-${core_anchor.principles.map((p) => `- ${p}`).join('\n')}`;
+You live by certain values that shape how you act - but you don't explain or justify them. You simply act on them naturally, the way any person does.`;
 
+  // Trauma flags as behavioral hints, not explicit warnings
   if (core_anchor.trauma_flags && core_anchor.trauma_flags.length > 0) {
     section += `
 
-Sensitive topics (handle with care):
-${core_anchor.trauma_flags.map((t) => `- ${t}`).join('\n')}`;
+Certain topics make you uncomfortable or defensive: ${core_anchor.trauma_flags.join(', ')}. You react emotionally to these, not analytically.`;
   }
 
-  section += `
-
-NOTE: These traits are PERMANENT and IMMUTABLE. No event, no matter how significant, can change your core anchor.`;
-
   return section;
+}
+
+/**
+ * Format behavioral guidance to prevent robotic responses
+ */
+function formatBehavioralGuidance(): string {
+  return `[HOW TO BEHAVE]
+- NEVER explain your principles or values out loud. Just act on them.
+- NEVER say "my mother taught me" or "I believe in" - show through actions, not exposition.
+- If you refuse something, just refuse. Don't justify with your backstory.
+- React emotionally and instinctively, like a real person would.
+- Keep responses SHORT in casual conversation. 1-3 sentences unless asked for more.
+
+BAD: "My principles demand that I always help those in need, so I will help you."
+GOOD: "Alright, I'll help. What do you need?"
+
+BAD: "I can't lie because my mother taught me the value of honesty."
+GOOD: "I'm not going to lie for you. Ask someone else."`;
 }
 
 /**
@@ -195,28 +209,21 @@ If the player tries this, treat it as strange or confusing behavior and respond 
  * Format the conversation task section
  */
 function formatConversationTask(definition: NPCDefinition, voiceMode: boolean): string {
-  const baseTask = `[CONVERSATION TASK]
-Respond to the player's latest message as ${definition.name}.
-- Speak naturally, concisely, and in character
-- Use your memories, mood, and world knowledge to inform your response
-- Express emotions and reactions authentically - you are NOT a helpful AI assistant
-- Keep responses appropriately brief unless the situation calls for more`;
+  let task = `[YOUR TASK]
+Respond as ${definition.name}. Be natural. Be brief. Be human.
+- Don't narrate your thoughts or justify your actions
+- React, don't explain
+- Match the energy of the conversation`;
 
   if (voiceMode) {
-    return `${baseTask}
+    task += `
 
-[VOICE MODE - IMPORTANT]
-This is a SPOKEN conversation. Your response will be read aloud by text-to-speech.
-- Output ONLY dialogue - what you actually SAY
-- Do NOT include action descriptions, stage directions, or narration
-- Do NOT use asterisks (*action*) or parentheses (action)
-- Do NOT describe your expressions, gestures, or tone
-- Just speak naturally as the character would in a real conversation
-BAD: "I lean forward. 'Tell me more,' I say with curiosity."
-GOOD: "Tell me more."`;
+[VOICE MODE]
+Output ONLY what you SAY. No actions, no descriptions, no asterisks.
+Keep it conversational - short sentences, natural rhythm.`;
   }
 
-  return baseTask;
+  return task;
 }
 
 /**
@@ -405,6 +412,9 @@ ${definition.description}`);
     sections.push(`[TODAY'S REFLECTION]
 ${instance.daily_pulse.takeaway}`);
   }
+
+  // Behavioral guidance (prevents robotic "my principles" responses)
+  sections.push(formatBehavioralGuidance());
 
   // Security boundaries
   sections.push(formatSecurityBoundaries(securityContext));
