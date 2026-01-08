@@ -21,6 +21,10 @@ export class BrainVisualization {
     this.targetPillarColor = null;
     this.colorTransitionProgress = 1;
     
+    // Mouse interaction state
+    this.isMouseActive = false;
+    this.cursorHeldNodeIndex = -1;
+    
     // Pillar colors (RGB)
     this.pillarColors = {
       core: { r: 245, g: 165, b: 184 },    // Pink
@@ -36,16 +40,19 @@ export class BrainVisualization {
     
     this.config = {
       nodeCount: 14,
-      baseOpacity: 0.6,
+      baseOpacity: 0.35,
       activeOpacity: 1.0,
-      neighborOpacity: 0.8,
-      edgeBaseOpacity: 0.25,
-      edgeActiveOpacity: 0.7,
+      neighborOpacity: 0.85,
+      edgeBaseOpacity: 0.15,
+      edgeActiveOpacity: 0.9,
       connectionDistance: 150,
       brownianForce: 0.4,
       mouseInfluenceRadius: 120,
-      mouseForce: 0.6,
-      nodeRadius: 6
+      mouseAttractionForce: 0.08,
+      nodeRadius: 6,
+      activeGlowRadius: 45,
+      neighborGlowRadius: 25,
+      glowIntensity: 0.7
     };
     
     this.init();
@@ -159,11 +166,14 @@ export class BrainVisualization {
       const rect = this.canvas.getBoundingClientRect();
       this.mousePos.x = e.clientX - rect.left;
       this.mousePos.y = e.clientY - rect.top;
+      this.isMouseActive = true;
     });
     
     this.canvas.addEventListener('mouseleave', () => {
       this.mousePos.x = null;
       this.mousePos.y = null;
+      this.isMouseActive = false;
+      this.cursorHeldNodeIndex = -1;
     });
     
     // Touch support
@@ -172,12 +182,15 @@ export class BrainVisualization {
         const rect = this.canvas.getBoundingClientRect();
         this.mousePos.x = e.touches[0].clientX - rect.left;
         this.mousePos.y = e.touches[0].clientY - rect.top;
+        this.isMouseActive = true;
       }
     });
     
     this.canvas.addEventListener('touchend', () => {
       this.mousePos.x = null;
       this.mousePos.y = null;
+      this.isMouseActive = false;
+      this.cursorHeldNodeIndex = -1;
     });
   }
   
@@ -194,12 +207,38 @@ export class BrainVisualization {
   }
   
   updateActiveNode() {
-    const now = Date.now();
-    if (now - this.lastColorChange > this.colorChangeInterval) {
-      this.activeNodeIndex = Math.floor(Math.random() * this.nodes.length);
-      this.lastColorChange = now;
-      this.colorChangeInterval = 6000 + Math.random() * 4000;
+    // Only update random active node when mouse is not active
+    if (!this.isMouseActive) {
+      const now = Date.now();
+      if (now - this.lastColorChange > this.colorChangeInterval) {
+        this.activeNodeIndex = Math.floor(Math.random() * this.nodes.length);
+        this.lastColorChange = now;
+        this.colorChangeInterval = 6000 + Math.random() * 4000;
+      }
     }
+  }
+  
+  findClosestNodeToMouse() {
+    if (this.mousePos.x === null || this.mousePos.y === null) {
+      return -1;
+    }
+    
+    let closestIndex = -1;
+    let closestDist = Infinity;
+    
+    for (let i = 0; i < this.nodes.length; i++) {
+      const node = this.nodes[i];
+      const dx = node.x - this.mousePos.x;
+      const dy = node.y - this.mousePos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIndex = i;
+      }
+    }
+    
+    return closestIndex;
   }
   
   getActiveColor() {
@@ -231,21 +270,26 @@ export class BrainVisualization {
   update() {
     this.updateActiveNode();
     
-    for (const node of this.nodes) {
+    // Find closest node to cursor for attraction
+    this.cursorHeldNodeIndex = this.findClosestNodeToMouse();
+    
+    for (let i = 0; i < this.nodes.length; i++) {
+      const node = this.nodes[i];
+      
       // Brownian motion
       node.vx += (Math.random() - 0.5) * this.config.brownianForce;
       node.vy += (Math.random() - 0.5) * this.config.brownianForce;
       
-      // Mouse repulsion
-      if (this.mousePos.x !== null) {
-        const dx = node.x - this.mousePos.x;
-        const dy = node.y - this.mousePos.y;
+      // Mouse ATTRACTION - only for the closest node
+      if (this.mousePos.x !== null && i === this.cursorHeldNodeIndex) {
+        const dx = this.mousePos.x - node.x;
+        const dy = this.mousePos.y - node.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        if (dist < this.config.mouseInfluenceRadius && dist > 0) {
-          const force = (this.config.mouseInfluenceRadius - dist) / this.config.mouseInfluenceRadius;
-          node.vx += (dx / dist) * force * this.config.mouseForce;
-          node.vy += (dy / dist) * force * this.config.mouseForce;
+        if (dist > 5) { // Prevent collapse when very close
+          // Attract toward cursor
+          node.vx += (dx / dist) * this.config.mouseAttractionForce * Math.min(dist, 100);
+          node.vy += (dy / dist) * this.config.mouseAttractionForce * Math.min(dist, 100);
         }
       }
       
@@ -282,14 +326,19 @@ export class BrainVisualization {
     ctx.clearRect(0, 0, this.width, this.height);
     
     const activeColor = this.getActiveColor();
-    const neighbors = this.getNeighbors(this.activeNodeIndex);
+    
+    // Determine which node is "active" for brightness
+    // When mouse is active: use cursor-held node
+    // When mouse is inactive: use random cycling node
+    const effectiveActiveIndex = this.isMouseActive ? this.cursorHeldNodeIndex : this.activeNodeIndex;
+    const neighbors = this.getNeighbors(effectiveActiveIndex);
     
     // Draw edges first (behind nodes)
     for (const edge of this.edges) {
       const fromNode = this.nodes[edge.from];
       const toNode = this.nodes[edge.to];
       
-      const isActiveEdge = edge.from === this.activeNodeIndex || edge.to === this.activeNodeIndex;
+      const isActiveEdge = edge.from === effectiveActiveIndex || edge.to === effectiveActiveIndex;
       const distFactor = 1 - (edge.distance / this.config.connectionDistance);
       
       let opacity = this.config.edgeBaseOpacity * distFactor;
@@ -313,41 +362,73 @@ export class BrainVisualization {
     // Draw nodes
     for (let i = 0; i < this.nodes.length; i++) {
       const node = this.nodes[i];
-      const isActive = i === this.activeNodeIndex;
+      const isActive = i === effectiveActiveIndex;
       const isNeighbor = neighbors.has(i);
       
       let opacity = this.config.baseOpacity;
       let color = this.baseColor;
       let glowRadius = 0;
+      let nodeScale = 1;
       
       if (isActive) {
         opacity = this.config.activeOpacity;
         color = activeColor;
-        glowRadius = 25;
+        glowRadius = this.config.activeGlowRadius;
+        nodeScale = 1.4;
       } else if (isNeighbor) {
         opacity = this.config.neighborOpacity;
         color = activeColor;
-        glowRadius = 12;
+        glowRadius = this.config.neighborGlowRadius;
+        nodeScale = 1.15;
       }
       
-      // Draw glow
+      // Draw multi-layer glow for intense effect
       if (glowRadius > 0) {
-        const gradient = ctx.createRadialGradient(
+        // Outer soft glow
+        const outerGlow = ctx.createRadialGradient(
+          node.x, node.y, 0,
+          node.x, node.y, glowRadius * 1.5
+        );
+        outerGlow.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${this.config.glowIntensity * 0.3})`);
+        outerGlow.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, ${this.config.glowIntensity * 0.1})`);
+        outerGlow.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+        
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, glowRadius * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = outerGlow;
+        ctx.fill();
+        
+        // Middle glow
+        const midGlow = ctx.createRadialGradient(
           node.x, node.y, 0,
           node.x, node.y, glowRadius
         );
-        gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${opacity * 0.4})`);
-        gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+        midGlow.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${this.config.glowIntensity * 0.5})`);
+        midGlow.addColorStop(0.6, `rgba(${color.r}, ${color.g}, ${color.b}, ${this.config.glowIntensity * 0.2})`);
+        midGlow.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
         
         ctx.beginPath();
         ctx.arc(node.x, node.y, glowRadius, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
+        ctx.fillStyle = midGlow;
+        ctx.fill();
+        
+        // Inner bright core
+        const innerGlow = ctx.createRadialGradient(
+          node.x, node.y, 0,
+          node.x, node.y, glowRadius * 0.5
+        );
+        innerGlow.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${this.config.glowIntensity})`);
+        innerGlow.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+        
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, glowRadius * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = innerGlow;
         ctx.fill();
       }
       
-      // Draw node
+      // Draw node (scaled for active/neighbor)
       ctx.beginPath();
-      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+      ctx.arc(node.x, node.y, node.radius * nodeScale, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${opacity})`;
       ctx.fill();
     }
