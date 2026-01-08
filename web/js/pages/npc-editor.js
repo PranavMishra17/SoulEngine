@@ -280,6 +280,11 @@ function getDefaultDefinition() {
     default_mood: '',
     schedule: [],
     network: [],
+    player_recognition: {
+      can_know_player: true,
+      default_player_tier: 1,
+      reveal_player_identity: true,
+    },
   };
 }
 
@@ -313,6 +318,16 @@ function populateForm(definition) {
   // Schedule & State
   document.getElementById('default-mood').value = definition.default_mood || '';
   renderScheduleBlocks(definition.schedule || []);
+
+  // Player recognition
+  const playerRecognition = definition.player_recognition || {
+    can_know_player: true,
+    default_player_tier: 1,
+    reveal_player_identity: true,
+  };
+  document.getElementById('can-know-player').checked = playerRecognition.can_know_player;
+  document.getElementById('reveal-player-identity').checked = playerRecognition.reveal_player_identity;
+  document.getElementById('default-player-tier').value = playerRecognition.default_player_tier;
 }
 
 function bindEditorNavigation() {
@@ -406,6 +421,40 @@ function bindFormHandlers() {
 
   document.getElementById('btn-add-schedule')?.addEventListener('click', () => {
     addScheduleBlock();
+  });
+
+  // Player recognition
+  document.getElementById('can-know-player')?.addEventListener('change', (e) => {
+    if (!currentDefinition.player_recognition) {
+      currentDefinition.player_recognition = {
+        can_know_player: true,
+        default_player_tier: 1,
+        reveal_player_identity: true,
+      };
+    }
+    currentDefinition.player_recognition.can_know_player = e.target.checked;
+  });
+
+  document.getElementById('reveal-player-identity')?.addEventListener('change', (e) => {
+    if (!currentDefinition.player_recognition) {
+      currentDefinition.player_recognition = {
+        can_know_player: true,
+        default_player_tier: 1,
+        reveal_player_identity: true,
+      };
+    }
+    currentDefinition.player_recognition.reveal_player_identity = e.target.checked;
+  });
+
+  document.getElementById('default-player-tier')?.addEventListener('change', (e) => {
+    if (!currentDefinition.player_recognition) {
+      currentDefinition.player_recognition = {
+        can_know_player: true,
+        default_player_tier: 1,
+        reveal_player_identity: true,
+      };
+    }
+    currentDefinition.player_recognition.default_player_tier = parseInt(e.target.value);
   });
 
   // Initialize personality summary

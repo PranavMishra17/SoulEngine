@@ -159,6 +159,16 @@ async function loadNpcInfo(npcId) {
     const npc = await npcs.get(currentProjectId, npcId);
     document.getElementById('info-npc-name').textContent = npc.name;
     document.getElementById('info-npc-description').textContent = npc.description || 'No description';
+    
+    // Enable/disable player recognition checkbox based on NPC settings
+    const enableCheckbox = document.getElementById('enable-player-recognition');
+    if (enableCheckbox) {
+      const canKnowPlayer = npc.player_recognition?.can_know_player !== false; // Default to true if not set
+      enableCheckbox.disabled = !canKnowPlayer;
+      enableCheckbox.title = canKnowPlayer 
+        ? 'Check to have NPC recognize the player by name' 
+        : 'This NPC is configured to not recognize players';
+    }
   } catch (error) {
     console.error('Failed to load NPC info:', error);
   }
@@ -187,8 +197,19 @@ async function handleStartSession() {
     const customTask = document.getElementById('custom-task')?.value || '';
     const task = taskSelect === 'custom' ? customTask : taskSelect;
 
-    // Start session (mood and task can be passed to server in the future)
-    const result = await session.start(currentProjectId, currentNpcId, playerId);
+    // Get player info if recognition is enabled
+    const enableRecognition = document.getElementById('enable-player-recognition')?.checked;
+    const playerName = document.getElementById('player-name')?.value?.trim();
+    let playerInfo = null;
+    
+    if (enableRecognition && playerName) {
+      playerInfo = {
+        name: playerName,
+      };
+    }
+
+    // Start session with player info
+    const result = await session.start(currentProjectId, currentNpcId, playerId, playerInfo);
     currentSessionId = result.session_id;
 
     // Update UI

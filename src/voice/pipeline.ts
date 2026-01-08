@@ -671,13 +671,18 @@ export class VoicePipeline {
     };
 
     try {
+      // Get player_info from session state
+      const storedForPlayerInfo = sessionStore.get(this.sessionId);
+      const playerInfo = storedForPlayerInfo?.state.player_info || null;
+
       // Assemble system prompt with voice mode enabled
       const systemPrompt = await assembleSystemPrompt(
         context.definition,
         context.instance,
         context.resolvedKnowledge,
         securityContext,
-        { voiceMode: true }
+        { voiceMode: true },
+        playerInfo
       );
 
       // Get available tools

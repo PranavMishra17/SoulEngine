@@ -40,6 +40,18 @@ export interface MCPPermissions {
 }
 
 /**
+ * Player recognition settings for an NPC
+ */
+export interface PlayerRecognition {
+  /** If true, NPC can be told who the player is before conversation */
+  can_know_player: boolean;
+  /** Default familiarity tier if player is known (1-3) */
+  default_player_tier: 1 | 2 | 3;
+  /** If true, player info is included in system prompt */
+  reveal_player_identity: boolean;
+}
+
+/**
  * NPC network entry - represents another NPC this character knows
  * Familiarity tiers:
  * - 1 (Acquaintance): Name + description only
@@ -49,6 +61,10 @@ export interface MCPPermissions {
 export interface NPCNetworkEntry {
   npc_id: string;
   familiarity_tier: 1 | 2 | 3;
+  /** Does this NPC know that the other NPC knows them back? */
+  mutual_awareness?: boolean;
+  /** How the other NPC knows this one (if different from how we know them) */
+  reverse_context?: string;
 }
 
 export interface NPCDefinition {
@@ -62,8 +78,10 @@ export interface NPCDefinition {
   schedule: ScheduleBlock[];
   mcp_permissions: MCPPermissions;
   knowledge_access: KnowledgeAccess;
-  /** NPCs this character knows (max 5) */
+  /** NPCs this character knows (max 5) - now with bidirectional support */
   network: NPCNetworkEntry[];
+  /** Player recognition settings */
+  player_recognition?: PlayerRecognition;
 }
 
 export interface Memory {

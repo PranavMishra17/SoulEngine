@@ -11,7 +11,7 @@ import { resolveKnowledge } from '../core/knowledge.js';
 import { summarizeConversation, NPCPerspective } from '../core/summarizer.js';
 import { createMemory, calculateSalience, pruneSTM } from '../core/memory.js';
 import { blendMoods } from '../core/personality.js';
-import type { SessionID, SessionState, Message } from '../types/session.js';
+import type { SessionID, SessionState, Message, PlayerInfo } from '../types/session.js';
 import type { NPCDefinition, NPCInstance, MoodVector, CoreAnchor } from '../types/npc.js';
 import type { KnowledgeBase } from '../types/knowledge.js';
 import type { Project } from '../types/project.js';
@@ -86,7 +86,8 @@ function generateSessionId(): SessionID {
 export async function startSession(
   projectId: string,
   npcId: string,
-  playerId: string
+  playerId: string,
+  playerInfo?: PlayerInfo
 ): Promise<SessionStartResult> {
   const startTime = Date.now();
   logger.info({ projectId, npcId, playerId }, 'Starting session');
@@ -106,6 +107,11 @@ export async function startSession(
 
     // Load NPC definition
     const definition = await getDefinition(projectId, npcId);
+    
+    // Determine if player info should be used
+    const effectivePlayerInfo = definition.player_recognition?.can_know_player && playerInfo
+      ? playerInfo
+      : null;
 
     // Get or create instance for this player
     const instance = await getOrCreateInstance(projectId, npcId, playerId);
@@ -127,6 +133,7 @@ export async function startSession(
       created_at: now,
       last_activity: now,
       player_id: playerId,
+      player_info: effectivePlayerInfo,
     };
 
     // Cache the original anchor for integrity checking later

@@ -1,6 +1,6 @@
 /**
- * Evolve.NPC Design System
- * Dark, game-engine inspired aesthetic
+ * SoulEngine Design System
+ * Deep Space Obsidian Theme - Warm ember accents on charcoal depths
  */
 
 /* ========================================
@@ -8,55 +8,61 @@
    ======================================== */
 
 :root {
-  /* Color Palette - Dark Mode */
-  --color-bg-primary: #0a0a0f;
-  --color-bg-secondary: #12121a;
-  --color-bg-tertiary: #1a1a24;
-  --color-bg-elevated: #22222e;
-  --color-bg-hover: #2a2a38;
+  /* Color Palette - Deep Space Obsidian */
+  --color-bg-primary: #0d0d0d;
+  --color-bg-secondary: #141414;
+  --color-bg-tertiary: #1a1a1a;
+  --color-bg-elevated: #212121;
+  --color-bg-hover: #2a2a2a;
 
-  /* Surface colors */
-  --color-surface-1: rgba(255, 255, 255, 0.03);
-  --color-surface-2: rgba(255, 255, 255, 0.05);
-  --color-surface-3: rgba(255, 255, 255, 0.08);
+  /* Surface colors - subtle warmth */
+  --color-surface-1: rgba(255, 245, 238, 0.02);
+  --color-surface-2: rgba(255, 245, 238, 0.04);
+  --color-surface-3: rgba(255, 245, 238, 0.06);
 
-  /* Text colors */
-  --color-text-primary: #f0f0f5;
-  --color-text-secondary: #a0a0b0;
-  --color-text-tertiary: #6a6a7a;
-  --color-text-muted: #4a4a5a;
+  /* Text colors - warm off-whites */
+  --color-text-primary: #f5f0eb;
+  --color-text-secondary: #a8a099;
+  --color-text-tertiary: #6b6560;
+  --color-text-muted: #4a4643;
 
-  /* Accent colors */
-  --color-accent-primary: #6366f1;
-  --color-accent-primary-hover: #7c7ff5;
-  --color-accent-primary-muted: rgba(99, 102, 241, 0.15);
-  --color-accent-secondary: #22d3ee;
-  --color-accent-secondary-muted: rgba(34, 211, 238, 0.15);
+  /* Accent colors - Ember/Copper tones */
+  --color-accent-primary: #e07850;
+  --color-accent-primary-hover: #eb9070;
+  --color-accent-primary-muted: rgba(224, 120, 80, 0.15);
+  --color-accent-secondary: #c9a86c;
+  --color-accent-secondary-muted: rgba(201, 168, 108, 0.15);
+
+  /* Pillar colors - Pastel tones */
+  --color-pillar-core: #f5a5b8;      /* Light Pink */
+  --color-pillar-daily: #f5c27a;     /* Light Orange */
+  --color-pillar-weekly: #f5e27a;    /* Light Yellow */
+  --color-pillar-persona: #7ae0c4;   /* Light Sea-Green */
+  --color-pillar-mcp: #c4a5f5;       /* Light Purple */
 
   /* Semantic colors */
-  --color-success: #10b981;
-  --color-success-muted: rgba(16, 185, 129, 0.15);
-  --color-warning: #f59e0b;
-  --color-warning-muted: rgba(245, 158, 11, 0.15);
-  --color-error: #ef4444;
-  --color-error-muted: rgba(239, 68, 68, 0.15);
-  --color-info: #3b82f6;
-  --color-info-muted: rgba(59, 130, 246, 0.15);
-
-  /* Pillar colors */
-  --color-pillar-core: #8b5cf6;
-  --color-pillar-daily: #22d3ee;
-  --color-pillar-weekly: #f59e0b;
-  --color-pillar-persona: #ec4899;
-  --color-pillar-mcp: #10b981;
+  --color-success: #5cb87a;
+  --color-success-muted: rgba(92, 184, 122, 0.15);
+  --color-warning: #d9a643;
+  --color-warning-muted: rgba(217, 166, 67, 0.15);
+  --color-error: #d95454;
+  --color-error-muted: rgba(217, 84, 84, 0.15);
+  --color-info: #5494d9;
+  --color-info-muted: rgba(84, 148, 217, 0.15);
 
   /* Border colors */
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.12);
+  --color-border: rgba(255, 245, 238, 0.08);
+  --color-border-hover: rgba(255, 245, 238, 0.15);
   --color-border-focus: var(--color-accent-primary);
 
+  /* Brain visualization base color */
+  --color-brain-base: rgba(168, 160, 153, 0.4);
+  --color-brain-node: rgba(168, 160, 153, 0.6);
+  --color-brain-edge: rgba(168, 160, 153, 0.25);
+
   /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Playfair Display', 'Georgia', serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
   /* Font sizes */
@@ -69,6 +75,8 @@
   --text-3xl: 1.875rem;
   --text-4xl: 2.25rem;
   --text-5xl: 3rem;
+  --text-6xl: 3.75rem;
+  --text-7xl: 4.5rem;
 
   /* Font weights */
   --font-normal: 400;
@@ -77,7 +85,7 @@
   --font-bold: 700;
 
   /* Line heights */
-  --leading-tight: 1.25;
+  --leading-tight: 1.1;
   --leading-snug: 1.375;
   --leading-normal: 1.5;
   --leading-relaxed: 1.625;
@@ -86,8 +94,10 @@
   --tracking-tight: -0.025em;
   --tracking-normal: 0;
   --tracking-wide: 0.025em;
+  --tracking-wider: 0.05em;
 
   /* Spacing */
+  --space-0: 0;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -100,6 +110,7 @@
   --space-16: 4rem;
   --space-20: 5rem;
   --space-24: 6rem;
+  --space-32: 8rem;
 
   /* Border radius */
   --radius-sm: 0.25rem;
@@ -109,19 +120,19 @@
   --radius-2xl: 1.5rem;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3), 0 4px 6px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.4), 0 8px 10px rgba(0, 0, 0, 0.2);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
-  --shadow-glow-accent: 0 0 30px rgba(99, 102, 241, 0.4);
+  /* Shadows - warm tinted */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5), 0 8px 10px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 30px rgba(224, 120, 80, 0.25);
+  --shadow-glow-accent: 0 0 40px rgba(224, 120, 80, 0.35);
 
   /* Transitions */
   --transition-fast: 150ms ease;
-  --transition-base: 200ms ease;
-  --transition-slow: 300ms ease;
-  --transition-slower: 500ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 400ms ease;
+  --transition-slower: 600ms ease;
 
   /* Z-index scale */
   --z-dropdown: 100;
@@ -131,9 +142,9 @@
   --z-tooltip: 500;
 
   /* Layout */
-  --nav-height: 64px;
+  --nav-height: 72px;
   --sidebar-width: 280px;
-  --content-max-width: 1200px;
+  --content-max-width: 1400px;
 }
 
 /* ========================================
@@ -160,6 +171,7 @@ body {
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 #app {
@@ -177,10 +189,15 @@ main {
    ======================================== */
 
 h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
   font-weight: var(--font-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
   color: var(--color-text-primary);
+}
+
+.display-font {
+  font-family: var(--font-display);
 }
 
 h1 {
@@ -256,6 +273,20 @@ pre {
   background-clip: text;
 }
 
+.text-gradient-pillar-core {
+  background: linear-gradient(135deg, var(--color-pillar-core), var(--color-pillar-daily));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-pillar-persona {
+  background: linear-gradient(135deg, var(--color-pillar-persona), var(--color-pillar-mcp));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .text-muted {
   color: var(--color-text-muted);
 }
@@ -280,53 +311,14 @@ pre {
   border-width: 0;
 }
 
-/* Grid backgrounds */
-.grid-lines {
-  position: absolute;
+/* Subtle grain texture overlay */
+.grain-overlay {
+  position: fixed;
   inset: 0;
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 40px 40px;
-  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
   pointer-events: none;
-}
-
-/* Glow effects */
-.glow-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(60px);
-  pointer-events: none;
-}
-
-.orb-1 {
-  width: 400px;
-  height: 400px;
-  background: var(--color-accent-primary);
-  opacity: 0.15;
-  top: -100px;
-  right: 10%;
-  animation: float 8s ease-in-out infinite;
-}
-
-.orb-2 {
-  width: 300px;
-  height: 300px;
-  background: var(--color-accent-secondary);
-  opacity: 0.1;
-  bottom: 10%;
-  left: 5%;
-  animation: float 10s ease-in-out infinite reverse;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0) translateX(0);
-  }
-  50% {
-    transform: translateY(-20px) translateX(10px);
-  }
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
 
 /* Selection */
@@ -361,49 +353,129 @@ pre {
 }
 
 /* ========================================
+   Animation Utilities
+   ======================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes glow {
+  0%, 100% { 
+    filter: brightness(1);
+    box-shadow: 0 0 0 rgba(224, 120, 80, 0);
+  }
+  50% { 
+    filter: brightness(1.2);
+    box-shadow: 0 0 30px rgba(224, 120, 80, 0.3);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-base) ease forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp var(--transition-slow) ease forwards;
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown var(--transition-slow) ease forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--transition-base) ease forwards;
+}
+
+/* Staggered animation delays */
+.delay-1 { animation-delay: 100ms; }
+.delay-2 { animation-delay: 200ms; }
+.delay-3 { animation-delay: 300ms; }
+.delay-4 { animation-delay: 400ms; }
+.delay-5 { animation-delay: 500ms; }
+
+/* ========================================
    Light Theme Override
    ======================================== */
 
 .light-theme {
-  /* Background colors */
-  --color-bg-primary: #f8f9fc;
+  --color-bg-primary: #faf8f5;
   --color-bg-secondary: #ffffff;
-  --color-bg-tertiary: #f0f1f5;
+  --color-bg-tertiary: #f2efe9;
   --color-bg-elevated: #ffffff;
-  --color-bg-hover: #e8e9ed;
+  --color-bg-hover: #e8e5de;
 
-  /* Surface colors */
   --color-surface-1: rgba(0, 0, 0, 0.02);
   --color-surface-2: rgba(0, 0, 0, 0.04);
   --color-surface-3: rgba(0, 0, 0, 0.06);
 
-  /* Text colors */
-  --color-text-primary: #1a1a2e;
-  --color-text-secondary: #4a4a5a;
-  --color-text-tertiary: #7a7a8a;
-  --color-text-muted: #9a9aaa;
+  --color-text-primary: #1a1816;
+  --color-text-secondary: #5a5651;
+  --color-text-tertiary: #8a857f;
+  --color-text-muted: #aaa59f;
 
-  /* Border colors */
-  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border: rgba(0, 0, 0, 0.08);
   --color-border-hover: rgba(0, 0, 0, 0.15);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15), 0 8px 10px rgba(0, 0, 0, 0.08);
+
+  --color-brain-base: rgba(90, 86, 81, 0.4);
+  --color-brain-node: rgba(90, 86, 81, 0.6);
+  --color-brain-edge: rgba(90, 86, 81, 0.25);
 }
 
-.light-theme .main-nav {
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.light-theme .glow-orb {
-  opacity: 0.08;
-}
-
-.light-theme .grid-lines {
-  background-image:
-    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+.light-theme .grain-overlay {
+  opacity: 0.02;
 }

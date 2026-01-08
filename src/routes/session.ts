@@ -21,6 +21,12 @@ const StartSessionSchema = z.object({
   project_id: z.string().min(1),
   npc_id: z.string().min(1),
   player_id: z.string().min(1),
+  player_info: z.object({
+    name: z.string().min(1).max(50),
+    description: z.string().max(200).optional(),
+    role: z.string().max(50).optional(),
+    context: z.string().max(500).optional(),
+  }).optional(),
 });
 
 const EndSessionSchema = z.object({
@@ -48,9 +54,9 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
       }
 
-      const { project_id, npc_id, player_id } = parsed.data;
+      const { project_id, npc_id, player_id, player_info } = parsed.data;
 
-      const result = await startSession(project_id, npc_id, player_id);
+      const result = await startSession(project_id, npc_id, player_id, player_info);
 
       const duration = Date.now() - startTime;
       logger.info({ sessionId: result.session_id, projectId: project_id, npcId: npc_id, playerId: player_id, duration }, 'Session started via API');

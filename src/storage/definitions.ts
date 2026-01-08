@@ -90,6 +90,14 @@ function validateDefinition(def: NPCDefinition): void {
         throw new StorageValidationError('Familiarity tier must be 1, 2, or 3');
       }
 
+      // Validate bidirectional fields
+      if (entry.mutual_awareness !== undefined && typeof entry.mutual_awareness !== 'boolean') {
+        throw new StorageValidationError('Network entry mutual_awareness must be boolean');
+      }
+      if (entry.reverse_context && entry.reverse_context.length > 200) {
+        throw new StorageValidationError('Network entry reverse_context too long (max 200)');
+      }
+
       // Prevent self-reference
       if (entry.npc_id === def.id) {
         throw new StorageValidationError('NPC cannot know itself');
@@ -100,6 +108,19 @@ function validateDefinition(def: NPCDefinition): void {
         throw new StorageValidationError('Duplicate NPC in network');
       }
       seenIds.add(entry.npc_id);
+    }
+  }
+
+  // Validate player recognition (optional field)
+  if (def.player_recognition) {
+    if (typeof def.player_recognition.can_know_player !== 'boolean') {
+      throw new StorageValidationError('player_recognition.can_know_player must be boolean');
+    }
+    if (![1, 2, 3].includes(def.player_recognition.default_player_tier)) {
+      throw new StorageValidationError('player_recognition.default_player_tier must be 1, 2, or 3');
+    }
+    if (typeof def.player_recognition.reveal_player_identity !== 'boolean') {
+      throw new StorageValidationError('player_recognition.reveal_player_identity must be boolean');
     }
   }
 }

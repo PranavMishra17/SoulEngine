@@ -129,10 +129,20 @@ export const npcs = {
  * Session API
  */
 export const session = {
-  start: (projectId, npcId, playerId) => request('/session/start', {
-    method: 'POST',
-    body: JSON.stringify({ project_id: projectId, npc_id: npcId, player_id: playerId }),
-  }),
+  start: (projectId, npcId, playerId, playerInfo = null) => {
+    const body = {
+      project_id: projectId,
+      npc_id: npcId,
+      player_id: playerId,
+    };
+    if (playerInfo) {
+      body.player_info = playerInfo;
+    }
+    return request('/session/start', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 
   end: (sessionId, exitConvoUsed = false) => request(`/session/${sessionId}/end`, {
     method: 'POST',

@@ -1,7 +1,7 @@
 import { createLogger } from '../logger.js';
-import type { NPCDefinition, NPCInstance, NPCNetworkEntry } from '../types/npc.js';
+import type { NPCDefinition, NPCInstance, NPCNetworkEntry, PlayerRecognition } from '../types/npc.js';
 import type { SecurityContext } from '../types/security.js';
-import type { Message } from '../types/session.js';
+import type { Message, PlayerInfo } from '../types/session.js';
 import type { LLMMessage } from '../providers/llm/interface.js';
 import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
 import { formatMemoriesForPrompt, retrieveSTM, retrieveLTM } from './memory.js';
@@ -93,6 +93,37 @@ ${personalityDescription}`;
 function formatMood(instance: NPCInstance): string {
   return `[NPC CURRENT MOOD]
 ${formatMoodForPrompt(instance.current_mood)}`;
+}
+
+/**
+ * Format player identity section for the prompt
+ */
+function formatPlayerIdentity(
+  playerInfo: PlayerInfo | null,
+  playerRecognition: PlayerRecognition | undefined
+): string {
+  if (!playerInfo || !playerRecognition?.reveal_player_identity) {
+    return `[THE PERSON YOU'RE TALKING TO]
+- You don't know who this person is
+- Treat them as a stranger unless they introduce themselves`;
+  }
+
+  let section = `[THE PERSON YOU'RE TALKING TO]
+- Name: ${playerInfo.name}`;
+
+  if (playerInfo.description) {
+    section += `\n- ${playerInfo.description}`;
+  }
+
+  if (playerInfo.role) {
+    section += `\n- They are known as: ${playerInfo.role}`;
+  }
+
+  if (playerInfo.context) {
+    section += `\n- ${playerInfo.context}`;
+  }
+
+  return section;
 }
 
 /**
@@ -353,7 +384,8 @@ export async function assembleSystemPrompt(
   instance: NPCInstance,
   resolvedKnowledge: string,
   securityContext: SecurityContext,
-  options: ContextAssemblyOptions = {}
+  options: ContextAssemblyOptions = {},
+  playerInfo?: PlayerInfo | null
 ): Promise<string> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
@@ -387,6 +419,9 @@ ${definition.description}`);
 
   // Relationship to player
   sections.push(formatRelationship(instance, instance.player_id));
+
+  // Player identity (if provided)
+  sections.push(formatPlayerIdentity(playerInfo || null, definition.player_recognition));
 
   // Known NPCs (social network)
   const knownNpcsSection = await formatKnownNpcs(definition, definition.project_id);

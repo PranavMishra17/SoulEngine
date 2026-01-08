@@ -120,12 +120,14 @@ export function createConversationRoutes(
       const projectTools = toolRegistry.getProjectTools(state.project_id);
       const availableTools = getAvailableTools(definition, securityContext, projectTools);
 
-      // 8. Assemble system prompt
+      // 8. Assemble system prompt (with player info from session state)
       const systemPrompt = await assembleSystemPrompt(
         definition,
         instance,
         resolvedKnowledge,
-        securityContext
+        securityContext,
+        {},
+        state.player_info
       );
 
       // 9. Add player message to history
