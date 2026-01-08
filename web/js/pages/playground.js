@@ -160,14 +160,21 @@ async function loadNpcInfo(npcId) {
     document.getElementById('info-npc-name').textContent = npc.name;
     document.getElementById('info-npc-description').textContent = npc.description || 'No description';
     
-    // Enable/disable player recognition checkbox based on NPC settings
-    const enableCheckbox = document.getElementById('enable-player-recognition');
-    if (enableCheckbox) {
-      const canKnowPlayer = npc.player_recognition?.can_know_player !== false; // Default to true if not set
-      enableCheckbox.disabled = !canKnowPlayer;
-      enableCheckbox.title = canKnowPlayer 
-        ? 'Check to have NPC recognize the player by name' 
-        : 'This NPC is configured to not recognize players';
+    // Enable/disable player name field based on NPC settings
+    const playerNameField = document.getElementById('player-name');
+    const playerCheckbox = document.getElementById('enable-player-recognition');
+    
+    if (playerNameField && playerCheckbox) {
+      const supportsRecognition = npc.player_recognition?.reveal_player_identity !== false;
+      playerNameField.disabled = !supportsRecognition;
+      playerCheckbox.disabled = !supportsRecognition;
+      
+      if (!supportsRecognition) {
+        playerNameField.placeholder = 'This NPC does not support player recognition';
+        playerCheckbox.checked = false;
+      } else {
+        playerNameField.placeholder = 'Player Character Name (optional)';
+      }
     }
   } catch (error) {
     console.error('Failed to load NPC info:', error);
@@ -175,7 +182,7 @@ async function loadNpcInfo(npcId) {
 }
 
 async function handleStartSession() {
-  const playerId = document.getElementById('player-id')?.value || 'test-player';
+  const playerId = 'test-player'; // Fixed player ID for playground
   const btn = document.getElementById('btn-start-session');
 
   if (!currentNpcId) {
@@ -248,7 +255,7 @@ async function handleStartSession() {
   }
 }
 
-async function handleEndSession() {
+async function handleEndSession(exitConvoUsed = false) {
   if (!currentSessionId) return;
 
   try {
@@ -261,7 +268,7 @@ async function handleEndSession() {
     stopAudioPlayback();
 
     // End session
-    await session.end(currentSessionId);
+    await session.end(currentSessionId, exitConvoUsed);
 
     // Disconnect voice if connected
     if (voiceClient) {
@@ -274,8 +281,10 @@ async function handleEndSession() {
     document.getElementById('npc-info-panel').style.display = 'block';
     document.getElementById('chat-input-area').style.display = 'none';
 
-    // Add system message
-    addChatMessage('system', 'Session ended. State has been saved.');
+    // Add system message (only if not already shown by exit_convo)
+    if (!exitConvoUsed) {
+      addChatMessage('system', 'Session ended. State has been saved.');
+    }
 
     currentSessionId = null;
 
@@ -365,10 +374,20 @@ async function handleSendMessage() {
 
     // Handle exit_convo
     if (response.exit_convo) {
-      addChatMessage('system', `NPC ended conversation: ${response.exit_convo.reason}`);
-      if (response.exit_convo.cooldown_seconds) {
-        addChatMessage('system', `Cooldown: ${response.exit_convo.cooldown_seconds} seconds`);
-      }
+      // Show exit reason as NPC dialogue (not system message)
+      addChatMessage('assistant', response.exit_convo.reason);
+      
+      // Add system notification about session ending
+      addChatMessage('system', 'NPC has ended the conversation. Saving state...');
+      
+      // Automatically end the session
+      setTimeout(async () => {
+        try {
+          await handleEndSession(true); // Pass true to indicate exitConvoUsed
+        } catch (error) {
+          console.error('Auto-end session failed:', error);
+        }
+      }, 1000); // Small delay so user can see the message
     }
 
     // Reset pipeline
@@ -959,7 +978,7 @@ async function handleCycle(cycleType) {
     return;
   }
 
-  const playerId = document.getElementById('player-id')?.value || 'test-player';
+  const playerId = 'test-player';
   const btn = document.getElementById(`btn-${cycleType}`);
 
   btn.classList.add('loading');
@@ -1044,7 +1063,7 @@ async function showMindViewer() {
     return;
   }
 
-  const playerId = document.getElementById('player-id')?.value || 'test-player';
+  const playerId = 'test-player';
 
   try {
     const instance = await session.getInstance(currentProjectId, currentNpcId, playerId);

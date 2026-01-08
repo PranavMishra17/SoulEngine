@@ -45,8 +45,8 @@ export interface MCPPermissions {
 export interface PlayerRecognition {
   /** If true, NPC can be told who the player is before conversation */
   can_know_player: boolean;
-  /** Default familiarity tier if player is known (1-3) */
-  default_player_tier: 1 | 2 | 3;
+  /** Default familiarity tier if player is known (1-3) - deprecated, optional for backward compatibility */
+  default_player_tier?: 1 | 2 | 3;
   /** If true, player info is included in system prompt */
   reveal_player_identity: boolean;
 }

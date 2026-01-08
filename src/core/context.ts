@@ -108,8 +108,9 @@ function formatPlayerIdentity(
 - Treat them as a stranger unless they introduce themselves`;
   }
 
+  // Format player like a network entry - this is someone you know
   let section = `[THE PERSON YOU'RE TALKING TO]
-- Name: ${playerInfo.name}`;
+This is ${playerInfo.name}. You know who they are.`;
 
   if (playerInfo.description) {
     section += `\n- ${playerInfo.description}`;
@@ -120,8 +121,10 @@ function formatPlayerIdentity(
   }
 
   if (playerInfo.context) {
-    section += `\n- ${playerInfo.context}`;
+    section += `\n- Context: ${playerInfo.context}`;
   }
+
+  section += `\n\nYou recognize ${playerInfo.name} immediately. Greet them by name. This is not a stranger.`;
 
   return section;
 }
@@ -421,7 +424,9 @@ ${definition.description}`);
   sections.push(formatRelationship(instance, instance.player_id));
 
   // Player identity (if provided)
-  sections.push(formatPlayerIdentity(playerInfo || null, definition.player_recognition));
+  if (playerInfo) {
+    sections.push(formatPlayerIdentity(playerInfo, definition.player_recognition));
+  }
 
   // Known NPCs (social network)
   const knownNpcsSection = await formatKnownNpcs(definition, definition.project_id);

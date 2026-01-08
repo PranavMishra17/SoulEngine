@@ -116,11 +116,12 @@ function validateDefinition(def: NPCDefinition): void {
     if (typeof def.player_recognition.can_know_player !== 'boolean') {
       throw new StorageValidationError('player_recognition.can_know_player must be boolean');
     }
-    if (![1, 2, 3].includes(def.player_recognition.default_player_tier)) {
-      throw new StorageValidationError('player_recognition.default_player_tier must be 1, 2, or 3');
-    }
     if (typeof def.player_recognition.reveal_player_identity !== 'boolean') {
       throw new StorageValidationError('player_recognition.reveal_player_identity must be boolean');
+    }
+    // default_player_tier is deprecated, but we still validate it if present for backward compatibility
+    if (def.player_recognition.default_player_tier !== undefined && ![1, 2, 3].includes(def.player_recognition.default_player_tier)) {
+      throw new StorageValidationError('player_recognition.default_player_tier must be 1, 2, or 3');
     }
   }
 }
@@ -204,6 +205,18 @@ export async function getDefinition(projectId: string, npcId: string): Promise<N
   try {
     const content = await fs.readFile(defPath, 'utf-8');
     const definition = yaml.load(content) as NPCDefinition;
+
+    // Apply defaults for missing fields (backward compatibility)
+    if (!definition.player_recognition) {
+      definition.player_recognition = {
+        can_know_player: true,
+        reveal_player_identity: true,
+      };
+    }
+
+    if (!definition.network) {
+      definition.network = [];
+    }
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, npcId, duration }, 'NPC definition loaded');

@@ -705,26 +705,10 @@
             <p class="section-desc">Configure how this NPC recognizes and interacts with players.</p>
             <div class="form-group">
               <label class="checkbox-item">
-                <input type="checkbox" id="can-know-player" checked>
-                <span>NPC can know who the player is</span>
-              </label>
-              <p class="hint">When enabled, player name/info can be passed at session start</p>
-            </div>
-            <div class="form-group">
-              <label class="checkbox-item">
                 <input type="checkbox" id="reveal-player-identity" checked>
-                <span>Include player identity in NPC's context</span>
+                <span>NPC can recognize players by name</span>
               </label>
-              <p class="hint">If disabled, NPC treats player as stranger even if info is passed</p>
-            </div>
-            <div class="form-group">
-              <label for="default-player-tier">Default Player Familiarity</label>
-              <select id="default-player-tier" class="input">
-                <option value="1" selected>Acquaintance (knows name only)</option>
-                <option value="2">Familiar (knows some background)</option>
-                <option value="3">Close (knows well)</option>
-              </select>
-              <p class="hint">How well NPC knows the player when identity is provided</p>
+              <p class="hint">When checked, player name/info will be included in NPC's context at session start</p>
             </div>
           </section>
         </div>
@@ -884,13 +868,12 @@
               <input type="text" id="custom-task" class="input" placeholder="Describe the task..." style="display: none; margin-top: var(--space-2);">
             </div>
             <div class="session-control">
-              <input type="text" id="player-id" class="input" placeholder="Player ID" value="test-player">
               <input type="text" id="player-name" class="input" placeholder="Player Character Name (optional)">
               <label class="checkbox-item">
                 <input type="checkbox" id="enable-player-recognition">
-                <span>NPC knows player</span>
+                <span>NPC recognizes player by name</span>
               </label>
-              <p class="hint">If checked and NPC supports it, NPC will recognize the player by name</p>
+              <p class="hint">If checked, NPC will know the player's name from the start</p>
               <button class="btn btn-primary btn-block" id="btn-start-session"><span class="icon">&#9654;</span> Start Session</button>
             </div>
           </div>

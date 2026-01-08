@@ -58,6 +58,14 @@ const KnowledgeAccessSchema = z.record(z.string(), z.number().int().min(0));
 const NPCNetworkEntrySchema = z.object({
   npc_id: z.string().min(1),
   familiarity_tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  mutual_awareness: z.boolean().optional(),
+  reverse_context: z.string().max(200).optional(),
+});
+
+const PlayerRecognitionSchema = z.object({
+  can_know_player: z.boolean(),
+  default_player_tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  reveal_player_identity: z.boolean(),
 });
 
 const CreateNPCSchema = z.object({
@@ -74,6 +82,7 @@ const CreateNPCSchema = z.object({
   }),
   knowledge_access: KnowledgeAccessSchema.default({}),
   network: z.array(NPCNetworkEntrySchema).max(5).default([]),
+  player_recognition: PlayerRecognitionSchema.optional(),
 });
 
 const UpdateNPCSchema = z.object({
@@ -86,6 +95,7 @@ const UpdateNPCSchema = z.object({
   mcp_permissions: MCPPermissionsSchema.partial().optional(),
   knowledge_access: KnowledgeAccessSchema.optional(),
   network: z.array(NPCNetworkEntrySchema).max(5).optional(),
+  player_recognition: PlayerRecognitionSchema.optional(),
 });
 
 /**

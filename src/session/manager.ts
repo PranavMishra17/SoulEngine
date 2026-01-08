@@ -108,10 +108,9 @@ export async function startSession(
     // Load NPC definition
     const definition = await getDefinition(projectId, npcId);
     
-    // Determine if player info should be used
-    const effectivePlayerInfo = definition.player_recognition?.can_know_player && playerInfo
-      ? playerInfo
-      : null;
+    // Player info is always accepted if provided (can_know_player is always true functionally)
+    // Whether it's used depends on reveal_player_identity in context assembly
+    const effectivePlayerInfo = playerInfo || null;
 
     // Get or create instance for this player
     const instance = await getOrCreateInstance(projectId, npcId, playerId);
