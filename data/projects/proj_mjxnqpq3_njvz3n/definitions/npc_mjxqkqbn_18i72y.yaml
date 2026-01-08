@@ -51,5 +51,5 @@ id: npc_mjxqkqbn_18i72y
 project_id: proj_mjxnqpq3_njvz3n
 player_recognition:
   can_know_player: true
-  reveal_player_identity: false
+  reveal_player_identity: true
 network: []

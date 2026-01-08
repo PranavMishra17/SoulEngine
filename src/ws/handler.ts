@@ -9,7 +9,8 @@ import { canStartConversation } from '../mcp/exit-handler.js';
 import type { STTProvider } from '../providers/stt/interface.js';
 import type { TTSProvider } from '../providers/tts/interface.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
-import type { VoiceConfig } from '../types/voice.js';
+import type { VoiceConfig, ConversationMode } from '../types/voice.js';
+import { CONVERSATION_MODES } from '../types/voice.js';
 
 const logger = createLogger('ws-handler');
 
@@ -19,6 +20,7 @@ const logger = createLogger('ws-handler');
 interface InitMessage {
   type: 'init';
   session_id: string;
+  mode?: ConversationMode;
 }
 
 interface AudioMessage {
@@ -35,6 +37,11 @@ interface TextMessage {
   content: string;
 }
 
+interface TextInputMessage {
+  type: 'text_input';
+  text: string;
+}
+
 interface InterruptMessage {
   type: 'interrupt';
 }
@@ -43,7 +50,7 @@ interface EndMessage {
   type: 'end';
 }
 
-type InboundMessage = InitMessage | AudioMessage | CommitMessage | TextMessage | InterruptMessage | EndMessage;
+type InboundMessage = InitMessage | AudioMessage | CommitMessage | TextMessage | TextInputMessage | InterruptMessage | EndMessage;
 
 /**
  * Outbound WebSocket message types
@@ -53,6 +60,7 @@ interface ReadyMessage {
   session_id: string;
   npc_name: string;
   voice_config: VoiceConfig;
+  mode: ConversationMode;
 }
 
 interface TranscriptMessage {
@@ -307,16 +315,16 @@ async function handleInboundMessage(
  */
 async function handleInitMessage(
   connection: VoiceConnection,
-  message: InitMessage,
+  msg: InitMessage,
   deps: VoiceWebSocketDependencies
 ): Promise<void> {
   const { sessionId, ws } = connection;
 
-  logger.info({ sessionId, messageSessionId: message.session_id }, 'handleInitMessage: start');
+  logger.info({ sessionId, messageSessionId: msg.session_id }, 'handleInitMessage: start');
 
   // Validate session ID matches
-  if (message.session_id !== sessionId) {
-    logger.error({ sessionId, messageSessionId: message.session_id }, 'handleInitMessage: session mismatch');
+  if (msg.session_id !== sessionId) {
+    logger.error({ sessionId, messageSessionId: msg.session_id }, 'handleInitMessage: session mismatch');
     sendMessage(ws, { type: 'error', code: 'SESSION_MISMATCH', message: 'Session ID does not match' });
     return;
   }
@@ -379,6 +387,10 @@ async function handleInitMessage(
 
     logger.info({ sessionId }, 'handleInitMessage: creating pipeline');
 
+    // Get mode from message or default to voice-voice for WebSocket
+    const mode = msg.mode || CONVERSATION_MODES.VOICE_VOICE;
+    logger.info({ sessionId, mode }, 'handleInitMessage: mode selected');
+
     // Create and initialize pipeline
     const pipeline = createVoicePipeline({
       sessionId,
@@ -387,6 +399,7 @@ async function handleInitMessage(
       llmProvider: deps.llmProvider,
       voiceConfig,
       events,
+      mode,
     });
 
     logger.info({ sessionId }, 'handleInitMessage: initializing pipeline');
@@ -396,12 +409,13 @@ async function handleInitMessage(
 
     logger.info({ sessionId }, 'handleInitMessage: sending ready message');
 
-    // Send ready message
+    // Send ready message with mode
     sendMessage(ws, {
       type: 'ready',
       session_id: sessionId,
       npc_name: context.definition.name,
       voice_config: voiceConfig,
+      mode,
     });
 
     logger.info({ sessionId, npcName: context.definition.name }, 'handleInitMessage: complete');

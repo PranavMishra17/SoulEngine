@@ -11,6 +11,7 @@ let currentNpcId = null;
 let currentSessionId = null;
 let currentInstanceId = null; // For cycles - stored after session or fetched
 let currentMode = 'text';
+let currentConversationMode = { input: 'text', output: 'text' }; // Current conversation mode
 let voiceClient = null;
 let isVoiceActive = false;
 let micVAD = null; // @ricky0123/vad-web instance
@@ -107,7 +108,14 @@ function bindEventHandlers() {
   // End session
   document.getElementById('btn-end-session')?.addEventListener('click', handleEndSession);
 
-  // Mode toggle
+  // Conversation mode selection (new 4-mode grid)
+  document.querySelectorAll('.mode-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setConversationMode(btn.dataset.input, btn.dataset.output);
+    });
+  });
+
+  // Mode toggle (legacy text/voice buttons - now updates conversation mode)
   document.querySelectorAll('.mode-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       setMode(btn.dataset.mode);
@@ -215,8 +223,8 @@ async function handleStartSession() {
       };
     }
 
-    // Start session with player info
-    const result = await session.start(currentProjectId, currentNpcId, playerId, playerInfo);
+    // Start session with player info and mode
+    const result = await session.start(currentProjectId, currentNpcId, playerId, playerInfo, currentConversationMode);
     currentSessionId = result.session_id;
 
     // Update UI
@@ -224,6 +232,7 @@ async function handleStartSession() {
     document.getElementById('session-panel').style.display = 'block';
     document.getElementById('session-id-display').textContent = currentSessionId.slice(0, 12) + '...';
     document.getElementById('chat-input-area').style.display = 'block';
+    document.getElementById('session-setup-panel').style.display = 'none';
     messageCount = 0;
     updateMessageCount();
 
@@ -238,8 +247,11 @@ async function handleStartSession() {
     // Update mood display
     updateMoodDisplay(valence, arousal, dominance);
 
-    // If voice mode, connect WebSocket
-    if (currentMode === 'voice') {
+    // Configure chat interface based on conversation mode
+    configureChatInterface();
+
+    // Connect WebSocket if ANY voice is involved (input OR output)
+    if (currentConversationMode.input === 'voice' || currentConversationMode.output === 'voice') {
       await connectVoice();
     }
 
@@ -280,6 +292,13 @@ async function handleEndSession(exitConvoUsed = false) {
     document.getElementById('session-panel').style.display = 'none';
     document.getElementById('npc-info-panel').style.display = 'block';
     document.getElementById('chat-input-area').style.display = 'none';
+    
+    // Show session setup panel again for next session
+    const setupPanel = document.getElementById('session-setup-panel');
+    if (setupPanel) setupPanel.style.display = 'block';
+    
+    // Reset chat interface (show mode toggle again for next session)
+    resetChatInterface();
 
     // Add system message (only if not already shown by exit_convo)
     if (!exitConvoUsed) {
@@ -297,35 +316,119 @@ async function handleEndSession(exitConvoUsed = false) {
   }
 }
 
-function setMode(mode) {
-  console.log('[Playground] setMode() called:', mode);
-  currentMode = mode;
-
-  // Update button states
-  document.querySelectorAll('.mode-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
+/**
+ * Set conversation mode (input and output separately)
+ */
+function setConversationMode(input, output) {
+  currentConversationMode = { input, output };
+  
+  // Update UI - mode grid buttons
+  document.querySelectorAll('.mode-option').forEach(opt => {
+    opt.classList.remove('active');
+    if (opt.dataset.input === input && opt.dataset.output === output) {
+      opt.classList.add('active');
+    }
   });
 
-  // Show/hide input containers
-  document.getElementById('text-input-container').style.display = mode === 'text' ? 'flex' : 'none';
-  document.getElementById('voice-input-container').style.display = mode === 'voice' ? 'flex' : 'none';
+  // Update legacy mode buttons to match input mode
+  currentMode = input;
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === input);
+  });
 
-  // Connect voice if session active and switching to voice
-  // FIX: Check if voice client is actually connected, not just exists
-  if (mode === 'voice' && currentSessionId) {
-    const needsConnection = !voiceClient ||
-                            !voiceClient.ws ||
-                            voiceClient.ws.readyState !== WebSocket.OPEN;
+  console.log('[Playground] Mode set:', currentConversationMode);
+}
 
-    console.log('[Playground] Voice mode selected, needs connection:', needsConnection);
-    console.log('[Playground] voiceClient:', !!voiceClient);
-    console.log('[Playground] ws readyState:', voiceClient?.ws?.readyState);
-
-    if (needsConnection) {
-      console.log('[Playground] Voice mode selected, connecting...');
-      connectVoice();
+/**
+ * Configure the chat interface based on current conversation mode
+ * Called after session starts to set up correct input/output areas
+ */
+function configureChatInterface() {
+  const { input, output } = currentConversationMode;
+  
+  const textInputContainer = document.getElementById('text-input-container');
+  const voiceInputContainer = document.getElementById('voice-input-container');
+  const inputModeToggle = document.querySelector('.input-mode-toggle');
+  
+  // Hide the legacy mode toggle buttons - mode is already selected
+  if (inputModeToggle) {
+    inputModeToggle.style.display = 'none';
+  }
+  
+  // Configure INPUT area
+  if (input === 'text') {
+    if (textInputContainer) textInputContainer.style.display = 'flex';
+    if (voiceInputContainer) voiceInputContainer.style.display = 'none';
+    if (isVoiceActive) {
+      stopLiveVoice();
+    }
+  } else {
+    // Voice input
+    if (textInputContainer) textInputContainer.style.display = 'none';
+    if (voiceInputContainer) voiceInputContainer.style.display = 'flex';
+  }
+  
+  // Update placeholder text based on output mode
+  const messageInput = document.getElementById('message-input');
+  if (messageInput) {
+    if (output === 'voice') {
+      messageInput.placeholder = 'Type a message... (NPC will respond with voice)';
+    } else {
+      messageInput.placeholder = 'Type a message...';
     }
   }
+  
+  // Update voice hint based on output mode
+  const voiceHint = document.querySelector('.voice-hint');
+  if (voiceHint) {
+    if (output === 'voice') {
+      voiceHint.textContent = 'Voice is live - speak naturally. NPC will respond with voice.';
+    } else {
+      voiceHint.textContent = 'Voice is live - speak naturally. NPC will respond with text.';
+    }
+  }
+  
+  console.log('[Playground] Chat interface configured for:', currentConversationMode);
+}
+
+/**
+ * Reset chat interface to default state (for session end)
+ */
+function resetChatInterface() {
+  const inputModeToggle = document.querySelector('.input-mode-toggle');
+  const textInputContainer = document.getElementById('text-input-container');
+  const voiceInputContainer = document.getElementById('voice-input-container');
+  const messageInput = document.getElementById('message-input');
+  const voiceHint = document.querySelector('.voice-hint');
+  
+  // Show mode toggle again (in case it was hidden)
+  if (inputModeToggle) {
+    inputModeToggle.style.display = 'flex';
+  }
+  
+  // Reset to text input by default
+  if (textInputContainer) textInputContainer.style.display = 'flex';
+  if (voiceInputContainer) voiceInputContainer.style.display = 'none';
+  
+  // Reset placeholder text
+  if (messageInput) {
+    messageInput.placeholder = 'Type a message...';
+  }
+  
+  // Reset voice hint
+  if (voiceHint) {
+    voiceHint.textContent = 'Voice is live - just speak naturally.';
+  }
+  
+  console.log('[Playground] Chat interface reset');
+}
+
+/**
+ * Legacy setMode function - updates conversation mode
+ */
+function setMode(mode) {
+  // When using legacy buttons, keep output same as input
+  setConversationMode(mode, mode);
 }
 
 async function handleSendMessage() {
@@ -347,7 +450,19 @@ async function handleSendMessage() {
   updatePipelineStep('security', 'active');
 
   try {
-    // Send message
+    // If output is voice, send through WebSocket for TTS response
+    if (currentConversationMode.output === 'voice' && voiceClient && voiceClient.isReady()) {
+      console.log('[Playground] Sending text via WebSocket for voice output');
+      voiceClient.sendText(content);
+      // Response will come through WebSocket events (textChunk, audioChunk, generationEnd)
+      // Re-enable input immediately since WebSocket handles async response
+      input.disabled = false;
+      document.getElementById('btn-send').disabled = false;
+      input.focus();
+      return;
+    }
+    
+    // Otherwise, use REST API for text response
     const response = await conversation.sendMessage(currentSessionId, content);
 
     // Update pipeline
@@ -415,7 +530,7 @@ async function connectVoice() {
 
   try {
     updateVoiceStatus('Connecting...');
-    console.log('[Playground] Creating VoiceClient...');
+    console.log('[Playground] Creating VoiceClient with mode:', currentConversationMode);
     voiceClient = new VoiceClient(currentSessionId);
 
     voiceClient
@@ -424,16 +539,26 @@ async function connectVoice() {
         // Store voice config for audio playback (contains provider info for sample rate)
         currentVoiceConfig = data.voice_config;
         console.log('[Playground] Voice config:', currentVoiceConfig);
+        console.log('[Playground] Server confirmed mode:', data.mode);
         updateVoiceStatus('Connected');
-        // Auto-start live voice after connection
-        await startLiveVoice();
+        
+        // Only auto-start live voice if input mode is voice
+        if (currentConversationMode.input === 'voice') {
+          await startLiveVoice();
+        }
       })
       .on('transcript', (text, isFinal) => {
         updatePipelineStep('stt', isFinal ? 'complete' : 'active');
+        
         if (isFinal && text.trim()) {
+          // Remove interim transcript indicator and add final message
+          removeInterimTranscript();
           addChatMessage('user', text);
           messageCount++;
           updateMessageCount();
+        } else if (!isFinal && text.trim()) {
+          // Show interim transcript as user is speaking
+          showInterimTranscript(text);
         }
       })
       .on('textChunk', (text) => {
@@ -475,8 +600,8 @@ async function connectVoice() {
         voiceClient = null;
       });
 
-    console.log('[Playground] Calling voiceClient.connect()...');
-    await voiceClient.connect();
+    console.log('[Playground] Calling voiceClient.connect() with mode...');
+    await voiceClient.connect(currentConversationMode);
     console.log('[Playground] voiceClient.connect() completed');
   } catch (error) {
     console.error('[Playground] connectVoice() error:', error);
@@ -864,6 +989,45 @@ function addChatMessage(role, content) {
 
   messages.appendChild(messageEl);
   messages.scrollTop = messages.scrollHeight;
+}
+
+/**
+ * Show interim (real-time) transcript while user is speaking
+ * This gives visual feedback of what the STT is hearing
+ */
+function showInterimTranscript(text) {
+  const messages = document.getElementById('chat-messages');
+  
+  // Remove placeholder if present
+  const placeholder = messages.querySelector('.chat-placeholder');
+  if (placeholder) {
+    placeholder.remove();
+  }
+  
+  // Find or create interim transcript element
+  let interimEl = messages.querySelector('.chat-message.interim');
+  
+  if (!interimEl) {
+    interimEl = document.createElement('div');
+    interimEl.className = 'chat-message user interim';
+    messages.appendChild(interimEl);
+  }
+  
+  // Update with current interim text
+  interimEl.innerHTML = `<span class="interim-text">${escapeHtml(text)}</span><span class="interim-indicator">...</span>`;
+  messages.scrollTop = messages.scrollHeight;
+}
+
+/**
+ * Remove interim transcript (called when final transcript is ready)
+ */
+function removeInterimTranscript() {
+  const messages = document.getElementById('chat-messages');
+  const interimEl = messages.querySelector('.chat-message.interim');
+  
+  if (interimEl) {
+    interimEl.remove();
+  }
 }
 
 function updateMessageCount() {

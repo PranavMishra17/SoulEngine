@@ -129,7 +129,7 @@ export const npcs = {
  * Session API
  */
 export const session = {
-  start: (projectId, npcId, playerId, playerInfo = null) => {
+  start: (projectId, npcId, playerId, playerInfo = null, mode = null) => {
     const body = {
       project_id: projectId,
       npc_id: npcId,
@@ -137,6 +137,9 @@ export const session = {
     };
     if (playerInfo) {
       body.player_info = playerInfo;
+    }
+    if (mode) {
+      body.mode = mode;
     }
     return request('/session/start', {
       method: 'POST',
@@ -222,7 +225,9 @@ export class VoiceClient {
     };
   }
 
-  connect() {
+  connect(mode = { input: 'voice', output: 'voice' }) {
+    this.mode = mode;
+    
     return new Promise((resolve, reject) => {
       // Prevent duplicate connections
       if (this.connectionState === 'connecting' || this.connectionState === 'initializing' || this.connectionState === 'ready') {
@@ -241,6 +246,7 @@ export class VoiceClient {
       // Debug logging
       console.log('[VoiceClient] Connecting to:', url);
       console.log('[VoiceClient] Session ID:', this.sessionId);
+      console.log('[VoiceClient] Mode:', mode);
       console.log('[VoiceClient] HTTP Port:', httpPort, '→ WS Port:', wsPort);
 
       this.ws = new WebSocket(url);
@@ -249,7 +255,7 @@ export class VoiceClient {
         console.log('[VoiceClient] WebSocket OPEN');
         // Don't set 'connected' yet - wait for 'ready' message from server
         this.connectionState = 'initializing';
-        this.send({ type: 'init', session_id: this.sessionId });
+        this.send({ type: 'init', session_id: this.sessionId, mode: this.mode });
       };
 
       this.ws.onmessage = (event) => {

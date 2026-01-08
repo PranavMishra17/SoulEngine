@@ -13,6 +13,7 @@ import { createMemory, calculateSalience, pruneSTM } from '../core/memory.js';
 import { blendMoods } from '../core/personality.js';
 import type { SessionID, SessionState, Message, PlayerInfo } from '../types/session.js';
 import type { NPCDefinition, NPCInstance, MoodVector, CoreAnchor } from '../types/npc.js';
+import { CONVERSATION_MODES, type ConversationMode } from '../types/voice.js';
 import type { KnowledgeBase } from '../types/knowledge.js';
 import type { Project } from '../types/project.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
@@ -87,7 +88,8 @@ export async function startSession(
   projectId: string,
   npcId: string,
   playerId: string,
-  playerInfo?: PlayerInfo
+  playerInfo?: PlayerInfo,
+  mode?: ConversationMode
 ): Promise<SessionStartResult> {
   const startTime = Date.now();
   logger.info({ projectId, npcId, playerId }, 'Starting session');
@@ -112,6 +114,9 @@ export async function startSession(
     // Whether it's used depends on reveal_player_identity in context assembly
     const effectivePlayerInfo = playerInfo || null;
 
+    // Default to text-text mode if not specified
+    const effectiveMode = mode || CONVERSATION_MODES.TEXT_TEXT;
+
     // Get or create instance for this player
     const instance = await getOrCreateInstance(projectId, npcId, playerId);
 
@@ -133,6 +138,7 @@ export async function startSession(
       last_activity: now,
       player_id: playerId,
       player_info: effectivePlayerInfo,
+      mode: effectiveMode,
     };
 
     // Cache the original anchor for integrity checking later

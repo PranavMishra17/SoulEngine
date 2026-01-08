@@ -17,6 +17,11 @@ const logger = createLogger('routes-session');
 /**
  * Zod schemas for request validation
  */
+const ConversationModeSchema = z.object({
+  input: z.enum(['text', 'voice']),
+  output: z.enum(['text', 'voice']),
+});
+
 const StartSessionSchema = z.object({
   project_id: z.string().min(1),
   npc_id: z.string().min(1),
@@ -27,6 +32,7 @@ const StartSessionSchema = z.object({
     role: z.string().max(50).optional(),
     context: z.string().max(500).optional(),
   }).optional(),
+  mode: ConversationModeSchema.optional(),
 });
 
 const EndSessionSchema = z.object({
@@ -54,9 +60,9 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
       }
 
-      const { project_id, npc_id, player_id, player_info } = parsed.data;
+      const { project_id, npc_id, player_id, player_info, mode } = parsed.data;
 
-      const result = await startSession(project_id, npc_id, player_id, player_info);
+      const result = await startSession(project_id, npc_id, player_id, player_info, mode);
 
       const duration = Date.now() - startTime;
       logger.info({ sessionId: result.session_id, projectId: project_id, npcId: npc_id, playerId: player_id, duration }, 'Session started via API');

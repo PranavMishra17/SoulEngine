@@ -1,0 +1,119 @@
+/**
+ * Conversation Mode Selector Styles
+ */
+
+.session-setup-panel {
+  padding: var(--space-6);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.conversation-mode-selector {
+  margin-bottom: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.player-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+}
+
+.conversation-mode-selector h4 {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+  background: var(--bg-primary);
+  border: 2px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 80px;
+}
+
+.mode-option:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+  transform: translateY(-2px);
+}
+
+.mode-option.active {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-primary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
+
+.mode-option .mode-icon {
+  font-size: var(--text-xl);
+  margin-bottom: var(--space-2);
+  line-height: 1;
+}
+
+.mode-option .mode-label {
+  font-size: var(--text-sm);
+  color: #ffffff;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mode-option.active .mode-label {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.conversation-mode-selector .hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Interim (real-time) transcript styles */
+.chat-message.interim {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.chat-message.interim .interim-text {
+  color: var(--text-primary);
+}
+
+.chat-message.interim .interim-indicator {
+  color: var(--accent-primary);
+  animation: pulse 1s ease-in-out infinite;
+  margin-left: 4px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+

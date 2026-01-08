@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/pages.css">
   <link rel="stylesheet" href="/css/pages-app.css">
+  <link rel="stylesheet" href="/css/conversation-modes.css">
   
   <!-- VAD Web -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
@@ -867,15 +868,6 @@
               </select>
               <input type="text" id="custom-task" class="input" placeholder="Describe the task..." style="display: none; margin-top: var(--space-2);">
             </div>
-            <div class="session-control">
-              <input type="text" id="player-name" class="input" placeholder="Player Character Name (optional)">
-              <label class="checkbox-item">
-                <input type="checkbox" id="enable-player-recognition">
-                <span>NPC recognizes player by name</span>
-              </label>
-              <p class="hint">If checked, NPC will know the player's name from the start</p>
-              <button class="btn btn-primary btn-block" id="btn-start-session"><span class="icon">&#9654;</span> Start Session</button>
-            </div>
           </div>
           <div class="sidebar-section" id="session-panel" style="display: none;">
             <h3>Active Session</h3>
@@ -905,6 +897,37 @@
         </aside>
         <main class="playground-main">
           <div class="chat-container">
+            <div class="session-setup-panel" id="session-setup-panel">
+              <div class="conversation-mode-selector">
+                <h4>Conversation Mode</h4>
+                <div class="mode-grid">
+                  <button class="mode-option active" data-input="text" data-output="text">
+                    <span class="mode-icon">⌨️ → 📝</span>
+                    <span class="mode-label">TEXT-TO-TEXT</span>
+                  </button>
+                  <button class="mode-option" data-input="voice" data-output="voice">
+                    <span class="mode-icon">🎤 → 🔊</span>
+                    <span class="mode-label">VOICE-TO-VOICE</span>
+                  </button>
+                  <button class="mode-option" data-input="text" data-output="voice">
+                    <span class="mode-icon">⌨️ → 🔊</span>
+                    <span class="mode-label">TEXT-TO-VOICE</span>
+                  </button>
+                  <button class="mode-option" data-input="voice" data-output="text">
+                    <span class="mode-icon">🎤 → 📝</span>
+                    <span class="mode-label">VOICE-TO-TEXT</span>
+                  </button>
+                </div>
+              </div>
+              <div class="player-setup">
+                <input type="text" id="player-name" class="input" placeholder="Player Character Name (optional)">
+                <label class="checkbox-item">
+                  <input type="checkbox" id="enable-player-recognition">
+                  <span>NPC recognizes player by name</span>
+                </label>
+              </div>
+              <button class="btn btn-primary btn-block" id="btn-start-session"><span class="icon">&#9654;</span> Start Session</button>
+            </div>
             <div class="chat-messages" id="chat-messages">
               <div class="chat-placeholder"><div class="placeholder-icon">&#9681;</div><p>Select an NPC and start a session to begin chatting</p></div>
             </div>

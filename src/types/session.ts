@@ -1,4 +1,5 @@
 import { NPCInstance } from './npc.js';
+import type { ConversationMode } from './voice.js';
 
 export type SessionID = string;
 
@@ -32,6 +33,8 @@ export interface SessionState {
   player_id: string;
   /** Player info passed at session start (if any) */
   player_info: PlayerInfo | null;
+  /** Conversation mode for this session */
+  mode: ConversationMode;
 }
 
 export interface SessionInitRequest {
@@ -40,6 +43,8 @@ export interface SessionInitRequest {
   player_id: string;
   /** If provided and NPC has can_know_player=true, NPC will know the player */
   player_info?: PlayerInfo;
+  /** Conversation mode - defaults to text-text */
+  mode?: ConversationMode;
 }
 
 export interface SessionEndResponse {

@@ -21,7 +21,7 @@ import { encodeTtsAudio } from './audio.js';
 
 import type { SessionID, Message } from '../types/session.js';
 import type { SecurityContext } from '../types/security.js';
-import type { TranscriptEvent, TTSChunk, VoiceConfig } from '../types/voice.js';
+import type { TranscriptEvent, TTSChunk, VoiceConfig, ConversationMode } from '../types/voice.js';
 import type { ToolCall, Tool } from '../types/mcp.js';
 import type { STTProvider, STTSession, STTSessionConfig, STTSessionEvents } from '../providers/stt/interface.js';
 import type { TTSProvider, TTSSession, TTSSessionConfig, TTSSessionEvents } from '../providers/tts/interface.js';
@@ -59,6 +59,8 @@ export interface VoicePipelineConfig {
   llmProvider: LLMProvider;
   voiceConfig: VoiceConfig;
   events: VoicePipelineEvents;
+  /** Conversation mode - determines which providers to initialize */
+  mode: ConversationMode;
 }
 
 /**
@@ -89,6 +91,7 @@ export class VoicePipeline {
   private readonly llmProvider: LLMProvider;
   private readonly voiceConfig: VoiceConfig;
   private readonly events: VoicePipelineEvents;
+  private readonly mode: ConversationMode;
 
   private sttSession: STTSession | null = null;
   private ttsSession: TTSSession | null = null;
@@ -122,95 +125,34 @@ export class VoicePipeline {
     this.llmProvider = config.llmProvider;
     this.voiceConfig = config.voiceConfig;
     this.events = config.events;
+    this.mode = config.mode;
     this.sentenceDetector = new SentenceDetector();
 
-    logger.info({ sessionId: this.sessionId }, 'VoicePipeline created');
+    logger.info({ sessionId: this.sessionId, mode: this.mode }, 'VoicePipeline created');
   }
 
   /**
    * Initialize the pipeline - connect STT and TTS sessions
    */
+  /**
+   * Initialize the pipeline based on conversation mode
+   */
   async initialize(): Promise<void> {
-    logger.info({ sessionId: this.sessionId }, 'VoicePipeline.initialize: start');
+    logger.info({ sessionId: this.sessionId, mode: this.mode }, 'VoicePipeline.initialize: start');
 
     try {
-      // Create STT session with callbacks
-      const sttConfig: STTSessionConfig = {
-        sampleRate: 16000,
-        encoding: 'linear16',
-        punctuate: true,
-        interimResults: true,
-      };
-
-      logger.info({ sessionId: this.sessionId, sttConfig }, 'VoicePipeline.initialize: creating STT session');
-
-      const sttEvents: STTSessionEvents = {
-        onTranscript: (event) => {
-          logger.debug({ sessionId: this.sessionId, text: event.text.slice(0, 30), isFinal: event.isFinal }, 'STT transcript');
-          this.handleSTTTranscript(event);
-        },
-        onError: (error) => {
-          logger.error({ sessionId: this.sessionId, error: error.message }, 'STT error');
-          this.handleSTTError(error);
-        },
-        onClose: () => {
-          logger.info({ sessionId: this.sessionId }, 'STT session closed');
-          this.handleSTTClose();
-        },
-        onOpen: () => {
-          logger.info({ sessionId: this.sessionId }, 'STT session opened');
-        },
-      };
-
-      try {
-        this.sttSession = await this.sttProvider.createSession(sttConfig, sttEvents);
-        logger.info({ sessionId: this.sessionId }, 'VoicePipeline.initialize: STT session created');
-      } catch (sttError) {
-        const errorMessage = sttError instanceof Error ? sttError.message : String(sttError);
-        logger.error({ sessionId: this.sessionId, error: errorMessage }, 'VoicePipeline.initialize: STT session creation failed');
-        throw new Error(`STT initialization failed: ${errorMessage}`);
+      // Only initialize STT if input mode is voice
+      if (this.mode.input === 'voice') {
+        await this.initializeSTT();
+      } else {
+        logger.info({ sessionId: this.sessionId }, 'Skipping STT init (text input mode)');
       }
 
-      // Create TTS session with callbacks
-      const ttsConfig: TTSSessionConfig = {
-        voiceId: this.voiceConfig.voice_id,
-        speed: this.voiceConfig.speed,
-        outputFormat: 'pcm_s16le',
-      };
-
-      logger.info({ sessionId: this.sessionId, ttsConfig }, 'VoicePipeline.initialize: creating TTS session');
-
-      const ttsEvents: TTSSessionEvents = {
-        onAudioChunk: (chunk) => {
-          logger.debug({ sessionId: this.sessionId, audioBytes: chunk.audio.length }, 'TTS audio chunk');
-          this.handleTTSAudioChunk(chunk);
-        },
-        onComplete: () => {
-          logger.debug({ sessionId: this.sessionId }, 'TTS synthesis complete');
-        },
-        onError: (error) => {
-          logger.error({ sessionId: this.sessionId, error: error.message }, 'TTS error');
-          this.handleTTSError(error);
-        },
-      };
-
-      try {
-        this.ttsSession = await this.ttsProvider.createSession(ttsConfig, ttsEvents);
-        logger.info({ sessionId: this.sessionId }, 'VoicePipeline.initialize: TTS session created');
-      } catch (ttsError) {
-        const errorMessage = ttsError instanceof Error ? ttsError.message : String(ttsError);
-        logger.error({ sessionId: this.sessionId, error: errorMessage }, 'VoicePipeline.initialize: TTS session creation failed');
-
-        // Clean up STT session if TTS fails
-        if (this.sttSession) {
-          try {
-            this.sttSession.close();
-          } catch (cleanupError) {
-            logger.warn({ sessionId: this.sessionId }, 'Failed to cleanup STT session after TTS failure');
-          }
-        }
-
-        throw new Error(`TTS initialization failed: ${errorMessage}`);
+      // Only initialize TTS if output mode is voice
+      if (this.mode.output === 'voice') {
+        await this.initializeTTS();
+      } else {
+        logger.info({ sessionId: this.sessionId }, 'Skipping TTS init (text output mode)');
       }
 
       this.isActive = true;
@@ -222,6 +164,93 @@ export class VoicePipeline {
     }
   }
 
+  /**
+   * Initialize STT session
+   */
+  private async initializeSTT(): Promise<void> {
+    const sttConfig: STTSessionConfig = {
+      sampleRate: 16000,
+      encoding: 'linear16',
+      punctuate: true,
+      interimResults: true,
+    };
+
+    logger.info({ sessionId: this.sessionId, sttConfig }, 'Creating STT session');
+
+    const sttEvents: STTSessionEvents = {
+      onTranscript: (event) => {
+        logger.debug({ sessionId: this.sessionId, text: event.text.slice(0, 30), isFinal: event.isFinal }, 'STT transcript');
+        this.handleSTTTranscript(event);
+      },
+      onError: (error) => {
+        logger.error({ sessionId: this.sessionId, error: error.message }, 'STT error');
+        this.handleSTTError(error);
+      },
+      onClose: () => {
+        logger.info({ sessionId: this.sessionId }, 'STT session closed');
+        this.handleSTTClose();
+      },
+      onOpen: () => {
+        logger.info({ sessionId: this.sessionId }, 'STT session opened');
+      },
+    };
+
+    try {
+      this.sttSession = await this.sttProvider.createSession(sttConfig, sttEvents);
+      logger.info({ sessionId: this.sessionId }, 'STT session created');
+    } catch (sttError) {
+      const errorMessage = sttError instanceof Error ? sttError.message : String(sttError);
+      logger.error({ sessionId: this.sessionId, error: errorMessage }, 'STT session creation failed');
+      throw new Error(`STT initialization failed: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Initialize TTS session
+   */
+  private async initializeTTS(): Promise<void> {
+    const ttsConfig: TTSSessionConfig = {
+      voiceId: this.voiceConfig.voice_id,
+      speed: this.voiceConfig.speed,
+      outputFormat: 'pcm_s16le',
+    };
+
+    logger.info({ sessionId: this.sessionId, ttsConfig }, 'Creating TTS session');
+
+    const ttsEvents: TTSSessionEvents = {
+      onAudioChunk: (chunk) => {
+        logger.debug({ sessionId: this.sessionId, audioBytes: chunk.audio.length }, 'TTS audio chunk');
+        this.handleTTSAudioChunk(chunk);
+      },
+      onComplete: () => {
+        logger.debug({ sessionId: this.sessionId }, 'TTS synthesis complete');
+      },
+      onError: (error) => {
+        logger.error({ sessionId: this.sessionId, error: error.message }, 'TTS error');
+        this.handleTTSError(error);
+      },
+    };
+
+    try {
+      this.ttsSession = await this.ttsProvider.createSession(ttsConfig, ttsEvents);
+      logger.info({ sessionId: this.sessionId }, 'TTS session created');
+    } catch (ttsError) {
+      const errorMessage = ttsError instanceof Error ? ttsError.message : String(ttsError);
+      logger.error({ sessionId: this.sessionId, error: errorMessage }, 'TTS session creation failed');
+      
+      // Clean up STT session if TTS fails (if it was initialized)
+      if (this.sttSession) {
+        try {
+          this.sttSession.close();
+        } catch (cleanupError) {
+          logger.warn({ sessionId: this.sessionId }, 'Failed to cleanup STT session after TTS failure');
+        }
+      }
+
+      throw new Error(`TTS initialization failed: ${errorMessage}`);
+    }
+  }
+
   // Track audio chunks for periodic logging
   private audioChunkCount: number = 0;
 
@@ -229,6 +258,12 @@ export class VoicePipeline {
    * Push audio data from client to STT
    */
   pushAudio(audioBuffer: Buffer): void {
+    if (this.mode.input !== 'voice') {
+      logger.warn({ sessionId: this.sessionId }, 'Audio received but input mode is text');
+      this.events.onError('MODE_MISMATCH', 'Voice input not enabled for this session');
+      return;
+    }
+
     if (!this.isActive || !this.sttSession) {
       logger.warn({ sessionId: this.sessionId }, 'pushAudio: inactive or no STT session');
       return;
@@ -715,12 +750,16 @@ export class VoicePipeline {
         // Handle text
         if (chunk.text) {
           fullResponse += chunk.text;
+          
+          // Always emit text chunks (for UI display in all modes)
           this.events.onTextChunk(chunk.text);
 
-          // Send to sentence detector for TTS
-          const sentences = this.sentenceDetector.addChunk(chunk.text);
-          for (const sentence of sentences) {
-            await this.synthesizeSentence(sentence);
+          // Only synthesize to audio if output mode is voice
+          if (this.mode.output === 'voice') {
+            const sentences = this.sentenceDetector.addChunk(chunk.text);
+            for (const sentence of sentences) {
+              await this.synthesizeSentence(sentence);
+            }
           }
         }
 
@@ -730,17 +769,17 @@ export class VoicePipeline {
         }
       }
 
-      // Flush remaining text to TTS
-      const remaining = this.sentenceDetector.flush();
-      if (remaining) {
-        logger.info({ sessionId: this.sessionId, textLength: remaining.length }, 'Flushing remaining text to TTS');
-        await this.synthesizeSentence(remaining);
-      }
-
-      // Flush TTS to signal end of input
-      if (this.ttsSession) {
-        logger.info({ sessionId: this.sessionId }, 'Flushing TTS session');
-        await this.ttsSession.flush();
+      // Flush remaining text to TTS (only if voice output)
+      if (this.mode.output === 'voice') {
+        const remaining = this.sentenceDetector.flush();
+        if (remaining) {
+          logger.info({ sessionId: this.sessionId, textLength: remaining.length }, 'Flushing remaining text to TTS');
+          await this.synthesizeSentence(remaining);
+        }
+        if (this.ttsSession) {
+          logger.info({ sessionId: this.sessionId }, 'Flushing TTS session');
+          await this.ttsSession.flush();
+        }
       }
 
       // Handle tool calls
