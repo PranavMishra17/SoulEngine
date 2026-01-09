@@ -48,8 +48,9 @@ function validateCategory(categoryId: string, category: KnowledgeCategory): void
     throw new StorageValidationError(`Category ID mismatch: ${categoryId}`);
   }
 
-  if (!category.description || typeof category.description !== 'string') {
-    throw new StorageValidationError(`Category ${categoryId} must have a description`);
+  // Description is optional, but if provided must be a string
+  if (category.description !== undefined && typeof category.description !== 'string') {
+    throw new StorageValidationError(`Category ${categoryId} description must be a string`);
   }
 
   if (!category.depths || typeof category.depths !== 'object') {

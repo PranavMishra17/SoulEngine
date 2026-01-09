@@ -483,6 +483,13 @@
   color: white;
 }
 
+.footer-brand .brand-icon-img {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+}
+
 .footer-brand .brand-text { font-size: var(--text-xl); font-weight: var(--font-bold); }
 .footer-brand p { color: var(--color-text-tertiary); font-size: var(--text-sm); max-width: 280px; }
 

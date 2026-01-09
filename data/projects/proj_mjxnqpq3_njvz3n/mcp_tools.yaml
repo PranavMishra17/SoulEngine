@@ -38,6 +38,9 @@ conversation_tools:
           description: How many to give
       required:
         - item_id
+  - id: high_five
+    name: HIGH FIVE
+    description: Give a high five to the human you are talking to
 game_event_tools:
   - id: receive_gift
     name: Receive Gift

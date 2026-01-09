@@ -1,6 +1,6 @@
-# SoulEngine
-
 <div align="center">
+
+# SoulEngine
 
 ![SoulEngine Demo](img/demo.gif)
 
@@ -181,7 +181,7 @@ web/                      # Web UI (vanilla JS SPA)
 
 - **[System Design](Evolve_NPC_System_Design.md)** - Full architecture and design philosophy
 - **[SDK Reference](SDK_REFERENCE.md)** - Third-party SDK documentation
-- **[v2 Implementation Plans](v2/)** - Feature implementation details
+- **[Additional Providiers](ADD_PROVIDERS.MD)** - How to add additional model endpoints for LLM/TTS/STT
 
 ---
 

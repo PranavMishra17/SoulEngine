@@ -60,6 +60,13 @@
   box-shadow: var(--shadow-glow);
 }
 
+.brand-icon-img {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+}
+
 .brand-text {
   font-family: var(--font-sans);
   font-weight: var(--font-bold);

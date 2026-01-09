@@ -142,7 +142,11 @@ async function loadNpcList(projectId) {
       .map(
         (npc) => `
         <div class="npc-card" data-id="${npc.id}">
-          <div class="npc-card-avatar">◇</div>
+          <div class="npc-card-avatar">${
+            npc.profile_image && npc.profile_image.trim() !== ''
+              ? `<img src="/api/projects/${projectId}/npcs/${npc.id}/avatar" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='◇'">`
+              : '◇'
+          }</div>
           <h3>${escapeHtml(npc.name)}</h3>
           <p>${escapeHtml(npc.description || 'No description')}</p>
         </div>

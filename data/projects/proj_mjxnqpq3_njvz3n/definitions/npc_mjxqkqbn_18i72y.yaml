@@ -38,6 +38,7 @@ schedule:
 mcp_permissions:
   conversation_tools:
     - exit_convo
+    - high_five
   game_event_tools:
     - flee_to
     - alert_guards

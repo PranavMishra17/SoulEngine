@@ -24,7 +24,7 @@ const DepthsSchema = z.record(z.string(), z.string());
 
 const KnowledgeCategorySchema = z.object({
   id: z.string().min(1).max(50),
-  description: z.string().min(1).max(500),
+  description: z.string().max(500).default(''),  // Description is optional
   depths: DepthsSchema,
 });
 

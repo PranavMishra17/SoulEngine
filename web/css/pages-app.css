@@ -167,6 +167,14 @@
   font-size: var(--text-xl);
   color: var(--color-accent-primary);
   margin-bottom: var(--space-4);
+  overflow: hidden;
+}
+
+.npc-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-xl);
 }
 
 .npc-card h3 { font-size: var(--text-lg); margin-bottom: var(--space-2); }
