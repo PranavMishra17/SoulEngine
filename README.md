@@ -1,9 +1,8 @@
+# SoulEngine
+
 <div align="center">
 
-<!-- Header GIF - Replace with actual demo GIF -->
 ![SoulEngine Demo](img/demo.gif)
-
-# SoulEngine
 
 ### NPCs with memory, motive, and agency.
 
@@ -25,7 +24,6 @@ No persistent processes. No complex databases. NPCs are YAML files that become i
 
 <div align="center">
 
-<!-- Screenshot - Replace with actual screenshot -->
 ![SoulEngine Interface](img/pillar.png)
 
 </div>
@@ -65,10 +63,16 @@ Configure how well each NPC remembers - genius scholars recall every detail whil
 
 <div align="center">
 
-<!-- Screenshots - Replace with actual screenshots -->
-| NPC Editor | Playground | Settings |
-|------------|------------|----------|
-| ![Editor](img/editor.png) | ![Playground](img/playground.png) |
+| NPC Editor | 
+
+![Editor](img/editor.png)
+
+|-------------------------|
+
+
+| Playground |
+
+![Playground](img/playground.png)
 
 </div>
 
