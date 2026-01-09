@@ -1,6 +1,11 @@
 import type { Tool, ToolCall } from '../../types/mcp.js';
 
 /**
+ * Supported LLM provider types
+ */
+export type LLMProviderType = 'gemini' | 'openai' | 'anthropic' | 'grok';
+
+/**
  * A single chunk from an LLM streaming response
  */
 export interface LLMStreamChunk {
@@ -52,6 +57,13 @@ export interface LLMProviderConfig {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+}
+
+/**
+ * Extended config for factory - includes provider type
+ */
+export interface LLMFactoryConfig extends LLMProviderConfig {
+  provider: LLMProviderType;
 }
 
 /**

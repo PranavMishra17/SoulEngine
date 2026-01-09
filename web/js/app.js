@@ -12,6 +12,7 @@ import { initNpcListPage, initNpcEditorPage } from './pages/npc-editor.js';
 import { initKnowledgePage } from './pages/knowledge.js';
 import { initMcpToolsPage } from './pages/mcp-tools.js';
 import { initPlaygroundPage } from './pages/playground.js';
+import { initSettingsPage } from './pages/project-settings.js';
 
 /**
  * Initialize the application
@@ -43,6 +44,9 @@ function init() {
 
     // Playground
     .on('/projects/:projectId/playground', initPlaygroundPage)
+
+    // Settings
+    .on('/projects/:projectId/settings', initSettingsPage)
 
     // Start router
     .start();

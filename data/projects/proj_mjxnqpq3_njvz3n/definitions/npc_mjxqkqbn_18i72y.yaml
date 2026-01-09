@@ -38,7 +38,6 @@ schedule:
 mcp_permissions:
   conversation_tools:
     - exit_convo
-    - refuse_service
   game_event_tools:
     - flee_to
     - alert_guards

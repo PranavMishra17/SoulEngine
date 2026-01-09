@@ -3,7 +3,7 @@
  */
 
 import { projects, npcs, knowledge, session } from '../api.js';
-import { toast, modal, loading, renderTemplate, updateNav } from '../components.js';
+import { toast, renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
 
 let currentProject = null;
@@ -47,9 +47,9 @@ export async function initDashboardPage(params) {
     router.navigate(`/projects/${projectId}/mcp-tools`);
   });
 
-  // Bind settings button
+  // Bind settings button - navigate to settings page
   document.getElementById('btn-project-settings')?.addEventListener('click', () => {
-    openSettingsModal(projectId);
+    router.navigate(`/projects/${projectId}/settings`);
   });
 
 }
@@ -83,146 +83,6 @@ async function loadProjectData(projectId) {
     toast.error('Failed to Load Project', error.message);
     router.navigate('/projects');
   }
-}
-
-async function openSettingsModal(projectId) {
-  // Fetch key status first
-  let keyStatus = { gemini: false, deepgram: false, cartesia: false, elevenlabs: false };
-  try {
-    keyStatus = await projects.getKeyStatus(projectId);
-  } catch (error) {
-    console.warn('Failed to fetch key status:', error);
-  }
-
-  const keyPlaceholder = (isConfigured) => isConfigured ? '•••••••••••••••• (configured)' : 'Enter API key...';
-
-  const content = document.createElement('div');
-  content.className = 'settings-modal-content';
-  content.innerHTML = `
-    <div class="settings-section">
-      <div class="form-group">
-        <label for="project-name-input">Project Name</label>
-        <input type="text" id="project-name-input" class="input" value="${escapeHtml(currentProject?.name || '')}">
-      </div>
-      <div class="form-group">
-        <label>Project ID</label>
-        <div class="input-with-button">
-          <input type="text" id="project-id-display" class="input" value="${projectId}" readonly>
-          <button type="button" class="btn btn-sm btn-outline" id="btn-copy-project-id">Copy</button>
-        </div>
-      </div>
-      <div class="form-group">
-        <label for="tts-provider">Default TTS Provider</label>
-        <select id="tts-provider" class="input select">
-          <option value="cartesia" ${currentProject?.settings?.tts_provider === 'cartesia' ? 'selected' : ''}>Cartesia (Default)</option>
-          <option value="elevenlabs" ${currentProject?.settings?.tts_provider === 'elevenlabs' ? 'selected' : ''}>ElevenLabs</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="settings-divider"></div>
-
-    <div class="settings-section">
-      <h3 class="settings-section-title">API Keys</h3>
-      <p class="settings-hint">API keys are encrypted and stored securely. Leave empty to keep existing key.</p>
-
-      <div class="form-group">
-        <label for="key-gemini">Gemini API Key ${keyStatus.gemini ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
-        <input type="password" id="key-gemini" class="input" placeholder="${keyPlaceholder(keyStatus.gemini)}">
-        <span class="input-hint">LLM provider for NPC cognition</span>
-      </div>
-
-      <div class="form-group">
-        <label for="key-deepgram">Deepgram API Key ${keyStatus.deepgram ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
-        <input type="password" id="key-deepgram" class="input" placeholder="${keyPlaceholder(keyStatus.deepgram)}">
-        <span class="input-hint">Speech-to-text for voice input</span>
-      </div>
-
-      <div class="form-group">
-        <label for="key-cartesia">Cartesia API Key ${keyStatus.cartesia ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
-        <input type="password" id="key-cartesia" class="input" placeholder="${keyPlaceholder(keyStatus.cartesia)}">
-        <span class="input-hint">Text-to-speech (default provider)</span>
-      </div>
-
-      <div class="form-group">
-        <label for="key-elevenlabs">ElevenLabs API Key ${keyStatus.elevenlabs ? '<span class="key-status configured">Configured</span>' : '<span class="key-status not-configured">Not set</span>'}</label>
-        <input type="password" id="key-elevenlabs" class="input" placeholder="${keyPlaceholder(keyStatus.elevenlabs)}">
-        <span class="input-hint">Text-to-speech (alternative provider)</span>
-      </div>
-    </div>
-  `;
-
-  const footer = document.createElement('div');
-  footer.innerHTML = `
-    <button class="btn btn-outline" data-action="cancel">Cancel</button>
-    <button class="btn btn-primary" data-action="save">Save Changes</button>
-  `;
-
-  const modalInstance = modal.open({
-    title: 'Project Settings',
-    content,
-    footer,
-    size: 'large',
-  });
-
-  // Copy project ID
-  content.querySelector('#btn-copy-project-id').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(projectId);
-      toast.success('Copied', 'Project ID copied to clipboard.');
-    } catch (err) {
-      // Fallback for older browsers
-      const input = content.querySelector('#project-id-display');
-      input.select();
-      document.execCommand('copy');
-      toast.success('Copied', 'Project ID copied to clipboard.');
-    }
-  });
-
-  footer.querySelector('[data-action="cancel"]').addEventListener('click', () => {
-    modalInstance.close();
-  });
-
-  footer.querySelector('[data-action="save"]').addEventListener('click', async () => {
-    const name = content.querySelector('#project-name-input').value;
-    const ttsProvider = content.querySelector('#tts-provider').value;
-
-    // Collect API keys (only non-empty ones)
-    const apiKeys = {};
-    const keyTypes = ['gemini', 'deepgram', 'cartesia', 'elevenlabs'];
-    keyTypes.forEach((keyType) => {
-      const keyValue = content.querySelector(`#key-${keyType}`).value;
-      if (keyValue) {
-        apiKeys[keyType] = keyValue;
-      }
-    });
-
-    try {
-      // Update project settings
-      await projects.update(projectId, {
-        name,
-        settings: { tts_provider: ttsProvider },
-      });
-
-      // Update API keys if any were provided
-      if (Object.keys(apiKeys).length > 0) {
-        await projects.updateKeys(projectId, apiKeys);
-      }
-
-      toast.success('Settings Saved', 'Project settings have been updated.');
-      modalInstance.close();
-      await loadProjectData(projectId);
-    } catch (error) {
-      toast.error('Failed to Save Settings', error.message);
-    }
-  });
-}
-
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 export default { initDashboardPage };

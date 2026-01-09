@@ -25,11 +25,19 @@ const ConfigSchema = z.object({
   }),
   // Provider API keys - can be overridden per-project in storage
   providers: z.object({
+    // LLM providers
     geminiApiKey: z.string().optional(),
+    openaiApiKey: z.string().optional(),
+    anthropicApiKey: z.string().optional(),
+    grokApiKey: z.string().optional(),
+    // STT providers
     deepgramApiKey: z.string().optional(),
+    // TTS providers
     cartesiaApiKey: z.string().optional(),
     elevenLabsApiKey: z.string().optional(),
   }).default({}),
+  // Default LLM provider type
+  defaultLlmProvider: z.enum(['gemini', 'openai', 'anthropic', 'grok']).default('gemini'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -63,11 +71,18 @@ export function loadConfig(): Config {
         maxLtmMemories: process.env.MAX_LTM_MEMORIES,
       },
       providers: {
+        // LLM providers
         geminiApiKey: process.env.GEMINI_API_KEY,
+        openaiApiKey: process.env.OPENAI_API_KEY,
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+        grokApiKey: process.env.GROK_API_KEY,
+        // STT providers
         deepgramApiKey: process.env.DEEPGRAM_API_KEY,
+        // TTS providers
         cartesiaApiKey: process.env.CARTESIA_API_KEY,
         elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
       },
+      defaultLlmProvider: process.env.DEFAULT_LLM_PROVIDER,
     };
 
     config = ConfigSchema.parse(rawConfig);

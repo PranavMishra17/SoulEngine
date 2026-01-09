@@ -43,10 +43,6 @@
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
           </a>
         </div>
-        <div class="nav-divider"></div>
-        <button class="btn btn-ghost" id="theme-toggle" title="Toggle theme">
-          <span class="icon">&#9680;</span>
-        </button>
       </div>
     </nav>
 
@@ -74,16 +70,16 @@
         <div class="hero-content">
           <div class="hero-badge">
             <span class="badge badge-accent">Open Source</span>
-            <span class="badge badge-outline">v1.0</span>
+            <span class="badge badge-outline">v2.0</span>
           </div>
           <h1 class="hero-title">
-            NPCs that <span class="highlight highlight-core">remember</span>,
-            <span class="highlight highlight-persona">evolve</span>, and
-            <span class="highlight highlight-mcp">speak</span>
+            NPCs with <span class="highlight highlight-core">memory</span>,
+            <span class="highlight highlight-persona">motive</span>, and
+            <span class="highlight highlight-mcp">agency</span>
           </h1>
           <p class="hero-subtitle">
-            Memory-driven game characters with layered psychological cycles,
-            real-time voice interaction, and emergent personality evolution.
+            Stateless NPC intelligence with layered memory cycles, personality evolution,
+            multi-modal voice interaction, and autonomous decision-making.
           </p>
           <div class="hero-actions">
             <button class="btn btn-primary btn-lg" id="btn-create-project">
@@ -270,7 +266,7 @@
                 <span class="brand-icon">S</span>
                 <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
               </div>
-              <p>Memory-driven NPCs with layered psychological cycles, real-time voice interaction, and emergent personality evolution.</p>
+              <p>NPCs with memory, motive, and agency. Stateless intelligence with layered psychological cycles.</p>
               <div class="footer-social-links">
                 <a href="https://github.com/PranavMishra17/SoulEngine" target="_blank" rel="noopener" class="footer-social-link" title="GitHub">
                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
@@ -301,11 +297,16 @@
             </div>
           </div>
           <div class="footer-bottom">
-            <p>Built by <a href="https://portfolio-pranav-mishra-paranoid.vercel.app" target="_blank" rel="noopener">Pranav Mishra</a>. Open source under MIT license.</p>
+            <p>Built by <a href="https://portfolio-pranav-mishra-paranoid.vercel.app" target="_blank" rel="noopener">Pranav Mishra</a>. Open source under ISC license.</p>
             <div class="footer-bottom-links">
               <a href="https://github.com/PranavMishra17/SoulEngine/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
               <a href="https://github.com/sponsors/PranavMishra17" target="_blank" rel="noopener">Support Development</a>
             </div>
+          </div>
+          <!-- Warning Banner -->
+          <div class="footer-warning">
+            <p class="warning-title">⚠️ BEWARE ⚠️</p>
+            <p class="warning-text">They remember. They change. They act.</p>
           </div>
         </div>
       </footer>
@@ -953,6 +954,226 @@
           <div class="tools-list" id="game-event-tools"></div>
           <div class="empty-state-inline" id="empty-game-tools" style="display: none;"><p>No game event tools defined yet.</p></div>
         </section>
+      </div>
+    </div>
+  </template>
+
+  <template id="template-settings">
+    <div class="settings-page">
+      <header class="page-header">
+        <div class="page-header-content">
+          <div class="breadcrumb">
+            <a href="/projects">Projects</a>
+            <span class="breadcrumb-sep">/</span>
+            <a href="#" id="breadcrumb-project">Project</a>
+            <span class="breadcrumb-sep">/</span>
+            <span>Settings</span>
+          </div>
+          <h1>Project Settings</h1>
+          <p class="page-subtitle">Configure API keys, providers, and project options</p>
+        </div>
+      </header>
+
+      <div class="settings-layout">
+        <!-- Provider Selection -->
+        <section class="settings-card">
+          <div class="settings-card-header">
+            <h2>AI Providers</h2>
+            <p class="settings-card-desc">Select which AI providers to use for this project</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label for="settings-llm-provider">LLM Provider</label>
+              <select id="settings-llm-provider" class="input select">
+                <option value="gemini">Google Gemini</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic Claude</option>
+                <option value="grok">xAI Grok</option>
+              </select>
+              <span class="input-hint">Used for NPC cognition and dialogue generation</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-llm-model">LLM Model</label>
+              <select id="settings-llm-model" class="input select">
+                <!-- Populated dynamically -->
+              </select>
+              <span class="input-hint">Specific model to use for conversations</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-tts-provider">TTS Provider</label>
+              <select id="settings-tts-provider" class="input select">
+                <option value="cartesia">Cartesia (Default)</option>
+                <option value="elevenlabs">ElevenLabs</option>
+              </select>
+              <span class="input-hint">Text-to-speech for voice output</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-stt-provider">STT Provider</label>
+              <select id="settings-stt-provider" class="input select">
+                <option value="deepgram">Deepgram (Default)</option>
+              </select>
+              <span class="input-hint">Speech-to-text for voice input</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- LLM API Keys -->
+        <section class="settings-card">
+          <div class="settings-card-header">
+            <h2>LLM API Keys</h2>
+            <p class="settings-card-desc">API keys for language model providers</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label for="settings-key-gemini">
+                Gemini API Key
+                <span class="key-status" id="status-gemini"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-gemini" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-gemini">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a></span>
+            </div>
+            <div class="form-group">
+              <label for="settings-key-openai">
+                OpenAI API Key
+                <span class="key-status" id="status-openai"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-openai" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-openai">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a></span>
+            </div>
+            <div class="form-group">
+              <label for="settings-key-anthropic">
+                Anthropic API Key
+                <span class="key-status" id="status-anthropic"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-anthropic" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-anthropic">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic Console</a></span>
+            </div>
+            <div class="form-group">
+              <label for="settings-key-grok">
+                Grok API Key
+                <span class="key-status" id="status-grok"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-grok" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-grok">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://x.ai" target="_blank">xAI</a></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Voice API Keys -->
+        <section class="settings-card">
+          <div class="settings-card-header">
+            <h2>Voice API Keys</h2>
+            <p class="settings-card-desc">API keys for speech-to-text and text-to-speech</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label for="settings-key-deepgram">
+                Deepgram API Key
+                <span class="key-status" id="status-deepgram"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-deepgram" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-deepgram">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://console.deepgram.com" target="_blank">Deepgram Console</a> - Required for voice input</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-key-cartesia">
+                Cartesia API Key
+                <span class="key-status" id="status-cartesia"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-cartesia" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-cartesia">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://play.cartesia.ai" target="_blank">Cartesia</a> - Default TTS provider</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-key-elevenlabs">
+                ElevenLabs API Key
+                <span class="key-status" id="status-elevenlabs"></span>
+              </label>
+              <div class="input-with-toggle">
+                <input type="password" id="settings-key-elevenlabs" class="input" placeholder="Enter API key...">
+                <button type="button" class="btn btn-ghost btn-sm btn-toggle-visibility" data-target="settings-key-elevenlabs">
+                  <span class="icon">👁</span>
+                </button>
+              </div>
+              <span class="input-hint">Get from <a href="https://elevenlabs.io" target="_blank">ElevenLabs</a> - Alternative TTS provider</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Project Info -->
+        <section class="settings-card">
+          <div class="settings-card-header">
+            <h2>Project Information</h2>
+            <p class="settings-card-desc">Basic project details</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label for="settings-project-name">Project Name</label>
+              <input type="text" id="settings-project-name" class="input" placeholder="My Game Project">
+            </div>
+            <div class="form-group">
+              <label>Project ID</label>
+              <div class="input-with-button">
+                <input type="text" id="settings-project-id" class="input" readonly>
+                <button type="button" class="btn btn-sm btn-outline" id="btn-copy-project-id">Copy</button>
+              </div>
+              <span class="input-hint">Use this ID when integrating with your game</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Danger Zone -->
+        <section class="settings-card settings-card-danger">
+          <div class="settings-card-header">
+            <h2>Danger Zone</h2>
+            <p class="settings-card-desc">Irreversible actions</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="danger-action">
+              <div class="danger-action-info">
+                <h3>Delete Project</h3>
+                <p>Permanently delete this project and all its NPCs, knowledge, and data.</p>
+              </div>
+              <button class="btn btn-danger" id="btn-delete-project">Delete Project</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Save Bar -->
+      <div class="settings-save-bar">
+        <span class="save-bar-hint">Changes are saved when you click Save</span>
+        <button class="btn btn-primary btn-lg" id="btn-save-settings">
+          <span class="icon">&#10003;</span> Save Settings
+        </button>
       </div>
     </div>
   </template>

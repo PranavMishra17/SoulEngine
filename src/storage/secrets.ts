@@ -17,8 +17,14 @@ const ITERATIONS = 100000;
  * API keys stored for a project
  */
 export interface ApiKeys {
+  // LLM providers
   gemini?: string;
+  openai?: string;
+  anthropic?: string;
+  grok?: string;
+  // STT providers
   deepgram?: string;
+  // TTS providers
   cartesia?: string;
   elevenlabs?: string;
 }

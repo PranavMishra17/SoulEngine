@@ -48,8 +48,14 @@ const UpdateProjectSchema = z.object({
 });
 
 const UpdateApiKeysSchema = z.object({
+  // LLM providers
   gemini: z.string().optional(),
+  openai: z.string().optional(),
+  anthropic: z.string().optional(),
+  grok: z.string().optional(),
+  // STT providers
   deepgram: z.string().optional(),
+  // TTS providers
   cartesia: z.string().optional(),
   elevenlabs: z.string().optional(),
 });
@@ -202,8 +208,14 @@ projectRoutes.get('/:projectId/keys', async (c) => {
     logger.debug({ projectId, duration }, 'API keys status retrieved via API');
 
     return c.json({
+      // LLM providers
       gemini: keys.gemini ? true : false,
+      openai: keys.openai ? true : false,
+      anthropic: keys.anthropic ? true : false,
+      grok: keys.grok ? true : false,
+      // STT providers
       deepgram: keys.deepgram ? true : false,
+      // TTS providers
       cartesia: keys.cartesia ? true : false,
       elevenlabs: keys.elevenlabs ? true : false,
     });
@@ -245,8 +257,14 @@ projectRoutes.put('/:projectId/keys', async (c) => {
     const mergedKeys = { ...existingKeys };
 
     // Only update provided keys
+    // LLM providers
     if (parsed.data.gemini !== undefined) mergedKeys.gemini = parsed.data.gemini;
+    if (parsed.data.openai !== undefined) mergedKeys.openai = parsed.data.openai;
+    if (parsed.data.anthropic !== undefined) mergedKeys.anthropic = parsed.data.anthropic;
+    if (parsed.data.grok !== undefined) mergedKeys.grok = parsed.data.grok;
+    // STT providers
     if (parsed.data.deepgram !== undefined) mergedKeys.deepgram = parsed.data.deepgram;
+    // TTS providers
     if (parsed.data.cartesia !== undefined) mergedKeys.cartesia = parsed.data.cartesia;
     if (parsed.data.elevenlabs !== undefined) mergedKeys.elevenlabs = parsed.data.elevenlabs;
 
@@ -260,6 +278,9 @@ projectRoutes.put('/:projectId/keys', async (c) => {
       message: 'API keys updated',
       keys: {
         gemini: mergedKeys.gemini ? '***' : undefined,
+        openai: mergedKeys.openai ? '***' : undefined,
+        anthropic: mergedKeys.anthropic ? '***' : undefined,
+        grok: mergedKeys.grok ? '***' : undefined,
         deepgram: mergedKeys.deepgram ? '***' : undefined,
         cartesia: mergedKeys.cartesia ? '***' : undefined,
         elevenlabs: mergedKeys.elevenlabs ? '***' : undefined,

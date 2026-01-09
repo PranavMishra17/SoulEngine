@@ -21,7 +21,8 @@ import { historyRoutes } from './routes/history.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
 
 // Providers
-import { GeminiLlmProvider } from './providers/llm/gemini.js';
+import { createLlmProvider, getDefaultModel } from './providers/llm/factory.js';
+import type { LLMProviderType } from './providers/llm/interface.js';
 import { DeepgramSttProvider } from './providers/stt/deepgram.js';
 import { createTtsProvider } from './providers/tts/factory.js';
 import type { TTSProviderType } from './providers/tts/interface.js';
@@ -71,12 +72,39 @@ projectScoped.route('/mcp-tools', mcpToolsRoutes);
 // Mount the project-scoped routes
 app.route('/api/projects/:projectId', projectScoped);
 
-// Initialize LLM provider if API key is available
-const geminiApiKey = config.providers.geminiApiKey;
-const llmProvider = geminiApiKey ? new GeminiLlmProvider({ apiKey: geminiApiKey }) : null;
+/**
+ * Get API key for the specified LLM provider
+ */
+function getLlmApiKey(providerType: LLMProviderType): string | undefined {
+  switch (providerType) {
+    case 'gemini':
+      return config.providers.geminiApiKey;
+    case 'openai':
+      return config.providers.openaiApiKey;
+    case 'anthropic':
+      return config.providers.anthropicApiKey;
+    case 'grok':
+      return config.providers.grokApiKey;
+    default:
+      return undefined;
+  }
+}
+
+// Initialize LLM provider using factory
+const defaultLlmType = config.defaultLlmProvider;
+const llmApiKey = getLlmApiKey(defaultLlmType);
+const llmProvider = llmApiKey
+  ? createLlmProvider({
+      provider: defaultLlmType,
+      apiKey: llmApiKey,
+      model: getDefaultModel(defaultLlmType),
+    })
+  : null;
 
 if (!llmProvider) {
-  logger.warn('No GEMINI_API_KEY configured - LLM/conversation features will not work');
+  logger.warn({ provider: defaultLlmType }, 'No API key configured for default LLM provider - LLM/conversation features will not work');
+} else {
+  logger.info({ provider: defaultLlmType, model: getDefaultModel(defaultLlmType) }, 'LLM provider initialized');
 }
 
 // Session routes - only fully functional with LLM provider
@@ -109,10 +137,10 @@ if (llmProvider) {
 } else {
   // Return 503 for session/conversation endpoints when LLM is not configured
   app.all('/api/session/*', (c) => {
-    return c.json({ error: 'LLM provider not configured. Set GEMINI_API_KEY environment variable.' }, 503);
+    return c.json({ error: `LLM provider not configured. Set ${config.defaultLlmProvider.toUpperCase()}_API_KEY environment variable.` }, 503);
   });
   app.all('/api/instances/*', (c) => {
-    return c.json({ error: 'LLM provider not configured. Set GEMINI_API_KEY environment variable.' }, 503);
+    return c.json({ error: `LLM provider not configured. Set ${config.defaultLlmProvider.toUpperCase()}_API_KEY environment variable.` }, 503);
   });
 }
 
@@ -262,25 +290,28 @@ wss.on('connection', (ws, req) => {
   // Get API keys from config
   const deepgramKey = config.providers.deepgramApiKey;
   const cartesiaKey = config.providers.cartesiaApiKey;
-  const geminiKey = config.providers.geminiApiKey;
+  const llmProviderType = config.defaultLlmProvider;
+  const llmKey = getLlmApiKey(llmProviderType);
 
   logger.info({
     hasDeepgram: !!deepgramKey,
     hasCartesia: !!cartesiaKey,
-    hasGemini: !!geminiKey,
+    hasLlm: !!llmKey,
+    llmProvider: llmProviderType,
   }, 'Voice WebSocket: API key status');
 
   // Check if all required keys are available
-  if (!deepgramKey || !cartesiaKey || !geminiKey) {
+  if (!deepgramKey || !cartesiaKey || !llmKey) {
     logger.error({
       sessionId,
       missingKeys: {
         deepgram: !deepgramKey,
         cartesia: !cartesiaKey,
-        gemini: !geminiKey,
+        llm: !llmKey,
+        llmProvider: llmProviderType,
       }
     }, 'Voice WebSocket: missing API keys');
-    ws.close(1008, 'Voice providers not configured. Set DEEPGRAM_API_KEY, CARTESIA_API_KEY, and GEMINI_API_KEY.');
+    ws.close(1008, `Voice providers not configured. Set DEEPGRAM_API_KEY, CARTESIA_API_KEY, and ${llmProviderType.toUpperCase()}_API_KEY.`);
     return;
   }
 
@@ -304,14 +335,18 @@ wss.on('connection', (ws, req) => {
     logger.info({ sessionId, ttsProvider: ttsProviderType, voiceId: voiceConfig.voice_id }, 'Voice WebSocket: using TTS provider');
 
     try {
-      // Create providers with configured API keys
+      // Create providers with configured API keys using factory
       const deps: VoiceWebSocketDependencies = {
         sttProvider: new DeepgramSttProvider({ apiKey: deepgramKey }),
         ttsProvider: createTtsProvider({ provider: ttsProviderType, apiKey: ttsApiKey }),
-        llmProvider: new GeminiLlmProvider({ apiKey: geminiKey }),
+        llmProvider: createLlmProvider({
+          provider: llmProviderType,
+          apiKey: llmKey,
+          model: getDefaultModel(llmProviderType),
+        }),
       };
 
-      logger.info({ sessionId }, 'Voice WebSocket: providers created, calling handler');
+      logger.info({ sessionId, llmProvider: llmProviderType }, 'Voice WebSocket: providers created, calling handler');
 
       // Handle the voice WebSocket connection
       handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);

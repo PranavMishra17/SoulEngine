@@ -518,3 +518,27 @@
 .footer-bottom-links { display: flex; gap: var(--space-6); }
 .footer-bottom-links a { font-size: var(--text-sm); color: var(--color-text-tertiary); }
 .footer-bottom-links a:hover { color: var(--color-accent-primary); }
+
+/* Footer Warning Banner */
+.footer-warning {
+  margin-top: var(--space-8);
+  padding: var(--space-6);
+  background: linear-gradient(135deg, rgba(157, 78, 221, 0.1), rgba(255, 0, 110, 0.1));
+  border: 1px solid rgba(157, 78, 221, 0.3);
+  border-radius: var(--radius-xl);
+  text-align: center;
+}
+
+.footer-warning .warning-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  color: var(--color-accent-primary);
+  margin-bottom: var(--space-2);
+  letter-spacing: 0.1em;
+}
+
+.footer-warning .warning-text {
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}

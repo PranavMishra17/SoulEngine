@@ -1,12 +1,22 @@
-# Evolve.NPC
+# SoulEngine (Evolve.NPC v2.0)
 
-**Memory-driven NPCs for games.**
+**NPCs with memory, motive, and agency.**
 
-> Stateless NPC intelligence with layered memory cycles, personality evolution, voice interaction, and MCP-based agency in game environments.
+> Stateless NPC intelligence with layered memory cycles, personality evolution, multi-modal voice interaction, and MCP-based agency in game environments.
 
 ---
 
-Evolve.NPC is a TypeScript framework for creating game characters that remember player interactions, evolve their personalities over time, speak with their own voices, and take actions in the game world. No persistent processes, no complex databases. NPCs are JSON files that become intelligent when queried against an LLM. Talk to them via text or voice, they respond in kind through integrated STT/TTS pipelines. Define a character's childhood, principles, and personality once. The system handles the rest: forming memories, forgetting trivia, holding grudges, building relationships, and deciding when to call the cops on a threatening player. MCP-based tool system lets NPCs act on their decisions: lock doors, refuse service, alert guards, flee danger. Characters that listen, think, speak, and do.
+SoulEngine is a TypeScript framework for creating game characters that remember player interactions, evolve their personalities over time, speak with their own voices, and take actions in the game world. No persistent processes, no complex databases. NPCs are YAML files that become intelligent when queried against an LLM. Talk to them via text or voice (or any combination), they respond in kind through integrated STT/TTS pipelines. Define a character's childhood, principles, and personality once. The system handles the rest: forming memories, forgetting trivia, holding grudges, building relationships, and deciding when to call the cops on a threatening player. MCP-based tool system lets NPCs act on their decisions: lock doors, refuse service, alert guards, flee danger.
+
+**v2.0 Features:**
+- **Multi-provider LLM support**: Gemini, OpenAI, Anthropic Claude, xAI Grok
+- **Flexible conversation modes**: Text↔Text, Voice↔Voice, Text→Voice, Voice→Text
+- **Player identity system**: NPCs can recognize and remember players
+- **Per-NPC memory retention**: Smart NPCs remember more, simpletons forget
+- **NPC profile pictures**: Visual identification in UI
+- **Dedicated settings page**: Per-project API key and provider configuration
+
+Characters that listen, think, speak, and do.
 
 ---
 
@@ -34,6 +44,10 @@ core_anchor: {
 
 A village elder who witnessed war as a child will carry that perspective forever. A merchant raised on honesty will struggle to lie even under pressure. The Core Anchor is enforced at both the cycle logic layer and storage layer - belt and suspenders.
 
+**v2.0: Name Tolerance**
+
+NPCs are now instructed to be forgiving about slight name mispronunciations that occur due to STT transcription. A player saying "Slop" when the NPC's name is "Slorp" won't trigger frustration - the NPC assumes good intent and interprets close phonetic matches as their actual name.
+
 ### 2. Daily Pulse
 
 Lightweight emotional state captured at session or day boundaries. Two components: a mood vector representing current emotional state, and a single-sentence takeaway from the day's events. Creates behavioral continuity across short timespans.
@@ -59,6 +73,18 @@ weekly_whisper: {
 }
 ```
 
+**v2.0: Per-NPC Memory Retention**
+
+Each NPC now has a configurable `salience_threshold` (0.0-1.0) that controls how well they remember:
+
+| Memory Retention | Threshold | Behavior |
+|-----------------|-----------|----------|
+| 80-100% (Genius) | 0.35-0.47 | Remembers small details, longer summaries |
+| 40-60% (Average) | 0.59-0.71 | Standard memory retention |
+| 0-20% (Dimwit) | 0.83-0.95 | Struggles to recall, brief summaries |
+
+This affects both Weekly Whisper (how many memories get promoted to LTM) and conversation summarization (how detailed the NPC's recap is).
+
 **Telephone Game Logic:** Day -> Summary -> Week -> Summary -> Core. Old raw data is aggressively discarded after each summarization step. Only high-salience summaries persist long-term, preventing unbounded memory growth.
 
 ### 4. Persona Shift
@@ -79,7 +105,27 @@ This is where genuine character development occurs. An NPC who experiences repea
 
 **Important:** Persona Shift can modify personality traits but NEVER the Core Anchor. Any LLM suggestions to modify the anchor are logged and ignored.
 
-### 5. MCP Action Layer
+### 5. Player Identity & Network (v2.0)
+
+NPCs can now recognize players before conversation starts. Developers configure whether an NPC "knows" the player:
+
+```
+player_recognition: {
+  reveal_player_identity: boolean,  // Include player info in NPC context
+  default_player_tier: 1 | 2 | 3    // How well NPC knows player
+}
+```
+
+When a session starts with player info provided, the NPC's system prompt includes:
+- Player's name (so NPC can address them)
+- Description (what the NPC sees)
+- Context (relationship notes)
+
+**Bidirectional Network Awareness:** The existing NPC network now supports one-sided relationships:
+- "You know them, and they know you back" (mutual)
+- "You know of them (famous), but they don't know you" (reverse context)
+
+### 6. MCP Action Layer
 
 NPCs don't just talk. They act. Through Model Context Protocol tools, characters execute world actions with real consequences. Two distinct tool categories serve different decision sources:
 
@@ -177,6 +223,25 @@ The same NPC definition works across web testing (text), voice demos (audio), an
 
 We use **LiveKit's TypeScript SDK** for STT/TTS integration patterns and audio utilities, but **NOT** their agent worker or room-based architecture. Instead, we implement a custom VoicePipeline class over standard WebSocket connections for maximum control and scalability.
 
+### v2.0: Conversation Modes
+
+The pipeline now supports four conversation modes, enabling flexible input/output combinations:
+
+| Mode | Input | Output | Use Case |
+|------|-------|--------|----------|
+| `text-text` | Keyboard | Text | Chat interfaces, accessibility |
+| `voice-voice` | Microphone | Speakers | Full voice conversations |
+| `text-voice` | Keyboard | Speakers | Type to NPC, hear response |
+| `voice-text` | Microphone | Text | Speak to NPC, read response |
+
+```typescript
+// Mode-aware resource initialization
+async initialize(): Promise<void> {
+  if (this.mode.input === 'voice') await this.initializeSTT();
+  if (this.mode.output === 'voice') await this.initializeTTS();
+}
+```
+
 ### Why Custom WebSocket Over LiveKit Rooms
 
 - **No Room Overhead:** LiveKit's room model is designed for multi-party video calls. NPC conversations are 1-on-1.
@@ -196,26 +261,32 @@ We use **LiveKit's TypeScript SDK** for STT/TTS integration patterns and audio u
 ```typescript
 class VoicePipeline {
   private sttStream: DeepgramLiveClient;
-  private ttsStream: CartesiaWebSocket;  // Cartesia default, ElevenLabs available
+  private ttsStream: CartesiaWebSocket;
+  private mode: ConversationMode;  // v2.0: Mode awareness
   
   private isAgentSpeaking: boolean = false;
   private abortController: AbortController;
 
   constructor(
     private session: Session, 
-    private config: VoiceConfig
+    private config: VoiceConfig,
+    mode: ConversationMode = { input: 'voice', output: 'voice' }
   ) {
-    this.setupSTT();
-    this.setupTTS();
+    this.mode = mode;
+    if (mode.input === 'voice') this.setupSTT();
+    if (mode.output === 'voice') this.setupTTS();
   }
 
-  // Audio from client (already VAD-filtered)
+  // Audio from client (voice-* modes)
   public pushAudio(chunk: Buffer): void
+
+  // Text from client (text-* modes) - v2.0
+  public async handleTextInput(text: string): Promise<void>
 
   // STT transcript -> LLM processing
   private onTranscript(text: string, isFinal: boolean): void
 
-  // LLM streaming -> TTS streaming (parallel)
+  // LLM streaming -> TTS streaming (if voice output)
   private async processTurn(input: string): Promise<void>
 
   // Client interruption -> cancel generation
@@ -366,12 +437,33 @@ Token costs per cycle: Daily Pulse ~200, Weekly Whisper ~500, Persona Shift ~100
 
 ### Providers
 
-| Service | Protocol | Library | Purpose |
-|---------|----------|---------|---------|
-| Gemini Flash 2.5 | REST Stream | `@google/generative-ai` | LLM |
-| Deepgram Nova-2 | WebSocket | `@deepgram/sdk` | Live STT |
-| Cartesia Sonic | WebSocket | `@cartesia/cartesia-js` | Streaming TTS (default) |
-| ElevenLabs | WebSocket | `elevenlabs` | Alternative TTS |
+**v2.0: Factory Pattern for All Providers**
+
+The system uses a factory pattern for LLM, STT, and TTS providers, enabling runtime switching via configuration:
+
+```typescript
+// LLM Provider Factory
+const llmProvider = createLlmProvider({
+  provider: 'gemini',  // or 'openai', 'anthropic', 'grok'
+  apiKey: config.providers.geminiApiKey,
+  model: 'gemini-2.5-flash',
+});
+```
+
+| Provider Type | Options | Default | Library |
+|---------------|---------|---------|---------|
+| **LLM** | Gemini, OpenAI, Anthropic, Grok | Gemini 2.5 Flash | Native fetch streaming |
+| **STT** | Deepgram | Deepgram Nova-2 | `@deepgram/sdk` |
+| **TTS** | Cartesia, ElevenLabs | Cartesia Sonic | Native WebSocket |
+
+#### LLM Providers
+
+| Provider | Default Model | Other Models | Notes |
+|----------|---------------|--------------|-------|
+| Google Gemini | gemini-2.5-flash | gemini-2.5-pro, gemini-1.5-pro | Fastest, recommended |
+| OpenAI | gpt-4o | gpt-4o-mini, gpt-4-turbo | Best quality |
+| Anthropic | claude-3-5-sonnet | claude-3-opus, claude-3-haiku | Strong reasoning |
+| xAI Grok | grok-beta | - | Experimental |
 
 **Why WebSocket for STT/TTS?** REST APIs add per-request latency. WebSocket connections stay open, enabling true streaming with sub-100ms time-to-first-audio.
 
@@ -534,8 +626,10 @@ A web-based dashboard for monitoring NPC states across a project:
 | WebSocket everything | STT, TTS, client comms - all WebSocket for low latency |
 | Stream everything | Token-by-token LLM -> sentence-by-sentence TTS -> chunk-by-chunk audio |
 | Cyclic memory pruning | Replace, don't append. Aggressive data discard. |
-| I/O agnostic | Same mind, swappable inputs/outputs |
-| Provider abstraction | Swap LLM/STT/TTS without code changes |
+| **Modal I/O** | Any input mode (text/voice) with any output mode (text/voice) |
+| **Factory providers** | Swap LLM/STT/TTS at runtime via configuration |
+| **Per-NPC memory** | Configurable memory retention per character |
+| **Player awareness** | NPCs can recognize players before conversation |
 | Explicit triggers | Host controls update cycles |
 | Two tool types | Conversation (LLM decides) vs Game-event (game decides) |
 | Comprehensive logging | Structured, traceable, no PII |
@@ -544,25 +638,78 @@ A web-based dashboard for monitoring NPC states across a project:
 
 ---
 
+## Web UI (v2.0)
+
+The framework includes a complete web-based management and testing interface:
+
+### Project Management
+- Create/manage multiple NPC projects
+- **Settings Page** for each project with:
+  - LLM provider selection (Gemini, OpenAI, Anthropic, Grok)
+  - Model selection per provider
+  - API key management (encrypted storage)
+  - TTS/STT provider configuration
+
+### NPC Editor
+- **8-tab editor** for complete NPC configuration:
+  - Basic Info (name, description, profile picture)
+  - Core Anchor (backstory, principles, traumas)
+  - Personality (traits, template, memory retention slider)
+  - Voice (provider, voice ID, style)
+  - Knowledge Access (tiered knowledge categories)
+  - Schedule & Stats (routines, default mood)
+  - MCP Tools (permitted actions)
+  - Network (NPC relationships, player recognition)
+
+### Testing Playground
+- **Conversation mode selector** (4 modes)
+- Real-time chat with NPCs
+- Player identity testing
+- Mind viewer for NPC state inspection
+- Memory cycle triggers
+
+---
+
 ## Getting Started
 
 ```bash
 # Clone and install
-git clone https://github.com/aspect-games/evolve-npc.git
-cd evolve-npc
-bun install  # or npm install
+git clone https://github.com/PranavMishra17/SoulEngine.git
+cd SoulEngine
+npm install
 
 # Configure providers
 cp .env.example .env
-# Add your API keys for Gemini, Deepgram, Cartesia
+# Add your API keys for LLM, STT, TTS providers
 
 # Run development server
-bun run dev  # or npm run dev
+npm run dev
 
-# Open web test UI
+# Open web UI
 open http://localhost:3000
+```
+
+### Environment Variables
+
+```bash
+# LLM Providers (at least one required)
+GEMINI_API_KEY=your_key
+OPENAI_API_KEY=your_key
+ANTHROPIC_API_KEY=your_key
+GROK_API_KEY=your_key
+
+# Voice Providers
+DEEPGRAM_API_KEY=your_key  # STT
+CARTESIA_API_KEY=your_key  # TTS (default)
+ELEVENLABS_API_KEY=your_key  # TTS (alternative)
+
+# Default LLM provider
+DEFAULT_LLM_PROVIDER=gemini  # or openai, anthropic, grok
+
+# Encryption for API key storage
+ENCRYPTION_KEY=your_32_char_key
 ```
 
 ---
 
-**Evolve.NPC** - Characters that listen, think, speak, and do.
+**SoulEngine** - Characters that listen, think, speak, and do.
