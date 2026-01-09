@@ -26,7 +26,7 @@ No persistent processes. No complex databases. NPCs are YAML files that become i
 <div align="center">
 
 <!-- Screenshot - Replace with actual screenshot -->
-![SoulEngine Interface](img/screenshot-main.png)
+![SoulEngine Interface](img/pillar.png)
 
 </div>
 
@@ -68,7 +68,7 @@ Configure how well each NPC remembers - genius scholars recall every detail whil
 <!-- Screenshots - Replace with actual screenshots -->
 | NPC Editor | Playground | Settings |
 |------------|------------|----------|
-| ![Editor](img/screenshot-editor.png) | ![Playground](img/screenshot-playground.png) | ![Settings](img/screenshot-settings.png) |
+| ![Editor](img/editor.png) | ![Playground](img/playground.png) |
 
 </div>
 
