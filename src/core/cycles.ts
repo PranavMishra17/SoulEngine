@@ -159,16 +159,26 @@ Your takeaway:`;
  * 1. Reviews all STM memories
  * 2. Selects the most salient ones to retain
  * 3. REPLACES STM with the retained memories (aggressive pruning)
- * 4. Promotes high-salience memories to LTM
+ * 4. Promotes high-salience memories to LTM based on NPC's salience threshold
  *
  * Token cost: ~500 tokens
+ *
+ * @param instance - The NPC instance to process
+ * @param retainCount - Maximum memories to retain in STM (default: 3)
+ * @param salienceThreshold - NPC-specific threshold for LTM promotion (default: 0.7)
+ *                            Lower = better memory, promotes more to LTM
  */
 export async function runWeeklyWhisper(
   instance: NPCInstance,
-  retainCount: number = 3
+  retainCount: number = 3,
+  salienceThreshold: number = 0.7
 ): Promise<WeeklyWhisperResult> {
   const startTime = Date.now();
-  logger.info({ instanceId: instance.id, retainCount }, 'Running weekly whisper');
+  logger.info({ 
+    instanceId: instance.id, 
+    retainCount,
+    salienceThreshold 
+  }, 'Running weekly whisper with NPC-specific threshold');
 
   try {
     const originalSTMCount = instance.short_term_memory.length;
@@ -180,8 +190,9 @@ export async function runWeeklyWhisper(
     const retained = sortedMemories.slice(0, retainCount);
     const discarded = sortedMemories.slice(retainCount);
 
-    // Promote high-salience memories to LTM (salience >= 0.7)
-    const toPromote = retained.filter((m) => m.salience >= 0.7);
+    // Promote memories to LTM using NPC's salience threshold
+    // Lower threshold = better memory = more memories promoted
+    const toPromote = retained.filter((m) => m.salience >= salienceThreshold);
     let promoted = 0;
 
     for (const memory of toPromote) {
@@ -210,6 +221,7 @@ export async function runWeeklyWhisper(
         discarded: discarded.length,
         promoted,
         finalLTM: instance.long_term_memory.length,
+        salienceThreshold,
       },
       'Weekly whisper completed'
     );

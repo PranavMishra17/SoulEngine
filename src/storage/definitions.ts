@@ -124,6 +124,13 @@ function validateDefinition(def: NPCDefinition): void {
       throw new StorageValidationError('player_recognition.default_player_tier must be 1, 2, or 3');
     }
   }
+
+  // Validate salience threshold (optional, defaults to 0.7)
+  if (def.salience_threshold !== undefined) {
+    if (typeof def.salience_threshold !== 'number' || def.salience_threshold < 0 || def.salience_threshold > 1) {
+      throw new StorageValidationError('salience_threshold must be a number between 0 and 1');
+    }
+  }
 }
 
 /**
@@ -216,6 +223,11 @@ export async function getDefinition(projectId: string, npcId: string): Promise<N
 
     if (!definition.network) {
       definition.network = [];
+    }
+
+    // Default salience threshold (0.7 = average memory)
+    if (definition.salience_threshold === undefined) {
+      definition.salience_threshold = 0.7;
     }
 
     const duration = Date.now() - startTime;

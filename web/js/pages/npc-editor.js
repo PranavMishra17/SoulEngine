@@ -13,6 +13,7 @@ let principlesInput = null;
 let traumaInput = null;
 let voicesCache = { cartesia: null, elevenlabs: null };
 let currentVoiceLibraryUrl = '';
+let pendingProfileImage = null; // File to upload after NPC creation
 
 // Personality presets (Big Five trait values)
 const PERSONALITY_PRESETS = {
@@ -95,6 +96,17 @@ export async function initNpcListPage(params) {
 
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
+  
+  // Fetch project name for breadcrumb
+  try {
+    const project = await projects.get(projectId);
+    const projectBreadcrumb = document.getElementById('breadcrumb-project');
+    if (projectBreadcrumb) {
+      projectBreadcrumb.textContent = project.name || 'Project';
+    }
+  } catch (e) {
+    console.warn('Could not fetch project name for breadcrumb:', e);
+  }
 
   // Load NPCs
   await loadNpcList(projectId);
@@ -173,6 +185,17 @@ export async function initNpcEditorPage(params) {
   // Update breadcrumbs
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
   document.getElementById('breadcrumb-npcs')?.setAttribute('href', `/projects/${projectId}/npcs`);
+  
+  // Fetch project name for breadcrumb
+  try {
+    const project = await projects.get(projectId);
+    const projectBreadcrumb = document.getElementById('breadcrumb-project');
+    if (projectBreadcrumb) {
+      projectBreadcrumb.textContent = project.name || 'Project';
+    }
+  } catch (e) {
+    console.warn('Could not fetch project name for breadcrumb:', e);
+  }
 
   // Initialize form
   await initEditor(projectId, currentNpcId);
@@ -284,6 +307,7 @@ function getDefaultDefinition() {
       can_know_player: true, // Always true, not user-configurable
       reveal_player_identity: true,
     },
+    salience_threshold: 0.7, // Default: average memory (50% retention)
   };
 }
 
@@ -324,6 +348,29 @@ function populateForm(definition) {
     reveal_player_identity: true,
   };
   document.getElementById('reveal-player-identity').checked = playerRecognition.reveal_player_identity;
+
+  // Memory retention (convert salience_threshold to UI percentage)
+  // salience_threshold: 0.35 (best memory) to 0.95 (worst memory)
+  // UI retention: 100% (best) to 0% (worst)
+  const threshold = definition.salience_threshold ?? 0.7;
+  const retentionPercent = Math.round(((0.95 - threshold) / 0.6) * 100);
+  const clampedRetention = Math.max(0, Math.min(100, retentionPercent));
+  
+  const memorySlider = document.getElementById('memory-retention');
+  if (memorySlider) {
+    memorySlider.value = clampedRetention;
+    document.getElementById('val-memory-retention').textContent = `${clampedRetention}%`;
+    updateMemoryHint(clampedRetention);
+  }
+
+  // Profile image
+  if (definition.profile_image && currentNpcId) {
+    const imageUrl = `/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`;
+    updateProfilePreview(imageUrl);
+  } else {
+    updateProfilePreview(null);
+  }
+  pendingProfileImage = null;
 }
 
 function bindEditorNavigation() {
@@ -339,8 +386,57 @@ function bindEditorNavigation() {
       // Update section visibility
       document.querySelectorAll('.editor-section').forEach((s) => s.classList.remove('active'));
       document.getElementById(`section-${section}`)?.classList.add('active');
+
+      // Toggle interactive preview for personality section
+      toggleInteractivePreview(section === 'personality');
     });
   });
+}
+
+/**
+ * Toggle between interactive and static preview modes
+ */
+function toggleInteractivePreview(interactive) {
+  const interactivePanel = document.getElementById('preview-traits-interactive');
+  const staticTraits = document.getElementById('preview-traits-static');
+  const staticMood = document.getElementById('preview-mood-static');
+
+  if (interactive) {
+    if (interactivePanel) interactivePanel.style.display = 'block';
+    if (staticTraits) staticTraits.style.display = 'none';
+    if (staticMood) staticMood.style.display = 'none';
+    syncPreviewSliders();
+  } else {
+    if (interactivePanel) interactivePanel.style.display = 'none';
+    if (staticTraits) staticTraits.style.display = 'block';
+    if (staticMood) staticMood.style.display = 'block';
+  }
+}
+
+/**
+ * Sync preview sliders with current definition values
+ */
+function syncPreviewSliders() {
+  const traits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
+  
+  traits.forEach(trait => {
+    const slider = document.getElementById(`preview-${trait}`);
+    const valEl = document.getElementById(`pval-${trait}`);
+    const value = currentDefinition.personality_baseline?.[trait] ?? 0.5;
+    
+    if (slider) {
+      slider.value = value;
+    }
+    if (valEl) {
+      valEl.textContent = value.toFixed(1);
+    }
+  });
+  
+  // Sync mood dropdown
+  const moodSelect = document.getElementById('preview-default-mood');
+  if (moodSelect) {
+    moodSelect.value = currentDefinition.default_mood || '';
+  }
 }
 
 function bindFormHandlers() {
@@ -353,6 +449,83 @@ function bindFormHandlers() {
   document.getElementById('npc-description')?.addEventListener('input', (e) => {
     currentDefinition.description = e.target.value;
     updatePreview();
+  });
+
+  // Profile picture upload
+  document.getElementById('btn-upload-profile')?.addEventListener('click', () => {
+    document.getElementById('npc-profile-input')?.click();
+  });
+
+  document.getElementById('npc-profile-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate size
+    if (file.size > 1 * 1024 * 1024) {
+      toast.error('File Too Large', 'Maximum file size is 1MB.');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Invalid File Type', 'Please use PNG, JPG, WebP, or GIF.');
+      e.target.value = '';
+      return;
+    }
+
+    // Show preview immediately
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      updateProfilePreview(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload if NPC already exists
+    if (currentNpcId) {
+      try {
+        const formData = new FormData();
+        formData.append('avatar', file);
+        
+        const response = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Upload failed');
+        }
+        
+        const result = await response.json();
+        currentDefinition.profile_image = result.filename;
+        toast.success('Avatar Uploaded', 'Profile picture saved.');
+      } catch (error) {
+        toast.error('Upload Failed', error.message);
+      }
+    } else {
+      // Store file for upload after NPC is created
+      pendingProfileImage = file;
+      toast.info('Avatar Ready', 'Will be saved when you save the NPC.');
+    }
+  });
+
+  document.getElementById('btn-remove-profile')?.addEventListener('click', async () => {
+    if (currentNpcId && currentDefinition.profile_image) {
+      try {
+        await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
+          method: 'DELETE',
+        });
+        toast.success('Avatar Removed', 'Profile picture deleted.');
+      } catch (error) {
+        toast.error('Delete Failed', error.message);
+      }
+    }
+    
+    currentDefinition.profile_image = undefined;
+    pendingProfileImage = null;
+    updateProfilePreview(null);
   });
 
   // Core anchor
@@ -380,6 +553,21 @@ function bindFormHandlers() {
     if (presetId) {
       applyPersonalityPreset(presetId);
     }
+  });
+
+  // Memory retention slider
+  // UI shows 0-100 as "retention" (higher = better memory)
+  // Internally stored as salience_threshold (lower = better memory)
+  document.getElementById('memory-retention')?.addEventListener('input', (e) => {
+    const retentionPercent = parseInt(e.target.value);
+    // Convert retention (0-100) to salience_threshold (0.95-0.35)
+    // 0% retention = 0.95 threshold (very forgetful)
+    // 100% retention = 0.35 threshold (excellent memory)
+    const threshold = 0.95 - (retentionPercent / 100) * 0.6;
+    currentDefinition.salience_threshold = Math.round(threshold * 100) / 100;
+    
+    document.getElementById('val-memory-retention').textContent = `${retentionPercent}%`;
+    updateMemoryHint(retentionPercent);
   });
 
   // Voice
@@ -413,6 +601,12 @@ function bindFormHandlers() {
   // Schedule & State
   document.getElementById('default-mood')?.addEventListener('change', (e) => {
     currentDefinition.default_mood = e.target.value;
+    
+    // Sync preview mood dropdown
+    const previewMood = document.getElementById('preview-default-mood');
+    if (previewMood) previewMood.value = e.target.value;
+    
+    updateMoodPreview();
   });
 
   document.getElementById('btn-add-schedule')?.addEventListener('click', () => {
@@ -430,80 +624,188 @@ function bindFormHandlers() {
     currentDefinition.player_recognition.reveal_player_identity = e.target.checked;
   });
 
+  // Preview panel interactive sliders
+  ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'].forEach((trait) => {
+    const previewSlider = document.getElementById(`preview-${trait}`);
+    previewSlider?.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      currentDefinition.personality_baseline[trait] = value;
+      
+      // Update preview value display
+      const pvalEl = document.getElementById(`pval-${trait}`);
+      if (pvalEl) pvalEl.textContent = value.toFixed(1);
+      
+      // Sync main slider
+      const mainSlider = document.getElementById(`trait-${trait}`);
+      if (mainSlider) mainSlider.value = value;
+      document.getElementById(`val-${trait}`).textContent = value.toFixed(2);
+      
+      // Reset preset to custom
+      document.getElementById('personality-preset').value = '';
+      updatePreview();
+      updatePersonalitySummary();
+    });
+  });
+
+  // Preview mood dropdown
+  document.getElementById('preview-default-mood')?.addEventListener('change', (e) => {
+    currentDefinition.default_mood = e.target.value;
+    
+    // Sync main mood dropdown
+    const mainMood = document.getElementById('default-mood');
+    if (mainMood) mainMood.value = e.target.value;
+    
+    updateMoodPreview();
+  });
+
   // Initialize personality summary
   updatePersonalitySummary();
 }
 
+let availableKnowledgeCategories = {};
+
 async function loadKnowledgeCategories(projectId) {
-  const grid = document.getElementById('knowledge-access-grid');
-  const emptyEl = document.getElementById('empty-knowledge');
+  const cardsContainer = document.getElementById('knowledge-cards');
+  const emptyEl = document.getElementById('knowledge-empty');
+  const addBtn = document.getElementById('btn-add-knowledge');
+  const dropdown = document.getElementById('knowledge-add-dropdown');
+  const categoryList = document.getElementById('knowledge-category-list');
 
   try {
     const kb = await knowledge.get(projectId);
-    const categories = Object.entries(kb.categories || {});
+    availableKnowledgeCategories = kb.categories || {};
+    const allCategories = Object.entries(availableKnowledgeCategories);
 
-    if (categories.length === 0) {
-      grid.innerHTML = '';
-      emptyEl.style.display = 'block';
-      document.getElementById('link-create-knowledge').href = `/projects/${projectId}/knowledge`;
-      return;
-    }
+    // Set up manage link
+    document.getElementById('link-create-knowledge').href = `/projects/${projectId}/knowledge`;
 
-    emptyEl.style.display = 'none';
+    // Render the added knowledge cards
+    renderKnowledgeCards();
 
-    grid.innerHTML = categories
-      .map(
-        ([catId, category]) => `
-        <div class="knowledge-access-item">
-          <div class="access-header">
-            <label class="checkbox-item">
-              <input type="checkbox" data-category="${catId}"
-                ${currentDefinition.knowledge_access?.[catId] !== undefined ? 'checked' : ''}>
-              <span>${escapeHtml(catId)}</span>
-            </label>
-            <select class="input select" data-category-depth="${catId}"
-              ${currentDefinition.knowledge_access?.[catId] === undefined ? 'disabled' : ''}>
-              ${Object.keys(category.depths || {})
-                .map(
-                  (depth) =>
-                    `<option value="${depth}" ${currentDefinition.knowledge_access?.[catId] === parseInt(depth) ? 'selected' : ''}>
-                      Depth ${depth}
-                    </option>`
-                )
-                .join('')}
-            </select>
-          </div>
-          <p class="access-description">${escapeHtml(category.description || '')}</p>
-        </div>
-      `
-      )
-      .join('');
-
-    // Bind checkbox and dropdown handlers
-    grid.querySelectorAll('[data-category]').forEach((checkbox) => {
-      checkbox.addEventListener('change', (e) => {
-        const catId = e.target.dataset.category;
-        const depthSelect = grid.querySelector(`[data-category-depth="${catId}"]`);
-
-        if (e.target.checked) {
-          depthSelect.disabled = false;
-          currentDefinition.knowledge_access[catId] = parseInt(depthSelect.value) || 0;
-        } else {
-          depthSelect.disabled = true;
-          delete currentDefinition.knowledge_access[catId];
-        }
-      });
+    // Set up add button
+    addBtn?.addEventListener('click', () => {
+      renderKnowledgeDropdown();
+      dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
     });
 
-    grid.querySelectorAll('[data-category-depth]').forEach((select) => {
-      select.addEventListener('change', (e) => {
-        const catId = e.target.dataset.categoryDepth;
-        currentDefinition.knowledge_access[catId] = parseInt(e.target.value);
-      });
+    // Close dropdown button
+    document.getElementById('btn-close-knowledge-dropdown')?.addEventListener('click', () => {
+      dropdown.style.display = 'none';
     });
+
   } catch (error) {
     console.error('Failed to load knowledge categories:', error);
+    if (cardsContainer) cardsContainer.innerHTML = '<p class="error-hint">Failed to load knowledge categories</p>';
   }
+}
+
+function renderKnowledgeCards() {
+  const cardsContainer = document.getElementById('knowledge-cards');
+  const emptyEl = document.getElementById('knowledge-empty');
+  
+  if (!cardsContainer) return;
+
+  const addedCategories = Object.entries(currentDefinition.knowledge_access || {});
+
+  if (addedCategories.length === 0) {
+    cardsContainer.innerHTML = '';
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  cardsContainer.innerHTML = addedCategories
+    .map(([catId, depth]) => {
+      const category = availableKnowledgeCategories[catId] || {};
+      const maxDepth = Object.keys(category.depths || {}).length || 3;
+      const isActive = depth > 0;
+      
+      return `
+        <div class="knowledge-card ${isActive ? '' : 'inactive'}" data-cat-id="${catId}">
+          <div class="knowledge-card-header">
+            <span class="knowledge-card-name">${escapeHtml(catId)}</span>
+            <button type="button" class="btn-icon-sm btn-delete-knowledge" data-cat-id="${catId}" title="Remove">
+              &#128465;
+            </button>
+          </div>
+          <div class="knowledge-card-body">
+            <div class="depth-control">
+              <label>Depth</label>
+              <input type="range" class="depth-slider" data-cat-depth="${catId}" 
+                min="0" max="${maxDepth}" step="1" value="${depth}">
+              <span class="depth-value" id="depth-val-${catId}">${depth}</span>
+            </div>
+            <p class="knowledge-card-desc">${escapeHtml(category.description || 'No description')}</p>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  // Bind delete handlers
+  cardsContainer.querySelectorAll('.btn-delete-knowledge').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const catId = e.currentTarget.dataset.catId;
+      delete currentDefinition.knowledge_access[catId];
+      renderKnowledgeCards();
+    });
+  });
+
+  // Bind depth slider handlers
+  cardsContainer.querySelectorAll('.depth-slider').forEach((slider) => {
+    slider.addEventListener('input', (e) => {
+      const catId = e.target.dataset.catDepth;
+      const value = parseInt(e.target.value);
+      currentDefinition.knowledge_access[catId] = value;
+      
+      const valEl = document.getElementById(`depth-val-${catId}`);
+      if (valEl) valEl.textContent = value;
+      
+      // Toggle inactive class
+      const card = e.target.closest('.knowledge-card');
+      if (card) {
+        card.classList.toggle('inactive', value === 0);
+      }
+    });
+  });
+}
+
+function renderKnowledgeDropdown() {
+  const categoryList = document.getElementById('knowledge-category-list');
+  if (!categoryList) return;
+
+  const addedCategories = new Set(Object.keys(currentDefinition.knowledge_access || {}));
+  const availableToAdd = Object.entries(availableKnowledgeCategories)
+    .filter(([catId]) => !addedCategories.has(catId));
+
+  if (availableToAdd.length === 0) {
+    categoryList.innerHTML = '<p class="dropdown-empty">All categories already added</p>';
+    return;
+  }
+
+  categoryList.innerHTML = availableToAdd
+    .map(([catId, category]) => `
+      <button type="button" class="dropdown-item" data-add-cat="${catId}">
+        <span class="dropdown-item-name">${escapeHtml(catId)}</span>
+        <span class="dropdown-item-desc">${escapeHtml(category.description || '')}</span>
+      </button>
+    `)
+    .join('');
+
+  // Bind add handlers
+  categoryList.querySelectorAll('[data-add-cat]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const catId = e.currentTarget.dataset.addCat;
+      if (!currentDefinition.knowledge_access) {
+        currentDefinition.knowledge_access = {};
+      }
+      currentDefinition.knowledge_access[catId] = 1; // Default depth 1
+      
+      document.getElementById('knowledge-add-dropdown').style.display = 'none';
+      renderKnowledgeCards();
+    });
+  });
 }
 
 // Built-in tools that are always available (security escape hatch)
@@ -516,223 +818,319 @@ const BUILTIN_TOOLS = [
   },
 ];
 
+let availableConvTools = [];
+let availableGameTools = [];
+
 /**
  * Load MCP tools from project and render in NPC editor
  */
 async function loadMcpToolsForNpc(projectId) {
-  const convList = document.getElementById('conversation-tools-list');
-  const gameList = document.getElementById('game-tools-list');
-
-  if (!convList || !gameList) return;
+  const convPills = document.getElementById('conv-tool-pills');
+  const gamePills = document.getElementById('game-tool-pills');
 
   try {
     const projectTools = await mcpTools.get(projectId);
-    const convTools = projectTools.conversation_tools || [];
-    const gameTools = projectTools.game_event_tools || [];
+    availableConvTools = [...BUILTIN_TOOLS, ...(projectTools.conversation_tools || [])];
+    availableGameTools = projectTools.game_event_tools || [];
 
-    // Get currently enabled tools from NPC definition
-    const enabledConvTools = currentDefinition.mcp_permissions?.conversation_tools || [];
-    const enabledGameTools = currentDefinition.mcp_permissions?.game_event_tools || [];
-
-    // Combine built-in tools with project conversation tools
-    const allConvTools = [...BUILTIN_TOOLS, ...convTools];
-
-    // Render conversation tools (including built-in)
-    if (allConvTools.length === 0) {
-      convList.innerHTML = '<p class="empty-hint">No conversation tools defined. <a href="#" class="link-to-tools">Add tools in MCP Tools page</a></p>';
-      convList.querySelector('.link-to-tools')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        router.navigate(`/projects/${projectId}/mcp-tools`);
-      });
-    } else {
-      convList.innerHTML = allConvTools.map(tool => `
-        <label class="tool-checkbox ${tool.builtin ? 'tool-builtin' : ''}">
-          <input type="checkbox" data-tool-type="conversation" data-tool-id="${escapeHtml(tool.id)}"
-            ${enabledConvTools.includes(tool.id) ? 'checked' : ''}>
-          <div class="tool-checkbox-content">
-            <span class="tool-checkbox-name">${escapeHtml(tool.name)}${tool.builtin ? ' <span class="badge badge-info">Built-in</span>' : ''}</span>
-            <span class="tool-checkbox-desc">${escapeHtml(tool.description)}</span>
-          </div>
-        </label>
-      `).join('');
-    }
-
-    // Render game event tools
-    if (gameTools.length === 0) {
-      gameList.innerHTML = '<p class="empty-hint">No game event tools defined. <a href="#" class="link-to-tools">Add tools in MCP Tools page</a></p>';
-      gameList.querySelector('.link-to-tools')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        router.navigate(`/projects/${projectId}/mcp-tools`);
-      });
-    } else {
-      gameList.innerHTML = gameTools.map(tool => `
-        <label class="tool-checkbox">
-          <input type="checkbox" data-tool-type="game_event" data-tool-id="${escapeHtml(tool.id)}"
-            ${enabledGameTools.includes(tool.id) ? 'checked' : ''}>
-          <div class="tool-checkbox-content">
-            <span class="tool-checkbox-name">${escapeHtml(tool.name)}</span>
-            <span class="tool-checkbox-desc">${escapeHtml(tool.description)}</span>
-          </div>
-        </label>
-      `).join('');
-    }
-
-    // Bind checkbox handlers
-    document.querySelectorAll('[data-tool-type]').forEach(checkbox => {
-      checkbox.addEventListener('change', (e) => {
-        const toolType = e.target.dataset.toolType;
-        const toolId = e.target.dataset.toolId;
-        const isChecked = e.target.checked;
-
-        if (!currentDefinition.mcp_permissions) {
-          currentDefinition.mcp_permissions = { conversation_tools: [], game_event_tools: [], denied: [] };
-        }
-
-        const targetArray = toolType === 'conversation'
-          ? currentDefinition.mcp_permissions.conversation_tools
-          : currentDefinition.mcp_permissions.game_event_tools;
-
-        if (isChecked && !targetArray.includes(toolId)) {
-          targetArray.push(toolId);
-        } else if (!isChecked) {
-          const idx = targetArray.indexOf(toolId);
-          if (idx > -1) targetArray.splice(idx, 1);
-        }
-      });
+    // Set up manage link
+    document.getElementById('link-manage-tools')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      router.navigate(`/projects/${projectId}/mcp-tools`);
     });
+
+    // Render pills
+    renderToolPills();
+
+    // Set up add buttons and dropdowns
+    setupToolDropdown('conv', availableConvTools, 'conversation_tools');
+    setupToolDropdown('game', availableGameTools, 'game_event_tools');
 
   } catch (error) {
     console.error('Failed to load MCP tools:', error);
-    convList.innerHTML = '<p class="empty-hint">Failed to load tools</p>';
-    gameList.innerHTML = '<p class="empty-hint">Failed to load tools</p>';
+    if (convPills) convPills.innerHTML = '<span class="empty-hint">Failed to load tools</span>';
   }
 }
+
+function setupToolDropdown(prefix, allTools, permissionKey) {
+  const addBtn = document.getElementById(`btn-add-${prefix}-tool`);
+  const dropdown = document.getElementById(`${prefix}-tool-dropdown`);
+  const list = document.getElementById(`${prefix}-tool-list`);
+
+  addBtn?.addEventListener('click', () => {
+    renderToolDropdown(prefix, allTools, permissionKey);
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!addBtn?.contains(e.target) && !dropdown?.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+}
+
+function renderToolPills() {
+  const convPills = document.getElementById('conv-tool-pills');
+  const gamePills = document.getElementById('game-tool-pills');
+
+  if (!currentDefinition.mcp_permissions) {
+    currentDefinition.mcp_permissions = { conversation_tools: [], game_event_tools: [], denied: [] };
+  }
+
+  const enabledConv = currentDefinition.mcp_permissions.conversation_tools || [];
+  const enabledGame = currentDefinition.mcp_permissions.game_event_tools || [];
+
+  // Render conversation tool pills
+  if (convPills) {
+    if (enabledConv.length === 0) {
+      convPills.innerHTML = '<span class="tool-pills-empty">No tools assigned</span>';
+    } else {
+      convPills.innerHTML = enabledConv.map(toolId => {
+        const tool = availableConvTools.find(t => t.id === toolId) || { id: toolId, name: toolId };
+        const isBuiltin = tool.builtin;
+        return `
+          <div class="tool-pill ${isBuiltin ? 'builtin' : ''}" title="${escapeHtml(tool.description || '')}">
+            <span class="tool-pill-name">${escapeHtml(tool.name)}</span>
+            ${isBuiltin ? '<span class="tool-pill-badge">Built-in</span>' : ''}
+            <button type="button" class="tool-pill-remove" data-remove-conv="${toolId}">&#10005;</button>
+          </div>
+        `;
+      }).join('');
+
+      // Bind remove handlers
+      convPills.querySelectorAll('[data-remove-conv]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const toolId = e.currentTarget.dataset.removeConv;
+          const arr = currentDefinition.mcp_permissions.conversation_tools;
+          const idx = arr.indexOf(toolId);
+          if (idx > -1) arr.splice(idx, 1);
+          renderToolPills();
+        });
+      });
+    }
+  }
+
+  // Render game tool pills
+  if (gamePills) {
+    if (enabledGame.length === 0) {
+      gamePills.innerHTML = '<span class="tool-pills-empty">No tools assigned</span>';
+    } else {
+      gamePills.innerHTML = enabledGame.map(toolId => {
+        const tool = availableGameTools.find(t => t.id === toolId) || { id: toolId, name: toolId };
+        return `
+          <div class="tool-pill" title="${escapeHtml(tool.description || '')}">
+            <span class="tool-pill-name">${escapeHtml(tool.name)}</span>
+            <button type="button" class="tool-pill-remove" data-remove-game="${toolId}">&#10005;</button>
+          </div>
+        `;
+      }).join('');
+
+      // Bind remove handlers
+      gamePills.querySelectorAll('[data-remove-game]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const toolId = e.currentTarget.dataset.removeGame;
+          const arr = currentDefinition.mcp_permissions.game_event_tools;
+          const idx = arr.indexOf(toolId);
+          if (idx > -1) arr.splice(idx, 1);
+          renderToolPills();
+        });
+      });
+    }
+  }
+}
+
+function renderToolDropdown(prefix, allTools, permissionKey) {
+  const list = document.getElementById(`${prefix}-tool-list`);
+  if (!list) return;
+
+  const enabledTools = currentDefinition.mcp_permissions?.[permissionKey] || [];
+  const availableToAdd = allTools.filter(t => !enabledTools.includes(t.id));
+
+  if (availableToAdd.length === 0) {
+    list.innerHTML = '<p class="dropdown-empty">All tools already added</p>';
+    return;
+  }
+
+  list.innerHTML = availableToAdd.map(tool => `
+    <button type="button" class="dropdown-item" data-add-tool="${tool.id}" data-tool-type="${permissionKey}">
+      <span class="dropdown-item-name">${escapeHtml(tool.name)}${tool.builtin ? ' <span class="badge badge-sm">Built-in</span>' : ''}</span>
+      <span class="dropdown-item-desc">${escapeHtml(tool.description || '')}</span>
+    </button>
+  `).join('');
+
+  // Bind add handlers
+  list.querySelectorAll('[data-add-tool]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const toolId = e.currentTarget.dataset.addTool;
+      const type = e.currentTarget.dataset.toolType;
+      
+      if (!currentDefinition.mcp_permissions[type]) {
+        currentDefinition.mcp_permissions[type] = [];
+      }
+      if (!currentDefinition.mcp_permissions[type].includes(toolId)) {
+        currentDefinition.mcp_permissions[type].push(toolId);
+      }
+      
+      document.getElementById(`${prefix}-tool-dropdown`).style.display = 'none';
+      renderToolPills();
+    });
+  });
+}
+
+let availableNetworkNpcs = [];
 
 /**
  * Load other NPCs and render network selection
  */
 async function loadNetworkTab(projectId) {
-  const container = document.getElementById('network-npc-list');
+  const connectionsContainer = document.getElementById('network-connections');
   const emptyMsg = document.getElementById('network-empty');
-  const countEl = document.getElementById('network-count');
-
-  if (!container) return;
+  const addBtn = document.getElementById('btn-add-connection');
+  const dropdown = document.getElementById('network-add-dropdown');
 
   try {
     const allNpcs = await npcs.list(projectId);
-
+    
     // Filter out current NPC
-    const otherNpcs = (allNpcs.npcs || []).filter(npc => npc.id !== currentNpcId);
+    availableNetworkNpcs = (allNpcs.npcs || []).filter(npc => npc.id !== currentNpcId);
 
-    if (otherNpcs.length === 0) {
-      container.innerHTML = '';
-      emptyMsg.style.display = 'block';
-      return;
-    }
+    // Render connection cards
+    renderNetworkConnections();
 
-    emptyMsg.style.display = 'none';
+    // Set up add button
+    addBtn?.addEventListener('click', () => {
+      renderNetworkDropdown();
+      dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    });
 
-    // Get current network
-    const currentNetwork = currentDefinition.network || [];
-
-    container.innerHTML = otherNpcs.map(npc => {
-      const existing = currentNetwork.find(n => n.npc_id === npc.id);
-      const isKnown = !!existing;
-      const tier = existing?.familiarity_tier || 1;
-
-      return `
-        <div class="network-entry ${isKnown ? 'active' : ''}" data-npc-id="${npc.id}">
-          <label class="network-toggle">
-            <input type="checkbox" class="network-checkbox" ${isKnown ? 'checked' : ''}>
-            <div class="network-npc-info">
-              <span class="network-npc-name">${escapeHtml(npc.name)}</span>
-              <span class="network-npc-desc">${escapeHtml(npc.description || 'No description')}</span>
-            </div>
-          </label>
-          <select class="input network-tier" ${!isKnown ? 'disabled' : ''}>
-            <option value="1" ${tier === 1 ? 'selected' : ''}>Acquaintance</option>
-            <option value="2" ${tier === 2 ? 'selected' : ''}>Familiar</option>
-            <option value="3" ${tier === 3 ? 'selected' : ''}>Close</option>
-          </select>
-        </div>
-      `;
-    }).join('');
-
-    // Update count
-    updateNetworkCount();
-
-    // Bind handlers
-    bindNetworkHandlers();
+    // Close dropdown button
+    document.getElementById('btn-close-network-dropdown')?.addEventListener('click', () => {
+      dropdown.style.display = 'none';
+    });
 
   } catch (error) {
     console.error('Failed to load NPCs for network:', error);
-    container.innerHTML = '<p class="error-hint">Failed to load NPCs</p>';
+    if (connectionsContainer) connectionsContainer.innerHTML = '<p class="error-hint">Failed to load NPCs</p>';
   }
 }
 
-/**
- * Bind network checkbox and tier select handlers
- */
-function bindNetworkHandlers() {
-  document.querySelectorAll('.network-entry').forEach(entry => {
-    const npcId = entry.dataset.npcId;
-    const checkbox = entry.querySelector('.network-checkbox');
-    const tierSelect = entry.querySelector('.network-tier');
+function renderNetworkConnections() {
+  const container = document.getElementById('network-connections');
+  const emptyMsg = document.getElementById('network-empty');
+  
+  if (!container) return;
 
-    checkbox.addEventListener('change', (e) => {
-      const isChecked = e.target.checked;
-      entry.classList.toggle('active', isChecked);
-      tierSelect.disabled = !isChecked;
+  const connections = currentDefinition.network || [];
 
-      updateNetwork(npcId, isChecked, parseInt(tierSelect.value));
+  if (connections.length === 0) {
+    container.innerHTML = '';
+    if (emptyMsg) emptyMsg.style.display = 'block';
+    updateNetworkCount();
+    return;
+  }
+
+  if (emptyMsg) emptyMsg.style.display = 'none';
+
+  container.innerHTML = connections.map(conn => {
+    const npc = availableNetworkNpcs.find(n => n.id === conn.npc_id) || { id: conn.npc_id, name: conn.npc_id };
+    const tier = conn.familiarity_tier || 1;
+    
+    return `
+      <div class="network-card" data-npc-id="${conn.npc_id}">
+        <div class="network-card-header">
+          <div class="network-card-info">
+            <span class="network-card-name">${escapeHtml(npc.name)}</span>
+            <span class="network-card-desc">${escapeHtml(npc.description || '')}</span>
+          </div>
+          <button type="button" class="btn-icon-sm btn-remove-connection" data-remove-npc="${conn.npc_id}" title="Remove">
+            &#128465;
+          </button>
+        </div>
+        <div class="network-card-body">
+          <label>Familiarity</label>
+          <select class="input select network-tier-select" data-tier-npc="${conn.npc_id}">
+            <option value="1" ${tier === 1 ? 'selected' : ''}>1 - Acquaintance</option>
+            <option value="2" ${tier === 2 ? 'selected' : ''}>2 - Familiar</option>
+            <option value="3" ${tier === 3 ? 'selected' : ''}>3 - Close</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  updateNetworkCount();
+
+  // Bind remove handlers
+  container.querySelectorAll('.btn-remove-connection').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const npcId = e.currentTarget.dataset.removeNpc;
+      const idx = currentDefinition.network.findIndex(n => n.npc_id === npcId);
+      if (idx > -1) {
+        currentDefinition.network.splice(idx, 1);
+        renderNetworkConnections();
+      }
     });
+  });
 
-    tierSelect.addEventListener('change', (e) => {
-      updateNetwork(npcId, true, parseInt(e.target.value));
+  // Bind tier handlers
+  container.querySelectorAll('.network-tier-select').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const npcId = e.target.dataset.tierNpc;
+      const tier = parseInt(e.target.value);
+      const conn = currentDefinition.network.find(n => n.npc_id === npcId);
+      if (conn) {
+        conn.familiarity_tier = tier;
+      }
     });
   });
 }
 
-/**
- * Update the network array in currentDefinition
- */
-function updateNetwork(npcId, isKnown, tier) {
-  if (!currentDefinition.network) {
-    currentDefinition.network = [];
+function renderNetworkDropdown() {
+  const list = document.getElementById('network-npc-list');
+  if (!list) return;
+
+  const addedNpcs = new Set((currentDefinition.network || []).map(n => n.npc_id));
+  const availableToAdd = availableNetworkNpcs.filter(npc => !addedNpcs.has(npc.id));
+
+  if (availableToAdd.length === 0) {
+    list.innerHTML = '<p class="dropdown-empty">No other NPCs available to add</p>';
+    return;
   }
 
   // Check limit
-  if (isKnown && currentDefinition.network.length >= 5) {
-    const existing = currentDefinition.network.find(n => n.npc_id === npcId);
-    if (!existing) {
-      toast.warning('Limit Reached', 'NPCs can only know up to 5 other NPCs');
-      // Uncheck the checkbox
-      const entry = document.querySelector(`.network-entry[data-npc-id="${npcId}"]`);
-      if (entry) {
-        entry.querySelector('.network-checkbox').checked = false;
-        entry.classList.remove('active');
-        entry.querySelector('.network-tier').disabled = true;
+  if ((currentDefinition.network || []).length >= 5) {
+    list.innerHTML = '<p class="dropdown-empty">Maximum 5 connections reached</p>';
+    return;
+  }
+
+  list.innerHTML = availableToAdd.map(npc => `
+    <button type="button" class="dropdown-item" data-add-npc="${npc.id}">
+      <span class="dropdown-item-name">${escapeHtml(npc.name)}</span>
+      <span class="dropdown-item-desc">${escapeHtml(npc.description || '')}</span>
+    </button>
+  `).join('');
+
+  // Bind add handlers
+  list.querySelectorAll('[data-add-npc]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const npcId = e.currentTarget.dataset.addNpc;
+      
+      if (!currentDefinition.network) {
+        currentDefinition.network = [];
       }
-      return;
-    }
-  }
-
-  // Update network array
-  const existingIdx = currentDefinition.network.findIndex(n => n.npc_id === npcId);
-
-  if (isKnown) {
-    if (existingIdx >= 0) {
-      currentDefinition.network[existingIdx].familiarity_tier = tier;
-    } else {
-      currentDefinition.network.push({ npc_id: npcId, familiarity_tier: tier });
-    }
-  } else {
-    if (existingIdx >= 0) {
-      currentDefinition.network.splice(existingIdx, 1);
-    }
-  }
-
-  updateNetworkCount();
+      
+      if (currentDefinition.network.length >= 5) {
+        toast.warning('Limit Reached', 'NPCs can only know up to 5 other NPCs');
+        return;
+      }
+      
+      currentDefinition.network.push({ npc_id: npcId, familiarity_tier: 1 });
+      
+      document.getElementById('network-add-dropdown').style.display = 'none';
+      renderNetworkConnections();
+    });
+  });
 }
 
 /**
@@ -742,7 +1140,7 @@ function updateNetworkCount() {
   const count = currentDefinition.network?.length || 0;
   const countEl = document.getElementById('network-count');
   if (countEl) {
-    countEl.textContent = `${count} / 5 connections`;
+    countEl.textContent = `${count} / 5`;
   }
 }
 
@@ -769,12 +1167,78 @@ function updatePreview() {
     .join('');
 }
 
+/**
+ * Update mood display in preview panel
+ */
+function updateMoodPreview() {
+  const moodValue = currentDefinition.default_mood || 'neutral';
+  const moodDisplay = document.getElementById('preview-mood');
+  
+  if (moodDisplay) {
+    const moodLabels = {
+      '': 'Neutral',
+      'neutral': 'Neutral',
+      'happy': 'Happy 😊',
+      'sad': 'Sad 😢',
+      'angry': 'Angry 😠',
+      'fearful': 'Fearful 😨',
+      'excited': 'Excited 🤩',
+      'tired': 'Tired 😴',
+      'content': 'Content 😌',
+    };
+    
+    moodDisplay.innerHTML = `<span class="mood-valence">${moodLabels[moodValue] || 'Neutral'}</span>`;
+  }
+}
+
+/**
+ * Update profile picture preview
+ */
+function updateProfilePreview(imageSrc) {
+  const preview = document.getElementById('profile-preview');
+  const removeBtn = document.getElementById('btn-remove-profile');
+  const previewAvatar = document.querySelector('.preview-avatar');
+  
+  if (imageSrc) {
+    preview.innerHTML = `<img src="${imageSrc}" alt="Profile" class="profile-img">`;
+    if (removeBtn) removeBtn.style.display = 'block';
+    if (previewAvatar) previewAvatar.innerHTML = `<img src="${imageSrc}" alt="Avatar" class="avatar-img">`;
+  } else {
+    preview.innerHTML = '<span class="placeholder-icon">&#128100;</span>';
+    if (removeBtn) removeBtn.style.display = 'none';
+    if (previewAvatar) previewAvatar.innerHTML = '<span class="avatar-placeholder">&#9671;</span>';
+  }
+}
+
 function updatePersonalitySummary() {
   const summary = document.getElementById('personality-summary');
   if (summary) {
     const description = describePersonality(currentDefinition.personality_baseline);
     summary.innerHTML = `<p>${description}</p>`;
   }
+}
+
+/**
+ * Update the memory hint text based on retention percentage
+ */
+function updateMemoryHint(retentionPercent) {
+  const hint = document.getElementById('memory-hint');
+  if (!hint) return;
+  
+  let text;
+  if (retentionPercent >= 80) {
+    text = '🧠 Exceptional memory - remembers small details, longer conversation summaries';
+  } else if (retentionPercent >= 60) {
+    text = '🧠 Good memory - remembers important events well';
+  } else if (retentionPercent >= 40) {
+    text = '🧠 Average memory - remembers significant events';
+  } else if (retentionPercent >= 20) {
+    text = '🧠 Poor memory - only remembers major events';
+  } else {
+    text = '🧠 Very forgetful - struggles to recall past conversations';
+  }
+  
+  hint.textContent = text;
 }
 
 /**
@@ -847,8 +1311,24 @@ async function handleSaveNpc() {
     } else {
       // Create new
       const created = await npcs.create(currentProjectId, currentDefinition);
-      toast.success('NPC Created', `"${currentDefinition.name}" has been created.`);
       currentNpcId = created.id;
+      
+      // Upload pending profile image if any
+      if (pendingProfileImage) {
+        try {
+          const formData = new FormData();
+          formData.append('avatar', pendingProfileImage);
+          await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
+            method: 'POST',
+            body: formData,
+          });
+        } catch (err) {
+          console.warn('Failed to upload avatar:', err);
+        }
+        pendingProfileImage = null;
+      }
+      
+      toast.success('NPC Created', `"${currentDefinition.name}" has been created.`);
     }
 
     router.navigate(`/projects/${currentProjectId}/npcs`);

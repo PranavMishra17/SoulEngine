@@ -1,697 +1,284 @@
-# V2 Feature: Memory & Intelligence System
+# V2 Feature: Memory Retention System
+
+## Status: ✅ IMPLEMENTED
 
 ## Overview
 
-This cluster implements per-NPC salience thresholds for the Weekly Whisper memory cycle. Different NPCs will have different memory retention abilities based on their "intelligence" - smart characters remember more details while dim-witted ones forget more easily. This creates more varied and realistic NPC behaviors.
+This feature implements per-NPC memory retention settings that affect how well NPCs remember conversations. The system uses a single `salience_threshold` value that controls:
+1. How many memories get promoted to long-term memory during Weekly Whisper
+2. How detailed conversation summaries are when sessions end
 
 ## Features
 
-### 1. Per-NPC Salience Threshold
-- **Purpose**: Allow NPCs to have different memory retention abilities
-- **Implementation**: Add `salience_threshold` to NPC definition (default: 0.7)
-- **Effect**: Lower threshold = remember more, Higher threshold = forget more
+### Memory Retention Slider
 
-### 2. Intelligence Metrics
-- **Purpose**: Store intelligence-related metrics in NPC state
-- **Implementation**: Add `intelligence_profile` to NPC definition
-- **Effect**: Provides context for memory behavior and can influence other systems
+A simple slider in the Personality section of the NPC editor allows developers to set memory retention from 0% (very forgetful) to 100% (exceptional memory).
 
-### 3. Weekly Whisper Customization
-- **Purpose**: Make memory pruning use per-NPC thresholds
-- **Implementation**: Pass NPC-specific threshold to `runWeeklyWhisper`
-- **Effect**: Smart NPCs retain more memories, dim ones retain fewer
+| Retention | Salience Threshold | Memory Behavior |
+|-----------|-------------------|-----------------|
+| 80-100% | 0.35-0.47 | Exceptional - remembers small details, longer summaries |
+| 60-80% | 0.47-0.59 | Good - remembers important events well |
+| 40-60% | 0.59-0.71 | Average - remembers significant events |
+| 20-40% | 0.71-0.83 | Poor - only remembers major events |
+| 0-20% | 0.83-0.95 | Very forgetful - struggles to recall conversations |
 
 ---
 
-## Implementation Steps
+## Implementation Details
 
-### Step 1: Update Type Definitions
+### 1. Type Definition (`src/types/npc.ts`)
 
-**File: `src/types/npc.ts`**
-
-Add intelligence and memory settings to NPC definition:
+Added `salience_threshold` to `NPCDefinition`:
 
 ```typescript
-/**
- * Intelligence profile affecting memory and cognitive behaviors
- */
-export interface IntelligenceProfile {
-  /**
-   * Salience threshold for LTM promotion (0.0 - 1.0)
-   * Lower = remembers more, Higher = forgets more
-   * Default: 0.7
-   */
-  salience_threshold: number;
-  
-  /**
-   * Maximum short-term memories to retain per Weekly Whisper cycle
-   * Default: 3
-   */
-  stm_retain_count: number;
-  
-  /**
-   * Description of cognitive style (for prompt context)
-   * e.g., "sharp and observant", "forgetful and distracted"
-   */
-  cognitive_style?: string;
-}
-
-/**
- * Preset intelligence profiles
- */
-export const INTELLIGENCE_PRESETS = {
-  genius: {
-    salience_threshold: 0.4,
-    stm_retain_count: 5,
-    cognitive_style: 'exceptionally sharp memory, notices and remembers small details',
-  },
-  smart: {
-    salience_threshold: 0.5,
-    stm_retain_count: 4,
-    cognitive_style: 'good memory, remembers important conversations well',
-  },
-  average: {
-    salience_threshold: 0.7,
-    stm_retain_count: 3,
-    cognitive_style: 'typical memory, remembers significant events',
-  },
-  forgetful: {
-    salience_threshold: 0.8,
-    stm_retain_count: 2,
-    cognitive_style: 'often forgets things, only remembers major events',
-  },
-  dimwit: {
-    salience_threshold: 0.9,
-    stm_retain_count: 1,
-    cognitive_style: 'poor memory, struggles to recall past conversations',
-  },
-} as const;
-
-export type IntelligencePreset = keyof typeof INTELLIGENCE_PRESETS;
-
 export interface NPCDefinition {
   // ... existing fields ...
   
   /**
-   * Intelligence profile affecting memory behavior
-   * If not specified, defaults to 'average' preset
+   * Salience threshold for memory retention (0.0 - 1.0)
+   * Lower value = better memory (remembers more, more detailed summaries)
+   * Higher value = worse memory (forgets more, brief summaries)
+   * Default: 0.7
    */
-  intelligence_profile: IntelligenceProfile;
+  salience_threshold?: number;
 }
 ```
 
-### Step 2: Update Memory System
+### 2. Storage Defaults (`src/storage/definitions.ts`)
 
-**File: `src/core/memory.ts`**
-
-Add functions for intelligence-aware memory operations:
+Applied default value when loading NPCs:
 
 ```typescript
-import type { IntelligenceProfile, INTELLIGENCE_PRESETS } from '../types/npc.js';
+// Default salience threshold (0.7 = average memory)
+if (definition.salience_threshold === undefined) {
+  definition.salience_threshold = 0.7;
+}
+```
 
-/**
- * Default intelligence profile (average)
- */
-export const DEFAULT_INTELLIGENCE: IntelligenceProfile = {
-  salience_threshold: 0.7,
-  stm_retain_count: 3,
-  cognitive_style: 'typical memory, remembers significant events',
-};
+Added validation:
 
-/**
- * Get effective intelligence profile with defaults
- */
-export function getEffectiveIntelligence(
-  profile: IntelligenceProfile | undefined
-): IntelligenceProfile {
-  if (!profile) {
-    return DEFAULT_INTELLIGENCE;
+```typescript
+// Validate salience threshold (optional, defaults to 0.7)
+if (def.salience_threshold !== undefined) {
+  if (typeof def.salience_threshold !== 'number' || 
+      def.salience_threshold < 0 || 
+      def.salience_threshold > 1) {
+    throw new StorageValidationError(
+      'salience_threshold must be a number between 0 and 1'
+    );
   }
-  
-  return {
-    salience_threshold: profile.salience_threshold ?? DEFAULT_INTELLIGENCE.salience_threshold,
-    stm_retain_count: profile.stm_retain_count ?? DEFAULT_INTELLIGENCE.stm_retain_count,
-    cognitive_style: profile.cognitive_style ?? DEFAULT_INTELLIGENCE.cognitive_style,
-  };
-}
-
-/**
- * Check if a memory should be promoted to LTM based on intelligence
- */
-export function shouldPromoteToLTM(
-  memorySalience: number,
-  intelligenceProfile: IntelligenceProfile
-): boolean {
-  return memorySalience >= intelligenceProfile.salience_threshold;
-}
-
-/**
- * Get the number of STM memories to retain during Weekly Whisper
- */
-export function getRetainCount(intelligenceProfile: IntelligenceProfile): number {
-  return intelligenceProfile.stm_retain_count;
 }
 ```
 
-### Step 3: Update Weekly Whisper Cycle
+### 3. Weekly Whisper Cycle (`src/core/cycles.ts`)
 
-**File: `src/core/cycles.ts`**
-
-Modify `runWeeklyWhisper` to use per-NPC thresholds:
+Updated `runWeeklyWhisper` to accept NPC-specific threshold:
 
 ```typescript
-import { 
-  getEffectiveIntelligence, 
-  shouldPromoteToLTM, 
-  getRetainCount 
-} from './memory.js';
-import type { IntelligenceProfile } from '../types/npc.js';
-
-/**
- * Run the Weekly Whisper cycle with intelligence-aware thresholds.
- *
- * This cycle:
- * 1. Reviews all STM memories
- * 2. Selects the most salient ones to retain (based on intelligence)
- * 3. REPLACES STM with the retained memories (aggressive pruning)
- * 4. Promotes high-salience memories to LTM (based on intelligence threshold)
- *
- * Token cost: ~500 tokens
- */
 export async function runWeeklyWhisper(
   instance: NPCInstance,
-  intelligenceProfile?: IntelligenceProfile  // New parameter
+  retainCount: number = 3,
+  salienceThreshold: number = 0.7  // NPC-specific threshold
 ): Promise<WeeklyWhisperResult> {
-  const startTime = Date.now();
+  // ...
   
-  // Get effective intelligence profile
-  const intelligence = getEffectiveIntelligence(intelligenceProfile);
-  const retainCount = getRetainCount(intelligence);
+  // Promote memories to LTM using NPC's salience threshold
+  // Lower threshold = better memory = more memories promoted
+  const toPromote = retained.filter((m) => m.salience >= salienceThreshold);
   
-  logger.info({ 
-    instanceId: instance.id, 
-    retainCount,
-    salienceThreshold: intelligence.salience_threshold,
-  }, 'Running weekly whisper with intelligence profile');
-
-  try {
-    const originalSTMCount = instance.short_term_memory.length;
-
-    // Sort by salience (highest first)
-    const sortedMemories = [...instance.short_term_memory].sort(
-      (a, b) => b.salience - a.salience
-    );
-
-    // Retain top N memories based on intelligence
-    const retained = sortedMemories.slice(0, retainCount);
-    const discarded = sortedMemories.slice(retainCount);
-
-    // Promote high-salience memories to LTM using intelligence threshold
-    const toPromote = retained.filter((m) => 
-      shouldPromoteToLTM(m.salience, intelligence)
-    );
-    let promoted = 0;
-
-    for (const memory of toPromote) {
-      const promotedMemory = promoteToLTM(memory);
-      instance.long_term_memory.push(promotedMemory);
-      promoted++;
-    }
-
-    // Prune LTM if over limit
-    const ltmPruneResult = pruneLTM(instance.long_term_memory);
-    instance.long_term_memory = ltmPruneResult.kept;
-
-    // REPLACE STM with retained memories
-    instance.short_term_memory = retained;
-
-    // Update cycle metadata
-    instance.cycle_metadata.last_weekly = new Date().toISOString();
-
-    const duration = Date.now() - startTime;
-    logger.info(
-      {
-        instanceId: instance.id,
-        duration,
-        originalSTM: originalSTMCount,
-        retained: retained.length,
-        discarded: discarded.length,
-        promoted,
-        finalLTM: instance.long_term_memory.length,
-        salienceThreshold: intelligence.salience_threshold,
-      },
-      'Weekly whisper completed'
-    );
-
-    return {
-      success: true,
-      memoriesRetained: retained.length,
-      memoriesDiscarded: discarded.length,
-      memoriesPromoted: promoted,
-      timestamp: new Date().toISOString(),
-    };
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ instanceId: instance.id, error: errorMessage, duration }, 'Weekly whisper failed');
-
-    return {
-      success: false,
-      memoriesRetained: instance.short_term_memory.length,
-      memoriesDiscarded: 0,
-      memoriesPromoted: 0,
-      timestamp: new Date().toISOString(),
-    };
-  }
+  // ...
 }
 ```
 
-### Step 4: Update Cycles Route
+### 4. Cycles Route (`src/routes/cycles.ts`)
 
-**File: `src/routes/cycles.ts`**
-
-Pass intelligence profile to Weekly Whisper:
+Updated route to load NPC definition and pass threshold:
 
 ```typescript
-import { getDefinition } from '../storage/definitions.js';
-import { getEffectiveIntelligence } from '../core/memory.js';
-
-cyclesRoutes.post('/:instanceId/weekly', async (c) => {
-  const instanceId = c.req.param('instanceId');
+cycleRoutes.post('/:instanceId/weekly-whisper', async (c) => {
+  // ... load instance ...
   
-  try {
-    // Load instance
-    const instance = await getInstance(instanceId);
-    
-    // Load definition to get intelligence profile
-    const definition = await getDefinition(instance.project_id, instance.definition_id);
-    const intelligence = getEffectiveIntelligence(definition.intelligence_profile);
-    
-    // Run weekly whisper with NPC's intelligence
-    const result = await runWeeklyWhisper(instance, intelligence);
-    
-    if (result.success) {
-      await saveInstance(instance);
-    }
-    
-    return c.json({
-      success: result.success,
-      retained: result.memoriesRetained,
-      discarded: result.memoriesDiscarded,
-      promoted: result.memoriesPromoted,
-      salience_threshold: intelligence.salience_threshold,
-      timestamp: result.timestamp,
-    });
-  } catch (error) {
-    // ... error handling ...
-  }
+  // Load NPC definition to get salience threshold
+  const definition = await getDefinition(instance.project_id, instance.definition_id);
+  const salienceThreshold = definition.salience_threshold ?? 0.7;
+  
+  // Run weekly whisper with NPC's salience threshold
+  const result = await runWeeklyWhisper(instance, retainCount, salienceThreshold);
+  
+  return c.json({
+    ...result,
+    salience_threshold: salienceThreshold,  // Include in response
+    version: saveResult.version,
+  });
 });
 ```
 
-### Step 5: Update Context Assembly
+### 5. Conversation Summarizer (`src/core/summarizer.ts`)
 
-**File: `src/core/context.ts`**
-
-Include cognitive style in system prompt:
+Added `salienceThreshold` to `NPCPerspective`:
 
 ```typescript
-/**
- * Format intelligence/cognitive style for the prompt
- */
-function formatCognitiveStyle(
-  intelligenceProfile: IntelligenceProfile | undefined
-): string {
-  const intelligence = getEffectiveIntelligence(intelligenceProfile);
-  
-  if (!intelligence.cognitive_style) {
-    return '';
-  }
-  
-  return `[YOUR MENTAL TRAITS]
-Memory style: ${intelligence.cognitive_style}
-(This affects how well you recall past conversations - roleplay accordingly)`;
-}
-
-// Update assembleSystemPrompt to include cognitive style
-export async function assembleSystemPrompt(
-  definition: NPCDefinition,
-  instance: NPCInstance,
-  resolvedKnowledge: string,
-  securityContext: SecurityContext,
-  options: ContextAssemblyOptions = {},
-  playerInfo?: PlayerInfo | null
-): Promise<string> {
-  // ... existing code ...
-
-  // Add cognitive style after personality section
-  const cognitiveSection = formatCognitiveStyle(definition.intelligence_profile);
-  if (cognitiveSection) {
-    sections.push(cognitiveSection);
-  }
-
-  // ... rest of function ...
+export interface NPCPerspective {
+  name: string;
+  backstory: string;
+  principles: string[];
+  salienceThreshold?: number;  // Memory retention affects detail level
 }
 ```
 
-### Step 6: Update NPC Definition Validation
-
-**File: `src/storage/definitions.ts`**
-
-Add validation for intelligence profile:
+Updated `buildSummarizationPrompt` to adjust detail based on memory:
 
 ```typescript
-function validateDefinition(def: NPCDefinition): void {
-  // ... existing validation ...
-
-  // Validate intelligence profile (optional field)
-  if (def.intelligence_profile) {
-    const intel = def.intelligence_profile;
-    
-    if (intel.salience_threshold !== undefined) {
-      if (typeof intel.salience_threshold !== 'number' || 
-          intel.salience_threshold < 0 || 
-          intel.salience_threshold > 1) {
-        throw new StorageValidationError(
-          'intelligence_profile.salience_threshold must be a number between 0 and 1'
-        );
-      }
-    }
-    
-    if (intel.stm_retain_count !== undefined) {
-      if (!Number.isInteger(intel.stm_retain_count) || 
-          intel.stm_retain_count < 1 || 
-          intel.stm_retain_count > 10) {
-        throw new StorageValidationError(
-          'intelligence_profile.stm_retain_count must be an integer between 1 and 10'
-        );
-      }
-    }
-    
-    if (intel.cognitive_style !== undefined && 
-        typeof intel.cognitive_style !== 'string') {
-      throw new StorageValidationError(
-        'intelligence_profile.cognitive_style must be a string'
-      );
-    }
+function buildSummarizationPrompt(npc: NPCPerspective): string {
+  const threshold = npc.salienceThreshold ?? 0.7;
+  
+  let detailInstruction: string;
+  let sentenceCount: string;
+  
+  if (threshold <= 0.4) {
+    // Excellent memory - very detailed
+    detailInstruction = `You have an exceptional memory. Include specific details...`;
+    sentenceCount = '4-5 sentences';
+  } else if (threshold <= 0.55) {
+    // Good memory - detailed
+    sentenceCount = '3-4 sentences';
+  } else if (threshold <= 0.75) {
+    // Average memory - standard
+    sentenceCount = '2-3 sentences';
+  } else {
+    // Poor memory - brief
+    sentenceCount = '1-2 sentences';
   }
+  
+  // ... build prompt with adaptive detail level ...
 }
 ```
 
-### Step 7: Update NPC Editor UI
+### 6. Session Manager (`src/session/manager.ts`)
 
-**File: `web/js/pages/npc-editor.js`**
+Passes threshold when summarizing:
 
-Add intelligence settings to the editor:
-
-```javascript
-// Intelligence presets
-const INTELLIGENCE_PRESETS = {
-  genius: {
-    salience_threshold: 0.4,
-    stm_retain_count: 5,
-    cognitive_style: 'exceptionally sharp memory, notices and remembers small details',
-  },
-  smart: {
-    salience_threshold: 0.5,
-    stm_retain_count: 4,
-    cognitive_style: 'good memory, remembers important conversations well',
-  },
-  average: {
-    salience_threshold: 0.7,
-    stm_retain_count: 3,
-    cognitive_style: 'typical memory, remembers significant events',
-  },
-  forgetful: {
-    salience_threshold: 0.8,
-    stm_retain_count: 2,
-    cognitive_style: 'often forgets things, only remembers major events',
-  },
-  dimwit: {
-    salience_threshold: 0.9,
-    stm_retain_count: 1,
-    cognitive_style: 'poor memory, struggles to recall past conversations',
-  },
+```typescript
+const npcPerspective: NPCPerspective = {
+  name: definition.name,
+  backstory: definition.core_anchor.backstory,
+  principles: definition.core_anchor.principles,
+  salienceThreshold: definition.salience_threshold,  // Pass to summarizer
 };
 
-// In getDefaultDefinition()
-function getDefaultDefinition() {
-  return {
-    // ... existing fields ...
-    intelligence_profile: {
-      salience_threshold: 0.7,
-      stm_retain_count: 3,
-      cognitive_style: 'typical memory, remembers significant events',
-    },
-  };
-}
-
-// Bind intelligence handlers
-function bindIntelligenceHandlers() {
-  // Preset selector
-  document.getElementById('intelligence-preset')?.addEventListener('change', (e) => {
-    const preset = INTELLIGENCE_PRESETS[e.target.value];
-    if (preset) {
-      applyIntelligencePreset(preset);
-    }
-  });
-
-  // Manual sliders
-  document.getElementById('salience-threshold')?.addEventListener('input', (e) => {
-    const value = parseFloat(e.target.value);
-    currentDefinition.intelligence_profile.salience_threshold = value;
-    document.getElementById('val-salience-threshold').textContent = value.toFixed(2);
-    // Reset preset to custom
-    document.getElementById('intelligence-preset').value = '';
-  });
-
-  document.getElementById('stm-retain-count')?.addEventListener('input', (e) => {
-    const value = parseInt(e.target.value);
-    currentDefinition.intelligence_profile.stm_retain_count = value;
-    document.getElementById('val-stm-retain-count').textContent = value;
-    document.getElementById('intelligence-preset').value = '';
-  });
-
-  document.getElementById('cognitive-style')?.addEventListener('input', (e) => {
-    currentDefinition.intelligence_profile.cognitive_style = e.target.value;
-  });
-}
-
-function applyIntelligencePreset(preset) {
-  currentDefinition.intelligence_profile = { ...preset };
-  
-  // Update UI
-  const thresholdSlider = document.getElementById('salience-threshold');
-  const retainSlider = document.getElementById('stm-retain-count');
-  const cognitiveInput = document.getElementById('cognitive-style');
-  
-  if (thresholdSlider) {
-    thresholdSlider.value = preset.salience_threshold;
-    document.getElementById('val-salience-threshold').textContent = 
-      preset.salience_threshold.toFixed(2);
-  }
-  
-  if (retainSlider) {
-    retainSlider.value = preset.stm_retain_count;
-    document.getElementById('val-stm-retain-count').textContent = 
-      preset.stm_retain_count;
-  }
-  
-  if (cognitiveInput) {
-    cognitiveInput.value = preset.cognitive_style;
-  }
-}
+const summaryResult = await summarizeConversation(
+  llmProvider,
+  state.conversation_history,
+  npcPerspective
+);
 ```
 
-**File: `web/index.html`**
+### 7. NPC Editor UI (`web/index.html`, `web/js/pages/npc-editor.js`)
 
-Add intelligence section to NPC editor template:
+Added Memory Retention slider to Personality section:
 
 ```html
-<!-- In template-npc-editor, add new section -->
-<div class="editor-section" id="section-intelligence">
-  <h3>Intelligence & Memory</h3>
-  <p class="section-description">
-    Configure how well this NPC remembers conversations. Affects the Weekly Whisper memory cycle.
-  </p>
-
-  <div class="form-group">
-    <label for="intelligence-preset">Intelligence Preset</label>
-    <select id="intelligence-preset" class="input">
-      <option value="">Custom</option>
-      <option value="genius">Genius - Remembers everything</option>
-      <option value="smart">Smart - Good memory</option>
-      <option value="average" selected>Average - Normal memory</option>
-      <option value="forgetful">Forgetful - Poor memory</option>
-      <option value="dimwit">Dimwit - Very poor memory</option>
-    </select>
-  </div>
-
-  <div class="form-group">
-    <label for="salience-threshold">
-      Salience Threshold
-      <span class="value-display" id="val-salience-threshold">0.70</span>
-    </label>
-    <input type="range" id="salience-threshold" class="slider" 
-      min="0.3" max="0.95" step="0.05" value="0.7">
-    <p class="hint">
-      Lower = remembers more (genius), Higher = forgets more (dimwit)
-    </p>
-  </div>
-
-  <div class="form-group">
-    <label for="stm-retain-count">
-      Memories Per Cycle
-      <span class="value-display" id="val-stm-retain-count">3</span>
-    </label>
-    <input type="range" id="stm-retain-count" class="slider" 
-      min="1" max="5" step="1" value="3">
-    <p class="hint">
-      Short-term memories retained during Weekly Whisper
-    </p>
-  </div>
-
-  <div class="form-group">
-    <label for="cognitive-style">Cognitive Style Description</label>
-    <input type="text" id="cognitive-style" class="input" 
-      placeholder="e.g., sharp and observant, easily distracted"
-      value="typical memory, remembers significant events">
-    <p class="hint">
-      Describes how this NPC's memory works (used in prompts)
-    </p>
-  </div>
-
-  <div class="intelligence-preview">
-    <h4>Memory Behavior Preview</h4>
-    <div class="preview-stats">
-      <div class="stat">
-        <span class="stat-label">Will promote to LTM if salience ≥</span>
-        <span class="stat-value" id="preview-ltm-threshold">0.70</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">STM retained per cycle</span>
-        <span class="stat-value" id="preview-stm-count">3</span>
-      </div>
+<div class="memory-retention-section">
+  <h3>Memory Retention</h3>
+  <p class="section-desc">How well does this NPC remember conversations?</p>
+  <div class="slider-group memory-slider">
+    <div class="slider-header">
+      <label>Memory Retention</label>
+      <span class="slider-value" id="val-memory-retention">50%</span>
     </div>
+    <div class="slider-labels">
+      <span>🧠 Forgetful</span>
+      <span>🧠 Sharp Memory</span>
+    </div>
+    <input type="range" id="memory-retention" min="0" max="100" step="5" value="50">
+    <p class="memory-hint" id="memory-hint">Average memory - remembers significant events</p>
   </div>
 </div>
-
-<!-- Add navigation item for the new section -->
-<a href="#" class="editor-nav-item" data-section="intelligence">
-  <span class="nav-icon">🧠</span>
-  <span class="nav-label">Intelligence</span>
-</a>
 ```
 
-### Step 8: Update Mind Viewer
-
-**File: `web/js/pages/playground.js`**
-
-Show intelligence info in Mind Viewer:
+JavaScript conversion (UI percentage ↔ internal threshold):
 
 ```javascript
-function renderMindViewerContent(instance) {
-  // ... existing sections ...
+// UI shows 0-100 as "retention" (higher = better memory)
+// Internally stored as salience_threshold (lower = better memory)
 
-  // Add intelligence profile section (if available from definition)
-  const intelligenceHtml = `
-    <div class="mind-section">
-      <h4><span class="icon">🧠</span> Intelligence Profile</h4>
-      <div class="intelligence-stats">
-        <div class="stat-item">
-          <span class="stat-label">Salience Threshold</span>
-          <span class="stat-value">${(instance._intelligence?.salience_threshold ?? 0.7).toFixed(2)}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">STM Retain Count</span>
-          <span class="stat-value">${instance._intelligence?.stm_retain_count ?? 3}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Cognitive Style</span>
-          <span class="stat-value">${instance._intelligence?.cognitive_style ?? 'Average'}</span>
-        </div>
-      </div>
-    </div>
-  `;
+// When slider changes:
+const retentionPercent = parseInt(e.target.value);
+// Convert: 0% retention → 0.95 threshold, 100% retention → 0.35 threshold
+const threshold = 0.95 - (retentionPercent / 100) * 0.6;
+currentDefinition.salience_threshold = Math.round(threshold * 100) / 100;
 
-  return `
-    <div class="mind-viewer-content">
-      ${moodHtml}
-      ${intelligenceHtml}
-      ${traitModsHtml}
-      ${shortMemHtml}
-      ${longMemHtml}
-      ${relationshipsHtml}
-      ${cycleMetaHtml}
-    </div>
-  `;
-}
+// When loading:
+const threshold = definition.salience_threshold ?? 0.7;
+const retentionPercent = Math.round(((0.95 - threshold) / 0.6) * 100);
 ```
 
 ---
 
-## Migration Notes
+## Effects Summary
 
-### Default Values for Existing NPCs
-
-When loading existing NPCs without `intelligence_profile`:
-
-```typescript
-// In getDefinition() or when loading
-const definition = yaml.load(content) as NPCDefinition;
-
-// Apply defaults for missing intelligence profile
-if (!definition.intelligence_profile) {
-  definition.intelligence_profile = {
-    salience_threshold: 0.7,
-    stm_retain_count: 3,
-    cognitive_style: 'typical memory, remembers significant events',
-  };
-}
-```
+| Memory Retention | LTM Promotion | Summary Detail | Example NPC |
+|-----------------|---------------|----------------|-------------|
+| 80-100% (Genius) | Salience ≥ 0.35-0.47 | 4-5 sentences, includes details | Scholar, detective |
+| 60-80% (Smart) | Salience ≥ 0.47-0.59 | 3-4 sentences | Merchant, guard captain |
+| 40-60% (Average) | Salience ≥ 0.59-0.71 | 2-3 sentences | Typical villager |
+| 20-40% (Forgetful) | Salience ≥ 0.71-0.83 | 1-2 sentences | Elderly NPC, drunk |
+| 0-20% (Dimwit) | Salience ≥ 0.83-0.95 | 1 sentence, vague | Simple-minded NPC |
 
 ---
 
-## Intelligence Effects Summary
+## Files Modified
 
-| Preset | Salience Threshold | STM Retain | LTM Promotion | Behavior |
-|--------|-------------------|------------|---------------|----------|
-| Genius | 0.4 | 5 | Salience ≥ 0.4 | Remembers most things, detailed recall |
-| Smart | 0.5 | 4 | Salience ≥ 0.5 | Good memory, recalls important events |
-| Average | 0.7 | 3 | Salience ≥ 0.7 | Normal memory, major events only |
-| Forgetful | 0.8 | 2 | Salience ≥ 0.8 | Poor memory, only very significant events |
-| Dimwit | 0.9 | 1 | Salience ≥ 0.9 | Very poor memory, trauma-level events only |
+| File | Changes |
+|------|---------|
+| `src/types/npc.ts` | Added `salience_threshold` field |
+| `src/storage/definitions.ts` | Default value + validation |
+| `src/core/cycles.ts` | `runWeeklyWhisper` accepts threshold |
+| `src/routes/cycles.ts` | Loads NPC definition, passes threshold |
+| `src/core/summarizer.ts` | Detail level adapts to threshold |
+| `src/session/manager.ts` | Passes threshold to summarizer |
+| `web/index.html` | Memory Retention slider in Personality section |
+| `web/js/pages/npc-editor.js` | Slider handlers, conversion logic |
+| `web/css/pages-app.css` | Styling for memory retention section |
 
 ---
 
 ## Testing Checklist
 
-1. [ ] Create NPC with "genius" intelligence - verify low threshold is used
-2. [ ] Create NPC with "dimwit" intelligence - verify high threshold is used
-3. [ ] Run Weekly Whisper on genius NPC - verify more memories promoted
-4. [ ] Run Weekly Whisper on dimwit NPC - verify fewer memories promoted
-5. [ ] Verify STM retain count is respected during Weekly Whisper
-6. [ ] Verify cognitive style appears in system prompt
-7. [ ] Verify backward compatibility with NPCs without intelligence_profile
-8. [ ] Test preset application in NPC editor
-9. [ ] Test manual slider adjustments override preset
+- [x] Create NPC with high memory retention (80%+) - verify lower threshold stored
+- [x] Create NPC with low memory retention (20%-) - verify higher threshold stored
+- [x] Run Weekly Whisper on high-memory NPC - more memories promoted to LTM
+- [x] Run Weekly Whisper on low-memory NPC - fewer memories promoted
+- [x] End session with high-memory NPC - longer, more detailed summary
+- [x] End session with low-memory NPC - shorter, vaguer summary
+- [x] Edit existing NPC - slider shows correct retention percentage
+- [x] Backward compatibility - NPCs without threshold default to 0.7 (50%)
 
 ---
 
-## API Changes Summary
+## API Response Changes
 
-| Component | Change |
-|-----------|--------|
-| NPCDefinition | Added `intelligence_profile` object |
-| Weekly Whisper | Now accepts optional `intelligenceProfile` parameter |
-| Cycles API | Returns `salience_threshold` in response |
-| System Prompt | Includes cognitive style when available |
+### Weekly Whisper Response
+
+Now includes the threshold used:
+
+```json
+{
+  "success": true,
+  "memoriesRetained": 3,
+  "memoriesDiscarded": 7,
+  "memoriesPromoted": 2,
+  "salience_threshold": 0.5,
+  "timestamp": "2025-01-08T...",
+  "version": 12
+}
+```
 
 ---
 
 ## Future Enhancements
 
-1. **Dynamic Intelligence**: Intelligence could fluctuate based on mood (tired = more forgetful)
-2. **Topic-specific Memory**: Better memory for subjects the NPC cares about
-3. **Memory Decay**: Gradual salience decay over time based on intelligence
-4. **Learning**: NPCs could improve memory for repeated topics
-
+1. **Dynamic memory** - Memory could fluctuate based on mood (tired = more forgetful)
+2. **Topic-specific** - Better memory for subjects the NPC cares about
+3. **Memory decay** - Gradual salience decay over time
+4. **Visual indicator** - Show memory quality in playground Mind Viewer

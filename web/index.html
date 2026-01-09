@@ -471,8 +471,8 @@
           <h1 id="editor-title">Create NPC</h1>
         </div>
         <div class="page-header-actions">
-          <button class="btn btn-ghost" id="btn-download-template" title="Download template">
-            <span class="icon">&#8595;</span> Template
+          <button class="btn btn-ghost" id="btn-download-template" title="Download NPC template">
+            <span class="icon">&#8595;</span> NPC Template
           </button>
           <button class="btn btn-ghost" id="btn-import-npc" title="Import from JSON">
             <span class="icon">&#8593;</span> Import
@@ -528,6 +528,25 @@
             <div class="form-group">
               <label for="npc-description">Description</label>
               <textarea id="npc-description" class="input textarea" rows="3" placeholder="A brief description of this NPC..."></textarea>
+              <span class="input-hint">For your reference only - not visible to NPC or included in their context.</span>
+            </div>
+            <div class="form-group">
+              <label>Profile Picture</label>
+              <div class="profile-upload-area" id="profile-upload-area">
+                <input type="file" id="npc-profile-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                <div class="profile-preview" id="profile-preview">
+                  <span class="placeholder-icon">&#128100;</span>
+                </div>
+                <div class="profile-actions">
+                  <button type="button" class="btn btn-outline btn-sm" id="btn-upload-profile">
+                    <span class="icon">&#8593;</span> Upload
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-remove-profile" style="display: none;" title="Remove">
+                    <span class="icon">&#128465;</span>
+                  </button>
+                </div>
+                <span class="input-hint">Max 1MB. PNG, JPG, WebP, or GIF. For UI display only.</span>
+              </div>
             </div>
           </section>
           <section class="editor-section" id="section-anchor">
@@ -600,6 +619,20 @@
               </div>
             </div>
             <div class="personality-summary" id="personality-summary"></div>
+            
+            <div class="memory-retention-section">
+              <h3>Memory Retention</h3>
+              <p class="section-desc">How well does this NPC remember conversations? Higher retention means more detailed memories and summaries.</p>
+              <div class="slider-group memory-slider">
+                <div class="slider-header">
+                  <label>Memory Retention</label>
+                  <span class="slider-value" id="val-memory-retention">50%</span>
+                </div>
+                <div class="slider-labels"><span>🧠 Forgetful</span><span>🧠 Sharp Memory</span></div>
+                <input type="range" id="memory-retention" class="slider" min="0" max="100" step="5" value="50">
+                <p class="memory-hint" id="memory-hint">Average memory - remembers significant events</p>
+              </div>
+            </div>
           </section>
           <section class="editor-section" id="section-voice">
             <h2>Voice Configuration</h2>
@@ -635,10 +668,27 @@
           <section class="editor-section" id="section-knowledge">
             <h2>Knowledge Access</h2>
             <p class="section-desc">What does this NPC know? Set depth levels per category.</p>
-            <div class="knowledge-access-grid" id="knowledge-access-grid">
-              <div class="empty-state-inline" id="empty-knowledge">
-                <p>No knowledge categories defined in this project.</p>
-                <a href="#" id="link-create-knowledge">Create knowledge categories first</a>
+            <div class="knowledge-cards" id="knowledge-cards">
+              <!-- Dynamically populated knowledge cards -->
+            </div>
+            <div class="knowledge-empty" id="knowledge-empty" style="display: none;">
+              <p>No knowledge categories assigned.</p>
+            </div>
+            <div class="knowledge-actions">
+              <button type="button" class="btn btn-primary" id="btn-add-knowledge">
+                <span class="icon">+</span> Add Knowledge
+              </button>
+              <a href="#" id="link-create-knowledge" class="btn btn-ghost btn-sm">
+                Manage Categories
+              </a>
+            </div>
+            <div class="knowledge-add-dropdown" id="knowledge-add-dropdown" style="display: none;">
+              <div class="dropdown-header">
+                <span>Select Category</span>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-close-knowledge-dropdown">&#10005;</button>
+              </div>
+              <div class="dropdown-list" id="knowledge-category-list">
+                <!-- Dynamically populated available categories -->
               </div>
             </div>
           </section>
@@ -670,31 +720,76 @@
           <section class="editor-section" id="section-tools">
             <h2>MCP Tools</h2>
             <p class="section-desc">Which MCP tools can this NPC use?</p>
-            <div class="tools-grid" id="tools-grid">
-              <div class="tool-category">
+            
+            <div class="tools-category-section">
+              <div class="tools-category-header">
                 <h3>Conversation Tools</h3>
-                <p class="tool-category-desc">NPC decides when to use these</p>
-                <div class="tool-list" id="conversation-tools-list"></div>
+                <span class="tools-category-hint">NPC decides when to use these</span>
               </div>
-              <div class="tool-category">
+              <div class="tool-pills" id="conv-tool-pills">
+                <!-- Dynamically populated pills -->
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-add-conv-tool">
+                <span class="icon">+</span> Add Tool
+              </button>
+              <div class="tool-add-dropdown" id="conv-tool-dropdown" style="display: none;">
+                <div class="dropdown-list" id="conv-tool-list"></div>
+              </div>
+            </div>
+            
+            <div class="tools-category-section">
+              <div class="tools-category-header">
                 <h3>Game Event Tools</h3>
-                <p class="tool-category-desc">Game logic triggers these</p>
-                <div class="tool-list" id="game-tools-list"></div>
+                <span class="tools-category-hint">Game logic triggers these</span>
               </div>
+              <div class="tool-pills" id="game-tool-pills">
+                <!-- Dynamically populated pills -->
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-add-game-tool">
+                <span class="icon">+</span> Add Tool
+              </button>
+              <div class="tool-add-dropdown" id="game-tool-dropdown" style="display: none;">
+                <div class="dropdown-list" id="game-tool-list"></div>
+              </div>
+            </div>
+            
+            <div class="tools-manage-link">
+              <a href="#" id="link-manage-tools" class="btn btn-ghost btn-sm">Manage Tools</a>
             </div>
           </section>
           <section class="editor-section" id="section-network">
             <h2>NPC Network</h2>
-            <p class="section-desc">Select other NPCs this character knows.</p>
-            <div class="network-header">
-              <span class="network-count" id="network-count">0 / 5 connections</span>
+            <p class="section-desc">Who does this NPC know? Add connections to other NPCs.</p>
+            
+            <div class="network-connections" id="network-connections">
+              <!-- Dynamically populated connection cards -->
+            </div>
+            
+            <div class="network-empty" id="network-empty" style="display: none;">
+              <p>No connections added yet.</p>
+            </div>
+            
+            <div class="network-actions">
+              <button type="button" class="btn btn-primary" id="btn-add-connection">
+                <span class="icon">+</span> Add Connection
+              </button>
+              <span class="network-count" id="network-count">0 / 5</span>
               <label class="checkbox-item network-bidirectional">
                 <input type="checkbox" id="network-bidirectional" checked>
-                <span>Bidirectional</span>
+                <span>Two-way</span>
               </label>
             </div>
-            <div id="network-npc-list" class="network-list"></div>
-            <p id="network-empty" class="empty-hint" style="display: none;">No other NPCs in this project yet.</p>
+            
+            <div class="network-add-dropdown" id="network-add-dropdown" style="display: none;">
+              <div class="dropdown-header">
+                <span>Select NPC</span>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-close-network-dropdown">&#10005;</button>
+              </div>
+              <div class="dropdown-list" id="network-npc-list">
+                <!-- Dynamically populated available NPCs -->
+              </div>
+            </div>
+            
             <div class="network-tiers-legend">
               <div class="tier-legend-item"><span class="tier-badge tier-1">1</span><div><strong>Acquaintance</strong><p>Knows name and description</p></div></div>
               <div class="tier-legend-item"><span class="tier-badge tier-2">2</span><div><strong>Familiar</strong><p>Also knows backstory</p></div></div>
@@ -722,11 +817,58 @@
             <div class="preview-avatar"><span class="avatar-placeholder">&#9671;</span></div>
             <h4 id="preview-name">NPC Name</h4>
             <p id="preview-description" class="preview-description">Description will appear here...</p>
-            <div class="preview-traits">
+            
+            <!-- Interactive Personality Traits (visible when editing personality) -->
+            <div class="preview-traits-interactive" id="preview-traits-interactive" style="display: none;">
+              <h5>Personality Traits</h5>
+              <div class="preview-slider-group">
+                <div class="preview-slider-row">
+                  <span class="trait-label">O</span>
+                  <input type="range" class="preview-slider" id="preview-openness" min="0" max="1" step="0.05" value="0.5">
+                  <span class="trait-val" id="pval-openness">0.5</span>
+                </div>
+                <div class="preview-slider-row">
+                  <span class="trait-label">C</span>
+                  <input type="range" class="preview-slider" id="preview-conscientiousness" min="0" max="1" step="0.05" value="0.5">
+                  <span class="trait-val" id="pval-conscientiousness">0.5</span>
+                </div>
+                <div class="preview-slider-row">
+                  <span class="trait-label">E</span>
+                  <input type="range" class="preview-slider" id="preview-extraversion" min="0" max="1" step="0.05" value="0.5">
+                  <span class="trait-val" id="pval-extraversion">0.5</span>
+                </div>
+                <div class="preview-slider-row">
+                  <span class="trait-label">A</span>
+                  <input type="range" class="preview-slider" id="preview-agreeableness" min="0" max="1" step="0.05" value="0.5">
+                  <span class="trait-val" id="pval-agreeableness">0.5</span>
+                </div>
+                <div class="preview-slider-row">
+                  <span class="trait-label">N</span>
+                  <input type="range" class="preview-slider" id="preview-neuroticism" min="0" max="1" step="0.05" value="0.5">
+                  <span class="trait-val" id="pval-neuroticism">0.5</span>
+                </div>
+              </div>
+              <div class="preview-mood-select">
+                <label>Default Mood</label>
+                <select id="preview-default-mood" class="input select">
+                  <option value="">Neutral</option>
+                  <option value="happy">Happy</option>
+                  <option value="sad">Sad</option>
+                  <option value="angry">Angry</option>
+                  <option value="fearful">Fearful</option>
+                  <option value="excited">Excited</option>
+                  <option value="tired">Tired</option>
+                  <option value="content">Content</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Static Personality Display (shown for other tabs) -->
+            <div class="preview-traits" id="preview-traits-static">
               <h5>Personality</h5>
               <div class="trait-bars" id="preview-traits"></div>
             </div>
-            <div class="preview-mood">
+            <div class="preview-mood" id="preview-mood-static">
               <h5>Default Mood</h5>
               <div class="mood-indicator" id="preview-mood"><span class="mood-valence">Neutral</span></div>
             </div>

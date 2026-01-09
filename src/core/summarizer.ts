@@ -11,6 +11,8 @@ export interface NPCPerspective {
   name: string;
   backstory: string;
   principles: string[];
+  /** NPC's memory retention (salience threshold). Lower = better memory, more detail */
+  salienceThreshold?: number;
 }
 
 /**
@@ -46,8 +48,34 @@ function filterInjectionPatterns(text: string): string {
 
 /**
  * Build the summarization prompt from NPC perspective.
+ * Detail level adapts based on NPC's memory retention (salience threshold).
  */
 function buildSummarizationPrompt(npc: NPCPerspective): string {
+  // Determine detail level based on salience threshold
+  // Lower threshold = better memory = more detailed summaries
+  const threshold = npc.salienceThreshold ?? 0.7;
+  
+  let detailInstruction: string;
+  let sentenceCount: string;
+  
+  if (threshold <= 0.4) {
+    // Excellent memory - very detailed
+    detailInstruction = `You have an exceptional memory. Include specific details, names mentioned, topics discussed, and nuances of the conversation.`;
+    sentenceCount = '4-5 sentences';
+  } else if (threshold <= 0.55) {
+    // Good memory - detailed
+    detailInstruction = `You have a good memory. Include key details, important points, and the general flow of the conversation.`;
+    sentenceCount = '3-4 sentences';
+  } else if (threshold <= 0.75) {
+    // Average memory - standard
+    detailInstruction = `You have typical memory. Focus on the main points and significant moments.`;
+    sentenceCount = '2-3 sentences';
+  } else {
+    // Poor memory - brief
+    detailInstruction = `Your memory is not the best. Focus only on the most impactful or emotional moments. Smaller details slip away.`;
+    sentenceCount = '1-2 sentences';
+  }
+  
   return `You are ${npc.name}, summarizing a conversation from your own perspective.
 
 Your background: ${npc.backstory}
@@ -55,12 +83,13 @@ Your background: ${npc.backstory}
 Your core principles:
 ${npc.principles.map((p) => `- ${p}`).join('\n')}
 
-Summarize the following conversation in 2-3 sentences, FROM YOUR PERSPECTIVE as ${npc.name}:
+${detailInstruction}
+
+Summarize the following conversation in ${sentenceCount}, FROM YOUR PERSPECTIVE as ${npc.name}:
 - Use first person ("I", "me", "my")
 - Focus on what matters to YOU based on your principles and background
 - Capture the emotional tone and any significant developments
 - Do NOT include direct quotes from anyone
-- Be concise and factual
 
 Respond with ONLY the summary, no preamble or explanation.`;
 }

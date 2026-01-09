@@ -105,7 +105,7 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
    * POST /api/instances/:instanceId/weekly-whisper - Run weekly whisper cycle
    *
    * Memory curation with cyclic pruning. REPLACES STM with retained memories.
-   * Promotes high-salience memories to LTM.
+   * Promotes high-salience memories to LTM based on NPC's salience_threshold.
    */
   cycleRoutes.post('/:instanceId/weekly-whisper', async (c) => {
     const startTime = Date.now();
@@ -131,8 +131,18 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Instance not found' }, 404);
       }
 
-      // Run weekly whisper
-      const result = await runWeeklyWhisper(instance, retainCount);
+      // Load NPC definition to get salience threshold
+      const definition = await getDefinition(instance.project_id, instance.definition_id);
+      const salienceThreshold = definition.salience_threshold ?? 0.7;
+      
+      logger.debug({ 
+        instanceId, 
+        salienceThreshold,
+        npcName: definition.name 
+      }, 'Using NPC-specific salience threshold');
+
+      // Run weekly whisper with NPC's salience threshold
+      const result = await runWeeklyWhisper(instance, retainCount, salienceThreshold);
 
       if (!result.success) {
         return c.json({ error: 'Weekly whisper failed' }, 500);
@@ -142,10 +152,11 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
       const saveResult = await saveInstance(instance);
 
       const duration = Date.now() - startTime;
-      logger.info({ instanceId, duration }, 'Weekly whisper completed via API');
+      logger.info({ instanceId, duration, salienceThreshold }, 'Weekly whisper completed via API');
 
       return c.json({
         ...result,
+        salience_threshold: salienceThreshold,
         version: saveResult.version,
       });
     } catch (error) {

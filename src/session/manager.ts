@@ -224,6 +224,7 @@ export async function endSession(
         name: definition.name,
         backstory: definition.core_anchor.backstory,
         principles: definition.core_anchor.principles,
+        salienceThreshold: definition.salience_threshold,
       };
 
       const summaryResult = await summarizeConversation(

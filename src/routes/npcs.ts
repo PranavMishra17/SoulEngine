@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { createLogger } from '../logger.js';
 import {
   createDefinition,
@@ -14,6 +16,8 @@ import {
   StorageValidationError,
   StorageLimitError,
 } from '../storage/interface.js';
+
+const DATA_DIR = process.env.DATA_DIR || './data';
 
 const logger = createLogger('routes-npcs');
 
@@ -441,5 +445,203 @@ npcRoutes.delete('/:npcId', async (c) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, npcId, error: errorMessage, duration }, 'Failed to delete NPC');
     return c.json({ error: 'Failed to delete NPC', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/npcs/:npcId/avatar - Upload NPC profile image
+ * 
+ * Accepts multipart form data with an image file.
+ * Max file size: 1MB
+ * Supported formats: PNG, JPG, WebP, GIF
+ */
+npcRoutes.post('/:npcId/avatar', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+
+  if (!projectId || !npcId) {
+    return c.json({ error: 'Project ID and NPC ID are required' }, 400);
+  }
+
+  try {
+    // Verify NPC exists
+    const npc = await getDefinition(projectId, npcId);
+
+    // Parse multipart form data
+    const formData = await c.req.formData();
+    const file = formData.get('avatar') as File | null;
+
+    if (!file) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+
+    // Check file size (1MB max)
+    const MAX_SIZE = 1 * 1024 * 1024; // 1MB
+    if (file.size > MAX_SIZE) {
+      return c.json({ error: 'File too large. Maximum size is 1MB.' }, 400);
+    }
+
+    // Check file type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      return c.json({ error: 'Invalid file type. Allowed: PNG, JPG, WebP, GIF' }, 400);
+    }
+
+    // Determine file extension
+    const extMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    };
+    const ext = extMap[file.type] || 'png';
+
+    // Create filename with NPC ID to avoid collisions
+    const filename = `${npcId}-avatar.${ext}`;
+    const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+    const filePath = path.join(npcDir, filename);
+
+    // Ensure directory exists
+    await fs.mkdir(npcDir, { recursive: true });
+
+    // Delete old avatar if exists (different extension)
+    const oldAvatar = npc.profile_image;
+    if (oldAvatar && oldAvatar !== filename) {
+      try {
+        await fs.unlink(path.join(npcDir, oldAvatar));
+      } catch {
+        // Ignore if file doesn't exist
+      }
+    }
+
+    // Write file
+    const arrayBuffer = await file.arrayBuffer();
+    await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+
+    // Update NPC definition with new profile_image
+    await updateDefinition(projectId, npcId, { profile_image: filename });
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, npcId, filename, duration }, 'NPC avatar uploaded');
+
+    return c.json({ 
+      message: 'Avatar uploaded', 
+      filename,
+      url: `/api/projects/${projectId}/npcs/${npcId}/avatar`
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      logger.warn({ projectId, npcId, duration }, 'NPC not found');
+      return c.json({ error: 'NPC not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage, duration }, 'Failed to upload avatar');
+    return c.json({ error: 'Failed to upload avatar', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/npcs/:npcId/avatar - Get NPC profile image
+ */
+npcRoutes.get('/:npcId/avatar', async (c) => {
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+
+  if (!projectId || !npcId) {
+    return c.json({ error: 'Project ID and NPC ID are required' }, 400);
+  }
+
+  try {
+    const npc = await getDefinition(projectId, npcId);
+
+    if (!npc.profile_image) {
+      return c.json({ error: 'No avatar set' }, 404);
+    }
+
+    const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+    const filePath = path.join(npcDir, npc.profile_image);
+
+    const fileBuffer = await fs.readFile(filePath);
+
+    // Determine content type
+    const ext = path.extname(npc.profile_image).toLowerCase();
+    const contentTypes: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+      '.gif': 'image/gif',
+    };
+    const contentType = contentTypes[ext] || 'image/png';
+
+    return new Response(fileBuffer, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'NPC not found' }, 404);
+    }
+
+    // File not found
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return c.json({ error: 'Avatar file not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage }, 'Failed to get avatar');
+    return c.json({ error: 'Failed to get avatar' }, 500);
+  }
+});
+
+/**
+ * DELETE /api/projects/:projectId/npcs/:npcId/avatar - Delete NPC profile image
+ */
+npcRoutes.delete('/:npcId/avatar', async (c) => {
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+
+  if (!projectId || !npcId) {
+    return c.json({ error: 'Project ID and NPC ID are required' }, 400);
+  }
+
+  try {
+    const npc = await getDefinition(projectId, npcId);
+
+    if (!npc.profile_image) {
+      return c.json({ message: 'No avatar to delete' });
+    }
+
+    const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+    const filePath = path.join(npcDir, npc.profile_image);
+
+    // Delete file
+    try {
+      await fs.unlink(filePath);
+    } catch {
+      // Ignore if file doesn't exist
+    }
+
+    // Update NPC definition
+    await updateDefinition(projectId, npcId, { profile_image: undefined });
+
+    logger.info({ projectId, npcId }, 'NPC avatar deleted');
+
+    return c.json({ message: 'Avatar deleted' });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'NPC not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage }, 'Failed to delete avatar');
+    return c.json({ error: 'Failed to delete avatar' }, 500);
   }
 });

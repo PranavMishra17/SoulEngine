@@ -82,6 +82,18 @@ export interface NPCDefinition {
   network: NPCNetworkEntry[];
   /** Player recognition settings */
   player_recognition?: PlayerRecognition;
+  /**
+   * Salience threshold for memory retention (0.0 - 1.0)
+   * Lower value = better memory (remembers more, more detailed summaries)
+   * Higher value = worse memory (forgets more, brief summaries)
+   * Default: 0.7
+   */
+  salience_threshold?: number;
+  /**
+   * Profile image filename (stored in data/projects/{projectId}/npcs/)
+   * For UI display only - not used in NPC context
+   */
+  profile_image?: string;
 }
 
 export interface Memory {

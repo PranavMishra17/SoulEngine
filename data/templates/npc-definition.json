@@ -1,6 +1,7 @@
 {
   "name": "Example NPC",
-  "description": "A brief description of this character's role and appearance.",
+  "description": "A brief description of this character's role and appearance. (For your reference only - not visible to NPC)",
+  "profile_image": "",
   "core_anchor": {
     "backstory": "Born in a small fishing village, raised by a single mother who taught them the value of honest work. Witnessed a devastating flood at age 12 that shaped their cautious worldview.",
     "principles": [
@@ -20,6 +21,7 @@
     "agreeableness": 0.65,
     "neuroticism": 0.35
   },
+  "salience_threshold": 0.5,
   "voice": {
     "provider": "cartesia",
     "voice_id": "your-voice-id-here",
@@ -53,5 +55,10 @@
       "location_id": "market_stall",
       "activity": "selling goods"
     }
-  ]
+  ],
+  "network": [],
+  "player_recognition": {
+    "can_know_player": true,
+    "reveal_player_identity": true
+  }
 }
