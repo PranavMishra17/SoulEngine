@@ -868,7 +868,7 @@ function setupToolDropdown(prefix, allTools, permissionKey) {
 
   // Close on outside click
   document.addEventListener('click', (e) => {
-    if (!addBtn?.contains(e.target) && !dropdown?.contains(e.target)) {
+    if (dropdown && !addBtn?.contains(e.target) && !dropdown?.contains(e.target)) {
       dropdown.style.display = 'none';
     }
   });

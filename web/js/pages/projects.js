@@ -9,10 +9,8 @@ import { router } from '../router.js';
 export async function initProjectsPage() {
   renderTemplate('template-projects');
 
-  // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects', active: true },
-  ]);
+  // Clear project-specific nav tabs when on projects list
+  updateNav([]);
 
   // Load projects
   await loadProjects();

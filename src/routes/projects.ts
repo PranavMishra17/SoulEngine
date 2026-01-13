@@ -9,6 +9,10 @@ import {
   listProjects,
   saveApiKeys,
   loadApiKeys,
+  listDefinitions,
+  listInstances,
+  getKnowledgeBase,
+  getMCPTools,
   StorageNotFoundError,
   StorageValidationError,
 } from '../storage/index.js';
@@ -434,5 +438,92 @@ projectRoutes.get('/:projectId/voices', async (c) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, provider, error: errorMessage, duration }, 'Failed to fetch voices');
     return c.json({ error: 'Failed to fetch voices', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/stats - Get project statistics
+ */
+projectRoutes.get('/:projectId/stats', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    // Verify project exists
+    const project = await getProject(projectId);
+
+    // Gather stats in parallel
+    const [definitions, instances, knowledgeBase, mcpTools, apiKeys] = await Promise.all([
+      listDefinitions(projectId).catch(() => []),
+      listInstances(projectId).catch(() => []),
+      getKnowledgeBase(projectId).catch(() => ({ categories: {} })),
+      getMCPTools(projectId).catch(() => ({ conversation_tools: [], game_event_tools: [] })),
+      loadApiKeys(projectId).catch(() => ({})),
+    ]);
+
+    // Calculate stats
+    const categories = knowledgeBase.categories || {};
+    const categoryCount = Object.keys(categories).length;
+    const totalKnowledgeEntries = Object.values(categories).reduce((sum: number, cat) => {
+      const depths = (cat as { depths?: Record<string, string[]> }).depths || {};
+      return sum + Object.values(depths).reduce((s: number, entries) => s + (entries?.length || 0), 0);
+    }, 0);
+
+    const conversationTools = mcpTools.conversation_tools || [];
+    const gameEventTools = mcpTools.game_event_tools || [];
+
+    // Check if any API keys are configured
+    const hasApiKeys = Object.values(apiKeys).some(key => !!key);
+
+    const stats = {
+      project: {
+        id: project.id,
+        name: project.name,
+        created_at: project.created_at,
+      },
+      npcs: {
+        total: definitions.length,
+        definitions: definitions.slice(0, 6).map((d: { id: string; name: string; description?: string; profile_image?: string }) => ({
+          id: d.id,
+          name: d.name,
+          description: d.description || '',
+          hasImage: !!d.profile_image,
+        })),
+      },
+      instances: {
+        total: instances.length,
+      },
+      knowledge: {
+        categories: categoryCount,
+        totalEntries: totalKnowledgeEntries,
+        categoryNames: Object.keys(categories).slice(0, 6),
+      },
+      tools: {
+        conversation: conversationTools.length,
+        gameEvent: gameEventTools.length,
+        total: conversationTools.length + gameEventTools.length,
+        conversationNames: conversationTools.slice(0, 3).map((t: { name: string }) => t.name),
+        gameEventNames: gameEventTools.slice(0, 3).map((t: { name: string }) => t.name),
+      },
+      apiKeys: {
+        configured: hasApiKeys,
+      },
+    };
+
+    const duration = Date.now() - startTime;
+    logger.debug({ projectId, duration }, 'Project stats retrieved via API');
+
+    return c.json(stats);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      logger.warn({ projectId, duration }, 'Project not found');
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to get project stats');
+    return c.json({ error: 'Failed to get project stats', details: errorMessage }, 500);
   }
 });

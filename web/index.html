@@ -407,73 +407,192 @@
           <h1 id="dashboard-title">Project Dashboard</h1>
         </div>
         <div class="page-header-actions">
+          <!-- API Keys Status Badge -->
+          <span class="api-status api-status-warning" id="api-status">
+            <span class="status-icon">!</span>
+            <span class="status-text">API Keys Not Set</span>
+          </span>
+          
+          <!-- Project ID Display -->
+          <div class="project-id-display">
+            <span class="project-id-label">ID:</span>
+            <code id="project-id-masked">proj_****</code>
+            <button class="btn btn-ghost btn-sm" id="btn-copy-project-id" title="Copy Project ID">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="copy-icon">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          
           <button class="btn btn-outline" id="btn-project-settings">
             <span class="icon">&#9881;</span>
             Settings
           </button>
         </div>
       </header>
-      <div class="dashboard-grid">
-        <div class="stats-row">
-          <div class="stat-card">
-            <div class="stat-icon">&#9671;</div>
+      
+      <!-- Dashboard Boards -->
+      <div class="dashboard-boards">
+        <!-- NPCs Board -->
+        <a href="#" class="board-card" id="board-npcs">
+          <div class="board-header">
+            <div class="board-icon board-icon-npc">&#9671;</div>
+            <div class="board-title">
+              <h3>NPCs</h3>
+              <span class="board-count" id="npc-count">0</span>
+            </div>
+            <span class="board-arrow">&#8594;</span>
+          </div>
+          <div class="board-grid" id="npc-grid">
+            <div class="board-empty">No NPCs created yet</div>
+          </div>
+        </a>
+        
+        <!-- World Knowledge Board -->
+        <a href="#" class="board-card" id="board-knowledge">
+          <div class="board-header">
+            <div class="board-icon board-icon-knowledge">&#9672;</div>
+            <div class="board-title">
+              <h3>World Knowledge</h3>
+              <span class="board-count" id="knowledge-count">0</span>
+            </div>
+            <span class="board-arrow">&#8594;</span>
+          </div>
+          <div class="board-grid" id="knowledge-grid">
+            <div class="board-empty">No categories defined</div>
+          </div>
+        </a>
+        
+        <!-- MCP Tools Board -->
+        <a href="#" class="board-card" id="board-mcp">
+          <div class="board-header">
+            <div class="board-icon board-icon-mcp">&#11043;</div>
+            <div class="board-title">
+              <h3>MCP Tools</h3>
+              <span class="board-count" id="mcp-count">0</span>
+            </div>
+            <span class="board-arrow">&#8594;</span>
+          </div>
+          <div class="board-content" id="mcp-content">
+            <div class="board-empty">No tools defined</div>
+          </div>
+        </a>
+      </div>
+      
+      <!-- Stats Section -->
+      <div class="dashboard-stats">
+        <h2 class="stats-title">Project Metrics</h2>
+        <div class="stats-grid">
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-instances">&#9684;</div>
             <div class="stat-content">
-              <span class="stat-value" id="stat-npcs">0</span>
-              <span class="stat-label">NPCs</span>
+              <span class="stat-value" id="stat-instances">0</span>
+              <span class="stat-label">NPC Instances</span>
             </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon">&#9684;</div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-entries">&#9672;</div>
             <div class="stat-content">
-              <span class="stat-value" id="stat-sessions">0</span>
-              <span class="stat-label">Active Sessions</span>
+              <span class="stat-value" id="stat-entries">0</span>
+              <span class="stat-label">Knowledge Entries</span>
             </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon">&#9672;</div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-conv">&#9681;</div>
             <div class="stat-content">
-              <span class="stat-value" id="stat-categories">0</span>
-              <span class="stat-label">Knowledge Categories</span>
+              <span class="stat-value" id="stat-conv-tools">0</span>
+              <span class="stat-label">Conversation Tools</span>
+            </div>
+          </div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-game">&#11043;</div>
+            <div class="stat-content">
+              <span class="stat-value" id="stat-game-tools">0</span>
+              <span class="stat-label">Game Event Tools</span>
             </div>
           </div>
         </div>
-        <div class="dashboard-section">
-          <h2>Quick Actions</h2>
-          <div class="action-cards">
-            <a href="#" class="action-card" id="link-npcs">
-              <div class="action-icon">&#9671;</div>
-              <div class="action-content">
-                <h3>NPC Editor</h3>
-                <p>Create and edit NPC definitions</p>
+      </div>
+      
+      <!-- Structure Flowchart -->
+      <div class="dashboard-flowchart">
+        <h2 class="flowchart-title">Project Structure</h2>
+        <div class="flowchart-container">
+          <div class="flowchart">
+            <!-- Project Node -->
+            <div class="flow-node flow-node-project">
+              <div class="flow-node-icon">&#9733;</div>
+              <div class="flow-node-label">Project</div>
+            </div>
+            
+            <!-- Connectors -->
+            <div class="flow-connectors">
+              <div class="flow-line flow-line-1"></div>
+              <div class="flow-line flow-line-2"></div>
+              <div class="flow-line flow-line-3"></div>
+            </div>
+            
+            <!-- Child Nodes Row -->
+            <div class="flow-children">
+              <!-- NPCs Branch -->
+              <div class="flow-branch">
+                <div class="flow-node flow-node-npc">
+                  <div class="flow-node-icon">&#9671;</div>
+                  <div class="flow-node-label">NPCs</div>
+                  <div class="flow-node-count" id="flow-npc-count">0</div>
+                </div>
+                <div class="flow-sub-connector"></div>
+                <div class="flow-node flow-node-sub">
+                  <div class="flow-node-label">Instances</div>
+                  <div class="flow-node-count" id="flow-instance-count">0</div>
+                </div>
               </div>
-              <span class="action-arrow">&#8594;</span>
-            </a>
-            <a href="#" class="action-card" id="link-knowledge">
-              <div class="action-icon">&#9672;</div>
-              <div class="action-content">
-                <h3>World Knowledge Base</h3>
-                <p>Manage tiered knowledge categories</p>
+              
+              <!-- Knowledge Branch -->
+              <div class="flow-branch">
+                <div class="flow-node flow-node-knowledge">
+                  <div class="flow-node-icon">&#9672;</div>
+                  <div class="flow-node-label">Knowledge</div>
+                  <div class="flow-node-count" id="flow-knowledge-count">0</div>
+                </div>
+                <div class="flow-sub-connector"></div>
+                <div class="flow-node flow-node-sub">
+                  <div class="flow-node-label">Categories</div>
+                  <div class="flow-node-count" id="flow-category-count">0</div>
+                </div>
               </div>
-              <span class="action-arrow">&#8594;</span>
-            </a>
-            <a href="#" class="action-card" id="link-mcp-tools">
-              <div class="action-icon">&#11043;</div>
-              <div class="action-content">
-                <h3>MCP Tools</h3>
-                <p>Define tools NPCs can use</p>
+              
+              <!-- MCP Tools Branch -->
+              <div class="flow-branch">
+                <div class="flow-node flow-node-mcp">
+                  <div class="flow-node-icon">&#11043;</div>
+                  <div class="flow-node-label">MCP Tools</div>
+                  <div class="flow-node-count" id="flow-tools-count">0</div>
+                </div>
+                <div class="flow-sub-connector"></div>
+                <div class="flow-sub-nodes">
+                  <div class="flow-node flow-node-sub">
+                    <div class="flow-node-label">Conversation</div>
+                    <div class="flow-node-count" id="flow-conv-count">0</div>
+                  </div>
+                  <div class="flow-node flow-node-sub">
+                    <div class="flow-node-label">Game Events</div>
+                    <div class="flow-node-count" id="flow-game-count">0</div>
+                  </div>
+                </div>
               </div>
-              <span class="action-arrow">&#8594;</span>
-            </a>
-            <a href="#" class="action-card" id="link-playground">
-              <div class="action-icon">&#9681;</div>
-              <div class="action-content">
-                <h3>Testing Playground</h3>
-                <p>Chat with NPCs via text or voice</p>
-              </div>
-              <span class="action-arrow">&#8594;</span>
-            </a>
+            </div>
           </div>
         </div>
+      </div>
+      
+      <!-- Quick Access -->
+      <div class="dashboard-quick-access">
+        <a href="#" class="quick-btn" id="link-playground">
+          <span class="quick-icon">&#9654;</span>
+          <span class="quick-label">Open Playground</span>
+        </a>
       </div>
     </div>
   </template>

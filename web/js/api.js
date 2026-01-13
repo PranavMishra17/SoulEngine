@@ -108,6 +108,8 @@ export const projects = {
   getKeyStatus: (projectId) => request(`/projects/${projectId}/keys`),
 
   getVoices: (projectId, provider = 'cartesia') => request(`/projects/${projectId}/voices?provider=${provider}`),
+
+  getStats: (projectId) => request(`/projects/${projectId}/stats`),
 };
 
 /**

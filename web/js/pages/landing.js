@@ -4,13 +4,16 @@
  */
 
 import { BrainVisualization } from '../components/BrainVisualization.js';
-import { renderTemplate } from '../components.js';
+import { renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
 
 let brainViz = null;
 
 export function initLandingPage() {
   renderTemplate('template-landing');
+  
+  // Clear project-specific nav tabs when on landing page
+  updateNav([]);
 
   requestAnimationFrame(() => {
     setTimeout(() => {
