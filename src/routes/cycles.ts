@@ -1,15 +1,18 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
-import { getInstance, saveInstance } from '../storage/instances.js';
-import { getDefinition } from '../storage/definitions.js';
+import {
+  getInstance,
+  saveInstance,
+  getDefinition,
+  StorageNotFoundError,
+} from '../storage/index.js';
 import {
   runDailyPulse,
   runWeeklyWhisper,
   runPersonaShift,
   DayContext,
 } from '../core/cycles.js';
-import { StorageNotFoundError } from '../storage/interface.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
 
 const logger = createLogger('routes-cycles');

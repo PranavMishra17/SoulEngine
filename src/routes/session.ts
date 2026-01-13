@@ -8,8 +8,7 @@ import {
   getSessionStats,
   SessionError,
 } from '../session/manager.js';
-import { getOrCreateInstance } from '../storage/instances.js';
-import { StorageNotFoundError } from '../storage/interface.js';
+import { getOrCreateInstance, StorageNotFoundError } from '../storage/index.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
 
 const logger = createLogger('routes-session');

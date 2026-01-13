@@ -156,6 +156,195 @@
 }
 
 /* ========================================
+   Navigation Auth
+   ======================================== */
+
+.nav-auth {
+  display: flex;
+  align-items: center;
+  margin-left: var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-border);
+}
+
+.auth-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.auth-buttons .btn {
+  white-space: nowrap;
+}
+
+.auth-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Account Menu */
+.account-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.account-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  padding-right: var(--space-3);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.account-trigger:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border-hover);
+}
+
+.account-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-primary-muted);
+  color: var(--color-accent-primary);
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+}
+
+.account-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-avatar .avatar-placeholder {
+  font-size: var(--text-sm);
+}
+
+.account-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.account-trigger:hover .chevron-icon {
+  color: var(--color-text-secondary);
+}
+
+/* Account Dropdown */
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 200px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all var(--transition-fast);
+  z-index: var(--z-dropdown);
+}
+
+.account-dropdown.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.dropdown-header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dropdown-email {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-1) 0;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+.dropdown-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.dropdown-item-danger {
+  color: var(--color-error);
+}
+
+.dropdown-item-danger:hover {
+  background: var(--color-error-muted);
+  color: var(--color-error);
+}
+
+/* Spinner for loading states */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-text-tertiary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========================================
    Buttons
    ======================================== */
 

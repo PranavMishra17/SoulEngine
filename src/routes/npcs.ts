@@ -9,13 +9,11 @@ import {
   updateDefinition,
   deleteDefinition,
   listDefinitions,
-} from '../storage/definitions.js';
-import { getProject } from '../storage/projects.js';
-import {
+  getProject,
   StorageNotFoundError,
   StorageValidationError,
   StorageLimitError,
-} from '../storage/interface.js';
+} from '../storage/index.js';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 

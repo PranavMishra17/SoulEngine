@@ -1,0 +1,54 @@
+# Render Blueprint for SoulEngine
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: soulengine
+    runtime: node
+    region: oregon  # or your preferred region
+    plan: starter   # $7/month, or 'free' for testing
+    
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    
+    healthCheckPath: /api/health
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      
+      # Supabase Configuration (set manually in dashboard)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      
+      # Encryption key for API key storage (set manually)
+      - key: ENCRYPTION_KEY
+        sync: false
+      
+      # LLM Providers (set manually in dashboard)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GROK_API_KEY
+        sync: false
+      
+      # Voice Providers (set manually in dashboard)
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      
+      # Default provider
+      - key: DEFAULT_LLM_PROVIDER
+        value: gemini

@@ -1,10 +1,10 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { createLogger } from '../logger.js';
-import { getConfig } from '../config.js';
-import type { KnowledgeBase, KnowledgeCategory } from '../types/knowledge.js';
-import { StorageError, StorageNotFoundError, StorageValidationError, StorageLimitError } from './interface.js';
+import { createLogger } from '../../logger.js';
+import { getConfig } from '../../config.js';
+import type { KnowledgeBase, KnowledgeCategory } from '../../types/knowledge.js';
+import { StorageError, StorageNotFoundError, StorageValidationError, StorageLimitError } from '../interface.js';
 
 const logger = createLogger('knowledge-storage');
 

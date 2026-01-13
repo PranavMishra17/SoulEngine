@@ -425,13 +425,13 @@ async function apiCall(endpoint, options = {}) {
 - [ ] Run `sql/03-storage.sql` in Supabase
 - [ ] Test Google OAuth in Supabase dashboard
 
-### Phase 2: Code Changes (Day 2-3)
-- [ ] Install `@supabase/supabase-js`
-- [ ] Create `src/storage/supabase/` modules
-- [ ] Implement auth middleware
-- [ ] Add login/logout UI components
-- [ ] Update `src/storage/index.ts` for env switching
-- [ ] Add health check endpoint (`/api/health`)
+### Phase 2: Code Changes (Day 2-3) ✅ COMPLETED
+- [x] Install `@supabase/supabase-js` (already in package.json)
+- [x] Create `src/storage/supabase/` modules
+- [x] Implement auth middleware
+- [ ] Add login/logout UI components (deferred - optional for backend-only deployment)
+- [x] Update `src/storage/index.ts` for env switching
+- [x] Add health check endpoint (`/api/health`)
 
 ### Phase 3: Testing (Day 4)
 - [ ] Test locally with `NODE_ENV=production`
@@ -442,6 +442,7 @@ async function apiCall(endpoint, options = {}) {
 - [ ] Test all voice modes (text-text, voice-voice, etc.)
 
 ### Phase 4: Deployment (Day 5)
+- [x] Create `render.yaml` for infrastructure-as-code deployment
 - [ ] Create Render service
 - [ ] Set environment variables
 - [ ] Deploy and verify
@@ -661,3 +662,165 @@ healthRoutes.get('/health', (c) => {
 - This shouldn't happen on Render (no timeout)
 - Check Deepgram/Cartesia API keys
 - Monitor memory usage in Render dashboard
+
+---
+
+## Implementation Status (Phase 2 Completed)
+
+### What Was Implemented
+
+The following changes were made to enable Supabase-based storage:
+
+#### 1. Storage Layer Architecture
+
+Created a dual-backend storage system that switches between local (development) and Supabase (production):
+
+```
+src/storage/
+├── interface.ts              # Error types and interfaces (unchanged)
+├── index.ts                  # ✅ NEW: Dynamic switcher based on NODE_ENV
+├── supabase/
+│   ├── client.ts             # ✅ NEW: Supabase client initialization
+│   ├── projects.ts           # ✅ NEW: Projects CRUD with Supabase
+│   ├── definitions.ts        # ✅ NEW: NPC definitions CRUD
+│   ├── instances.ts          # ✅ NEW: NPC instances with history
+│   ├── knowledge.ts          # ✅ NEW: Knowledge categories CRUD
+│   ├── mcp-tools.ts          # ✅ NEW: MCP tools CRUD
+│   ├── secrets.ts            # ✅ NEW: Encrypted API keys in DB
+│   ├── images.ts             # ✅ NEW: Supabase Storage bucket operations
+│   └── index.ts              # ✅ NEW: Re-exports all supabase functions
+└── local/
+    ├── projects.ts           # ✅ MOVED: Original local storage
+    ├── definitions.ts        # ✅ MOVED: Original local storage
+    ├── instances.ts          # ✅ MOVED: Original local storage
+    ├── knowledge.ts          # ✅ MOVED: Original local storage
+    ├── mcp-tools.ts          # ✅ MOVED: Original local storage
+    ├── secrets.ts            # ✅ MOVED: Original local storage
+    └── index.ts              # ✅ NEW: Re-exports + stub functions
+```
+
+#### 2. Authentication Middleware
+
+Created `src/middleware/auth.ts` with:
+- `authMiddleware` - Validates JWT tokens from Authorization header
+- `optionalAuthMiddleware` - Allows unauthenticated access while extracting user if present
+- `isAuthEnabled()` - Check if auth is enabled (production + Supabase)
+
+**Behavior:**
+- Development mode: Auth is skipped, all requests allowed
+- Production mode (with Supabase): JWT validation required for protected routes
+
+#### 3. Configuration Updates
+
+Updated `src/config.ts` to include Supabase configuration:
+```typescript
+supabase: {
+  url: process.env.SUPABASE_URL,
+  anonKey: process.env.SUPABASE_ANON_KEY,
+  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+}
+```
+
+#### 4. Health Check Endpoints
+
+Added `/api/health` endpoint that returns:
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-11T...",
+  "version": "2.0.0",
+  "storage": "local" | "supabase",
+  "auth": "enabled" | "disabled"
+}
+```
+
+#### 5. Route Updates
+
+All routes updated to use unified storage imports from `src/storage/index.js`:
+- `src/routes/projects.ts`
+- `src/routes/npcs.ts`
+- `src/routes/knowledge.ts`
+- `src/routes/cycles.ts`
+- `src/routes/session.ts`
+- `src/routes/history.ts`
+- `src/routes/mcp-tools.ts`
+- `src/session/manager.ts`
+- `src/core/context.ts`
+
+#### 6. Render Deployment Configuration
+
+Created `render.yaml` with:
+- Web service configuration
+- Build/start commands
+- Health check path
+- Environment variable placeholders
+
+### How It Works
+
+**Storage Mode Selection:**
+```typescript
+const isProduction = process.env.NODE_ENV === 'production';
+const hasSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const useSupabase = isProduction && hasSupabase;
+```
+
+**Auth Protection (Production Only):**
+```typescript
+if (isAuthEnabled()) {
+  app.use('/api/projects/*', authMiddleware);
+  app.use('/api/session/*', authMiddleware);
+  app.use('/api/instances/*', authMiddleware);
+}
+```
+
+### Environment Variables Required for Production
+
+```bash
+# Supabase (required)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=eyJhbGci...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
+
+# Encryption (required for API key storage)
+ENCRYPTION_KEY=your-32-character-encryption-key
+
+# App Config
+NODE_ENV=production
+PORT=10000
+
+# Provider Keys (at least one LLM required)
+GEMINI_API_KEY=...
+DEEPGRAM_API_KEY=...
+CARTESIA_API_KEY=...
+```
+
+### What Was NOT Changed
+
+- Frontend auth UI (login/logout buttons) - can be added later
+- Local storage functionality remains fully intact
+- All existing APIs work the same way
+- No breaking changes to existing integrations
+
+### Testing the Implementation
+
+**Local Development (unchanged):**
+```bash
+npm run dev
+# Uses local file storage, no auth required
+```
+
+**Production Mode Locally:**
+```bash
+NODE_ENV=production \
+SUPABASE_URL=... \
+SUPABASE_SERVICE_ROLE_KEY=... \
+ENCRYPTION_KEY=... \
+npm start
+```
+
+### Next Steps
+
+1. Run SQL migrations in Supabase (Phase 1)
+2. Create Render service and set env vars (Phase 4)
+3. Deploy and test
+4. (Optional) Add frontend auth UI components

@@ -1,11 +1,15 @@
 import { createLogger } from '../logger.js';
 import { getConfig } from '../config.js';
 import { sessionStore, StoredSession } from './store.js';
-import { getProject } from '../storage/projects.js';
-import { getDefinition } from '../storage/definitions.js';
-import { getOrCreateInstance, saveInstance } from '../storage/instances.js';
-import { getKnowledgeBase } from '../storage/knowledge.js';
-import { loadApiKeys, ApiKeys } from '../storage/secrets.js';
+import {
+  getProject,
+  getDefinition,
+  getOrCreateInstance,
+  saveInstance,
+  getKnowledgeBase,
+  loadApiKeys,
+  type ApiKeys,
+} from '../storage/index.js';
 import { validateAnchorIntegrity } from '../security/anchor-guard.js';
 import { resolveKnowledge } from '../core/knowledge.js';
 import { summarizeConversation, NPCPerspective } from '../core/summarizer.js';

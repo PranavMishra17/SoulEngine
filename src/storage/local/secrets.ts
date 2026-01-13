@@ -1,9 +1,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { createLogger } from '../logger.js';
-import { getConfig } from '../config.js';
-import { StorageError, StorageValidationError } from './interface.js';
+import { createLogger } from '../../logger.js';
+import { getConfig } from '../../config.js';
+import { StorageError, StorageValidationError } from '../interface.js';
 
 const logger = createLogger('secrets-storage');
 

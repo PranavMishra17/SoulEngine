@@ -1,9 +1,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createLogger } from '../logger.js';
-import { getConfig } from '../config.js';
-import type { NPCInstance, NPCDefinition, MoodVector } from '../types/npc.js';
-import { StorageError, StorageNotFoundError, StorageVersion, StorageVersionResult } from './interface.js';
+import { createLogger } from '../../logger.js';
+import { getConfig } from '../../config.js';
+import type { NPCInstance, NPCDefinition, MoodVector } from '../../types/npc.js';
+import { StorageError, StorageNotFoundError, StorageVersion, StorageVersionResult } from '../interface.js';
 import { getDefinition } from './definitions.js';
 
 const logger = createLogger('instance-storage');

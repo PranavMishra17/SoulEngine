@@ -1,10 +1,10 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { createLogger } from '../logger.js';
-import { getConfig } from '../config.js';
-import type { Project, ProjectSettings, ProjectLimits } from '../types/project.js';
-import { StorageError, StorageNotFoundError } from './interface.js';
+import { createLogger } from '../../logger.js';
+import { getConfig } from '../../config.js';
+import type { Project, ProjectSettings, ProjectLimits } from '../../types/project.js';
+import { StorageError, StorageNotFoundError } from '../interface.js';
 
 const logger = createLogger('project-storage');
 
@@ -64,8 +64,9 @@ function getDefaultLimits(): ProjectLimits {
 
 /**
  * Create a new project
+ * Note: userId is ignored in local mode (no auth)
  */
-export async function createProject(name: string): Promise<Project> {
+export async function createProject(name: string, _userId?: string): Promise<Project> {
   const startTime = Date.now();
   const projectId = generateProjectId();
   const projectPath = getProjectPath(projectId);
@@ -215,8 +216,9 @@ export async function deleteProject(projectId: string): Promise<void> {
 
 /**
  * List all projects
+ * Note: userId is ignored in local mode (no auth)
  */
-export async function listProjects(): Promise<Project[]> {
+export async function listProjects(_userId?: string): Promise<Project[]> {
   const startTime = Date.now();
   const config = getConfig();
   const projectsDir = path.join(config.dataDir, 'projects');

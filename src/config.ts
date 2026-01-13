@@ -23,6 +23,12 @@ const ConfigSchema = z.object({
     maxStmMemories: z.coerce.number().int().positive().default(20),
     maxLtmMemories: z.coerce.number().int().positive().default(50),
   }),
+  // Supabase configuration (production)
+  supabase: z.object({
+    url: z.string().optional(),
+    anonKey: z.string().optional(),
+    serviceRoleKey: z.string().optional(),
+  }).default({}),
   // Provider API keys - can be overridden per-project in storage
   providers: z.object({
     // LLM providers
@@ -70,6 +76,11 @@ export function loadConfig(): Config {
         maxStmMemories: process.env.MAX_STM_MEMORIES,
         maxLtmMemories: process.env.MAX_LTM_MEMORIES,
       },
+      supabase: {
+        url: process.env.SUPABASE_URL,
+        anonKey: process.env.SUPABASE_ANON_KEY,
+        serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      },
       providers: {
         // LLM providers
         geminiApiKey: process.env.GEMINI_API_KEY,
@@ -86,7 +97,35 @@ export function loadConfig(): Config {
     };
 
     config = ConfigSchema.parse(rawConfig);
-    logger.info({ config: { ...config, encryptionKey: config.encryptionKey ? '[REDACTED]' : undefined } }, 'Configuration loaded');
+    
+    // Log config with all sensitive fields redacted
+    const safeConfig = {
+      port: config.port,
+      logLevel: config.logLevel,
+      dataDir: config.dataDir,
+      encryptionKey: config.encryptionKey ? '[REDACTED]' : undefined,
+      sessionTimeoutMs: config.sessionTimeoutMs,
+      stateHistoryEnabled: config.stateHistoryEnabled,
+      stateHistoryMaxVersions: config.stateHistoryMaxVersions,
+      security: config.security,
+      limits: config.limits,
+      supabase: {
+        url: config.supabase.url,
+        anonKey: config.supabase.anonKey ? '[REDACTED]' : undefined,
+        serviceRoleKey: config.supabase.serviceRoleKey ? '[REDACTED]' : undefined,
+      },
+      providers: {
+        geminiApiKey: config.providers.geminiApiKey ? '[REDACTED]' : undefined,
+        openaiApiKey: config.providers.openaiApiKey ? '[REDACTED]' : undefined,
+        anthropicApiKey: config.providers.anthropicApiKey ? '[REDACTED]' : undefined,
+        grokApiKey: config.providers.grokApiKey ? '[REDACTED]' : undefined,
+        deepgramApiKey: config.providers.deepgramApiKey ? '[REDACTED]' : undefined,
+        cartesiaApiKey: config.providers.cartesiaApiKey ? '[REDACTED]' : undefined,
+        elevenLabsApiKey: config.providers.elevenLabsApiKey ? '[REDACTED]' : undefined,
+      },
+      defaultLlmProvider: config.defaultLlmProvider,
+    };
+    logger.info({ config: safeConfig }, 'Configuration loaded');
     return config;
   } catch (error) {
     logger.error({ error }, 'Failed to load configuration');

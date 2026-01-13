@@ -7,9 +7,11 @@ import {
   updateProject,
   deleteProject,
   listProjects,
-} from '../storage/projects.js';
-import { saveApiKeys, loadApiKeys } from '../storage/secrets.js';
-import { StorageNotFoundError, StorageValidationError } from '../storage/interface.js';
+  saveApiKeys,
+  loadApiKeys,
+  StorageNotFoundError,
+  StorageValidationError,
+} from '../storage/index.js';
 
 const logger = createLogger('routes-projects');
 
@@ -80,10 +82,13 @@ projectRoutes.post('/', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    const project = await createProject(parsed.data.name);
+    // Get user ID from auth context (will be null in dev mode, required in prod with Supabase)
+    const userId = c.get('userId') ?? undefined;
+    
+    const project = await createProject(parsed.data.name, userId);
 
     const duration = Date.now() - startTime;
-    logger.info({ projectId: project.id, duration }, 'Project created via API');
+    logger.info({ projectId: project.id, userId, duration }, 'Project created via API');
 
     return c.json(project, 201);
   } catch (error) {
@@ -95,16 +100,19 @@ projectRoutes.post('/', async (c) => {
 });
 
 /**
- * GET /api/projects - List all projects
+ * GET /api/projects - List all projects (filtered by user in authenticated mode)
  */
 projectRoutes.get('/', async (c) => {
   const startTime = Date.now();
 
   try {
-    const projects = await listProjects();
+    // Get user ID from auth context to filter projects (undefined in dev mode = all projects)
+    const userId = c.get('userId') ?? undefined;
+    
+    const projects = await listProjects(userId);
 
     const duration = Date.now() - startTime;
-    logger.debug({ count: projects.length, duration }, 'Projects listed via API');
+    logger.debug({ count: projects.length, userId, duration }, 'Projects listed via API');
 
     return c.json({ projects });
   } catch (error) {

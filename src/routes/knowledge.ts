@@ -7,13 +7,11 @@ import {
   upsertCategory,
   deleteCategory,
   getCategory,
-} from '../storage/knowledge.js';
-import { getProject } from '../storage/projects.js';
-import {
+  getProject,
   StorageNotFoundError,
   StorageValidationError,
   StorageLimitError,
-} from '../storage/interface.js';
+} from '../storage/index.js';
 
 const logger = createLogger('routes-knowledge');
 

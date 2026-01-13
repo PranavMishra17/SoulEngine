@@ -5,7 +5,7 @@ import type { Message, PlayerInfo } from '../types/session.js';
 import type { LLMMessage } from '../providers/llm/interface.js';
 import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
 import { formatMemoriesForPrompt, retrieveSTM, retrieveLTM } from './memory.js';
-import { getDefinition } from '../storage/definitions.js';
+import { getDefinition } from '../storage/index.js';
 
 const logger = createLogger('context-assembly');
 

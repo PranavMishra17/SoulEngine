@@ -2,23 +2,55 @@
  * Evolve.NPC API Client
  */
 
+import { getAccessToken, isAuthEnabled } from './auth.js';
+
 const API_BASE = '/api';
+
+// Callback for handling auth failures (401)
+let onAuthFailure = null;
+
+/**
+ * Set a callback for auth failures
+ * @param {Function} callback - Called when a 401 is received
+ */
+export function setAuthFailureHandler(callback) {
+  onAuthFailure = callback;
+}
 
 /**
  * Generic fetch wrapper with error handling
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
+  
+  // Build headers with auth token if available
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  // Add auth token if authenticated
+  const token = getAccessToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     ...options,
   };
 
   try {
     const response = await fetch(url, config);
+
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      console.warn('[API] Unauthorized - token may be expired');
+      if (onAuthFailure) {
+        onAuthFailure();
+      }
+      throw new ApiError('Unauthorized', 401, null);
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -380,4 +412,5 @@ export default {
   history,
   VoiceClient,
   ApiError,
+  setAuthFailureHandler,
 };

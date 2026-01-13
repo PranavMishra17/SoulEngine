@@ -1,9 +1,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { createLogger } from '../logger.js';
-import { getConfig } from '../config.js';
-import { StorageError, StorageValidationError } from './interface.js';
+import { createLogger } from '../../logger.js';
+import { getConfig } from '../../config.js';
+import { StorageError, StorageValidationError } from '../interface.js';
 
 const logger = createLogger('mcp-tools-storage');
 

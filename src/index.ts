@@ -32,7 +32,8 @@ import { mcpToolRegistry } from './mcp/registry.js';
 
 // Session cleanup
 import { sessionStore } from './session/store.js';
-import { getDefinition } from './storage/definitions.js';
+import { getDefinition, storageMode } from './storage/index.js';
+import { authMiddleware, isAuthEnabled } from './middleware/auth.js';
 
 const logger = createLogger('server');
 const config = getConfig();
@@ -54,9 +55,45 @@ app.get('/health', (c) => {
   return c.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
+    version: '2.0.0',
+    storage: storageMode,
+    auth: isAuthEnabled() ? 'enabled' : 'disabled',
     sessions: sessionStore.getTotalSessionCount(),
   });
 });
+
+app.get('/api/health', (c) => {
+  return c.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    version: '2.0.0',
+    storage: storageMode,
+    auth: isAuthEnabled() ? 'enabled' : 'disabled',
+  });
+});
+
+// Public configuration endpoint (returns non-sensitive config for frontend)
+app.get('/api/config', (c) => {
+  return c.json({
+    auth: {
+      enabled: isAuthEnabled(),
+      // Only expose the public anon key (safe to expose to frontend)
+      supabaseUrl: config.supabase.url || null,
+      supabaseAnonKey: config.supabase.anonKey || null,
+    },
+    version: '2.0.0',
+  });
+});
+
+// Apply authentication middleware to protected routes in production
+if (isAuthEnabled()) {
+  logger.info('Authentication enabled - protecting API routes');
+  app.use('/api/projects/*', authMiddleware);
+  app.use('/api/session/*', authMiddleware);
+  app.use('/api/instances/*', authMiddleware);
+} else {
+  logger.info('Authentication disabled - running in development mode');
+}
 
 // API routes
 app.route('/api/projects', projectRoutes);

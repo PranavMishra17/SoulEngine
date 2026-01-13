@@ -1,9 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
-import { getMCPTools, saveMCPTools, type ProjectMCPTools } from '../storage/mcp-tools.js';
-import { getProject } from '../storage/projects.js';
-import { StorageNotFoundError, StorageValidationError } from '../storage/interface.js';
+import {
+  getMCPTools,
+  saveMCPTools,
+  getProject,
+  StorageNotFoundError,
+  StorageValidationError,
+  type ProjectMCPTools,
+} from '../storage/index.js';
 
 const logger = createLogger('routes-mcp-tools');
 

@@ -79,9 +79,9 @@ class Router {
       }
     }
 
-    // No route matched - 404
+    // No route matched - just log it, don't navigate to prevent infinite loops
     console.warn('No route matched:', path);
-    this.navigate('/', true);
+    // Don't call navigate here - it causes infinite recursion if '/' also doesn't match
   }
 
   /**

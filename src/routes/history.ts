@@ -5,8 +5,8 @@ import {
   getInstance,
   getInstanceHistory,
   rollbackInstance,
-} from '../storage/instances.js';
-import { StorageNotFoundError } from '../storage/interface.js';
+  StorageNotFoundError,
+} from '../storage/index.js';
 
 const logger = createLogger('routes-history');
 
