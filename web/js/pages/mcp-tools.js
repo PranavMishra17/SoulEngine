@@ -4,12 +4,63 @@
 
 import { mcpTools } from '../api.js';
 import { toast, modal, renderTemplate, updateNav } from '../components.js';
+import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
 
 let currentProjectId = null;
 let currentTools = {
   conversation_tools: [],
   game_event_tools: [],
+};
+
+// System tools - always available, disabled by default
+const SYSTEM_TOOLS = {
+  conversation: [
+    {
+      id: 'exit_conversation',
+      name: 'Exit Conversation',
+      description: 'End conversation immediately when player crosses serious boundaries. Ends the session.',
+      system: true,
+      enabled: false,
+    },
+    {
+      id: 'refuse_service',
+      name: 'Refuse Service',
+      description: 'Politely decline to help or continue interaction with the player.',
+      system: true,
+      enabled: false,
+    },
+  ],
+  game_event: [
+    {
+      id: 'call_security',
+      name: 'Call Security/Police',
+      description: 'Alert security or authorities about threatening player behavior.',
+      system: true,
+      enabled: false,
+    },
+    {
+      id: 'give_item',
+      name: 'Give Item to Player',
+      description: 'Transfer an item from NPC inventory to the player.',
+      system: true,
+      enabled: false,
+      parameters: {
+        type: 'object',
+        properties: {
+          item_id: { type: 'string', description: 'ID of the item to give' },
+          quantity: { type: 'number', description: 'Number of items to give' },
+        },
+        required: ['item_id'],
+      },
+    },
+  ],
+};
+
+// Track which system tools are enabled for this project
+let enabledSystemTools = {
+  conversation: new Set(),
+  game_event: new Set(),
 };
 
 /**
@@ -37,18 +88,113 @@ export async function initMcpToolsPage(params) {
   // Load tools
   await loadTools(projectId);
 
+  // Bind inline form handlers
+  bindInlineFormHandlers();
+
   // Bind event handlers
-  document.getElementById('btn-add-conv-tool')?.addEventListener('click', () => {
-    openToolModal('conversation');
-  });
-
-  document.getElementById('btn-add-game-tool')?.addEventListener('click', () => {
-    openToolModal('game_event');
-  });
-
   document.getElementById('btn-download-tools-template')?.addEventListener('click', handleDownloadTemplate);
   document.getElementById('btn-import-tools')?.addEventListener('click', handleImport);
   document.getElementById('btn-export-tools')?.addEventListener('click', handleExport);
+  document.getElementById('btn-edit-tools-json')?.addEventListener('click', handleEditRawJson);
+}
+
+/**
+ * Bind inline form toggle and submission handlers
+ */
+function bindInlineFormHandlers() {
+  const form = document.getElementById('inline-tool-form');
+  const toggle = document.getElementById('inline-tool-toggle');
+  const body = document.getElementById('inline-tool-body');
+  const cancelBtn = document.getElementById('btn-cancel-tool');
+  const confirmBtn = document.getElementById('btn-confirm-tool');
+
+  toggle?.addEventListener('click', () => {
+    const isExpanded = !form.classList.contains('collapsed');
+    if (isExpanded) {
+      collapseInlineForm();
+    } else {
+      expandInlineForm();
+    }
+  });
+
+  cancelBtn?.addEventListener('click', collapseInlineForm);
+  confirmBtn?.addEventListener('click', handleCreateTool);
+}
+
+function expandInlineForm() {
+  const form = document.getElementById('inline-tool-form');
+  const body = document.getElementById('inline-tool-body');
+  form.classList.remove('collapsed');
+  body.style.display = 'block';
+}
+
+function collapseInlineForm() {
+  const form = document.getElementById('inline-tool-form');
+  const body = document.getElementById('inline-tool-body');
+  form.classList.add('collapsed');
+  body.style.display = 'none';
+  // Reset form
+  document.getElementById('new-tool-id').value = '';
+  document.getElementById('new-tool-name').value = '';
+  document.getElementById('new-tool-desc').value = '';
+  document.getElementById('new-tool-type').value = 'conversation';
+}
+
+async function handleCreateTool() {
+  const toolId = document.getElementById('new-tool-id').value.trim();
+  const toolName = document.getElementById('new-tool-name').value.trim();
+  const toolDesc = document.getElementById('new-tool-desc').value.trim();
+  const toolType = document.getElementById('new-tool-type').value;
+
+  // Validate
+  if (!toolId) {
+    toast.warning('ID Required', 'Please enter a tool ID');
+    return;
+  }
+  if (!toolName) {
+    toast.warning('Name Required', 'Please enter a tool name');
+    return;
+  }
+  if (!toolDesc) {
+    toast.warning('Description Required', 'Please enter a tool description');
+    return;
+  }
+
+  // Check for duplicate ID
+  const allTools = [...currentTools.conversation_tools, ...currentTools.game_event_tools];
+  const duplicate = allTools.find(t => t.id === toolId);
+  if (duplicate) {
+    toast.warning('Duplicate ID', 'A tool with this ID already exists');
+    return;
+  }
+
+  // Also check system tools
+  const systemDuplicate = [...SYSTEM_TOOLS.conversation, ...SYSTEM_TOOLS.game_event].find(t => t.id === toolId);
+  if (systemDuplicate) {
+    toast.warning('Reserved ID', 'This ID is reserved for a system tool');
+    return;
+  }
+
+  const newTool = {
+    id: toolId,
+    name: toolName,
+    description: toolDesc,
+  };
+
+  if (toolType === 'conversation') {
+    currentTools.conversation_tools.push(newTool);
+  } else {
+    currentTools.game_event_tools.push(newTool);
+  }
+
+  try {
+    await mcpTools.update(currentProjectId, currentTools);
+    toast.success('Tool Created', `"${toolName}" has been added.`);
+    collapseInlineForm();
+    renderToolsList();
+  } catch (error) {
+    toast.error('Failed to Save', error.message);
+  }
 }
 
 /**
@@ -56,13 +202,23 @@ export async function initMcpToolsPage(params) {
  */
 async function loadTools(projectId) {
   try {
-    currentTools = await mcpTools.get(projectId);
+    const data = await mcpTools.get(projectId);
+    currentTools = {
+      conversation_tools: data.conversation_tools || [],
+      game_event_tools: data.game_event_tools || [],
+    };
+    
+    // Check which system tools are enabled (stored in the tools list)
+    loadSystemToolStates();
+    
     renderToolsList();
+    renderSystemTools();
   } catch (error) {
     // If no tools exist yet, start with empty
     if (error.status === 404) {
       currentTools = { conversation_tools: [], game_event_tools: [] };
       renderToolsList();
+      renderSystemTools();
     } else {
       toast.error('Failed to Load Tools', error.message);
     }
@@ -70,11 +226,128 @@ async function loadTools(projectId) {
 }
 
 /**
+ * Load system tool enabled states from current tools
+ */
+function loadSystemToolStates() {
+  enabledSystemTools = {
+    conversation: new Set(),
+    game_event: new Set(),
+  };
+  
+  // Check which system tools are in the current tools list
+  for (const tool of currentTools.conversation_tools) {
+    const systemTool = SYSTEM_TOOLS.conversation.find(st => st.id === tool.id);
+    if (systemTool) {
+      enabledSystemTools.conversation.add(tool.id);
+    }
+  }
+  
+  for (const tool of currentTools.game_event_tools) {
+    const systemTool = SYSTEM_TOOLS.game_event.find(st => st.id === tool.id);
+    if (systemTool) {
+      enabledSystemTools.game_event.add(tool.id);
+    }
+  }
+}
+
+/**
+ * Render system tools with toggles
+ */
+function renderSystemTools() {
+  renderSystemToolsSection('system-conv-tools-list', SYSTEM_TOOLS.conversation, 'conversation');
+  renderSystemToolsSection('system-game-tools-list', SYSTEM_TOOLS.game_event, 'game_event');
+}
+
+function renderSystemToolsSection(containerId, systemTools, toolType) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = systemTools.map(tool => {
+    const isEnabled = enabledSystemTools[toolType].has(tool.id);
+    return `
+      <div class="system-tool-item">
+        <div class="system-tool-info">
+          <span class="system-tool-name">${escapeHtml(tool.name)}</span>
+          <span class="system-tool-desc">${escapeHtml(tool.description)}</span>
+        </div>
+        <span class="system-tool-badge system">System</span>
+        <label class="toggle-switch">
+          <input type="checkbox" data-system-tool="${tool.id}" data-tool-type="${toolType}" ${isEnabled ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  // Bind toggle handlers
+  container.querySelectorAll('input[data-system-tool]').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const toolId = e.target.dataset.systemTool;
+      const type = e.target.dataset.toolType;
+      const enabled = e.target.checked;
+      
+      await toggleSystemTool(toolId, type, enabled);
+    });
+  });
+}
+
+/**
+ * Toggle a system tool on/off
+ */
+async function toggleSystemTool(toolId, toolType, enabled) {
+  const systemTool = (toolType === 'conversation' ? SYSTEM_TOOLS.conversation : SYSTEM_TOOLS.game_event)
+    .find(t => t.id === toolId);
+  
+  if (!systemTool) return;
+  
+  const toolsArray = toolType === 'conversation' ? currentTools.conversation_tools : currentTools.game_event_tools;
+  
+  if (enabled) {
+    // Add to tools list
+    if (!toolsArray.find(t => t.id === toolId)) {
+      toolsArray.push({
+        id: systemTool.id,
+        name: systemTool.name,
+        description: systemTool.description,
+        parameters: systemTool.parameters,
+        system: true,
+      });
+      enabledSystemTools[toolType].add(toolId);
+    }
+  } else {
+    // Remove from tools list
+    const index = toolsArray.findIndex(t => t.id === toolId);
+    if (index > -1) {
+      toolsArray.splice(index, 1);
+      enabledSystemTools[toolType].delete(toolId);
+    }
+  }
+  
+  try {
+    await mcpTools.update(currentProjectId, currentTools);
+    toast.success(enabled ? 'Tool Enabled' : 'Tool Disabled', `"${systemTool.name}" ${enabled ? 'enabled' : 'disabled'}.`);
+    renderToolsList();
+  } catch (error) {
+    toast.error('Failed to Save', error.message);
+  }
+}
+
+/**
  * Render tools lists
  */
 function renderToolsList() {
-  renderToolsSection('conversation-tools', currentTools.conversation_tools || [], 'empty-conv-tools', 'conversation');
-  renderToolsSection('game-event-tools', currentTools.game_event_tools || [], 'empty-game-tools', 'game_event');
+  // Filter out system tools from custom tools list
+  const customConvTools = currentTools.conversation_tools.filter(t => !t.system);
+  const customGameTools = currentTools.game_event_tools.filter(t => !t.system);
+  
+  renderToolsSection('conversation-tools', customConvTools, 'empty-conv-tools', 'conversation');
+  renderToolsSection('game-event-tools', customGameTools, 'empty-game-tools', 'game_event');
+  
+  // Update counts
+  document.getElementById('conv-tools-count').textContent = 
+    `${currentTools.conversation_tools.length} tool${currentTools.conversation_tools.length !== 1 ? 's' : ''}`;
+  document.getElementById('game-tools-count').textContent = 
+    `${currentTools.game_event_tools.length} tool${currentTools.game_event_tools.length !== 1 ? 's' : ''}`;
 }
 
 /**
@@ -95,7 +368,7 @@ function renderToolsSection(containerId, tools, emptyId, toolType) {
   if (emptyEl) emptyEl.style.display = 'none';
 
   container.innerHTML = tools.map((tool, index) => `
-    <div class="tool-card" data-type="${toolType}" data-index="${index}">
+    <div class="tool-card" data-type="${toolType}" data-id="${tool.id}">
       <div class="tool-card-header">
         <div class="tool-info">
           <h4 class="tool-name">${escapeHtml(tool.name)}</h4>
@@ -123,17 +396,21 @@ function renderToolsSection(containerId, tools, emptyId, toolType) {
   // Bind edit/delete handlers
   container.querySelectorAll('.tool-card').forEach((card) => {
     const type = card.dataset.type;
-    const index = parseInt(card.dataset.index);
+    const toolId = card.dataset.id;
 
     card.querySelector('.btn-edit-tool')?.addEventListener('click', (e) => {
       e.stopPropagation();
       const toolsArray = type === 'conversation' ? currentTools.conversation_tools : currentTools.game_event_tools;
-      openToolModal(type, toolsArray[index], index);
+      const tool = toolsArray.find(t => t.id === toolId);
+      const index = toolsArray.findIndex(t => t.id === toolId);
+      if (tool) openToolModal(type, tool, index);
     });
 
     card.querySelector('.btn-delete-tool')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      deleteTool(type, index);
+      const toolsArray = type === 'conversation' ? currentTools.conversation_tools : currentTools.game_event_tools;
+      const index = toolsArray.findIndex(t => t.id === toolId);
+      if (index > -1) deleteTool(type, index);
     });
   });
 }
@@ -160,7 +437,7 @@ function openToolModal(toolType, existingTool = null, editIndex = null) {
   content.innerHTML = `
     <div class="form-group">
       <label for="tool-id">Tool ID</label>
-      <input type="text" id="tool-id" class="input" placeholder="e.g., lock_door, give_item" value="${escapeHtml(existingTool?.id || '')}">
+      <input type="text" id="tool-id" class="input" placeholder="e.g., lock_door, give_item" value="${escapeHtml(existingTool?.id || '')}" ${isEdit ? 'readonly' : ''}>
       <span class="input-hint">Unique identifier used in code (snake_case recommended)</span>
     </div>
 
@@ -234,20 +511,14 @@ function openToolModal(toolType, existingTool = null, editIndex = null) {
       return;
     }
 
-    // Check for duplicate ID
-    const allTools = [...currentTools.conversation_tools, ...currentTools.game_event_tools];
-    const duplicate = allTools.find((t, i) => {
-      // Allow same ID if we're editing the same tool
-      if (isEdit) {
-        const toolsArray = toolType === 'conversation' ? currentTools.conversation_tools : currentTools.game_event_tools;
-        if (toolsArray[editIndex]?.id === tool.id) return false;
+    // Check for duplicate ID (only if not editing)
+    if (!isEdit) {
+      const allTools = [...currentTools.conversation_tools, ...currentTools.game_event_tools];
+      const duplicate = allTools.find(t => t.id === tool.id);
+      if (duplicate) {
+        toast.warning('Duplicate ID', 'A tool with this ID already exists');
+        return;
       }
-      return t.id === tool.id;
-    });
-
-    if (duplicate) {
-      toast.warning('Duplicate ID', 'A tool with this ID already exists');
-      return;
     }
 
     // Save
@@ -393,7 +664,8 @@ async function deleteTool(toolType, index) {
   const toolsArray = toolType === 'conversation' ? currentTools.conversation_tools : currentTools.game_event_tools;
   const tool = toolsArray[index];
 
-  if (!confirm(`Delete "${tool.name}"? This cannot be undone.`)) return;
+  const confirmed = await modal.confirm('Delete Tool', `Delete "${tool.name}"? This cannot be undone.`);
+  if (!confirmed) return;
 
   toolsArray.splice(index, 1);
 
@@ -404,6 +676,48 @@ async function deleteTool(toolType, index) {
   } catch (error) {
     toast.error('Failed to Delete', error.message);
   }
+}
+
+/**
+ * Open raw JSON editor for MCP tools
+ */
+function handleEditRawJson() {
+  openJsonEditor('Edit MCP Tools JSON', currentTools, {
+    readOnly: false,
+    onSave: async (parsedJson) => {
+      // Validate structure
+      if (!parsedJson.conversation_tools || !Array.isArray(parsedJson.conversation_tools)) {
+        toast.error('Invalid Format', 'Missing conversation_tools array');
+        return;
+      }
+      if (!parsedJson.game_event_tools || !Array.isArray(parsedJson.game_event_tools)) {
+        toast.error('Invalid Format', 'Missing game_event_tools array');
+        return;
+      }
+      
+      currentTools = parsedJson;
+      loadSystemToolStates();
+      
+      try {
+        await mcpTools.update(currentProjectId, currentTools);
+        toast.success('JSON Applied', 'MCP tools updated from JSON.');
+        renderToolsList();
+        renderSystemTools();
+      } catch (error) {
+        toast.error('Failed to Save', error.message);
+      }
+    },
+    validate: (data) => {
+      const errors = [];
+      if (!data.conversation_tools || !Array.isArray(data.conversation_tools)) {
+        errors.push('Missing conversation_tools array');
+      }
+      if (!data.game_event_tools || !Array.isArray(data.game_event_tools)) {
+        errors.push('Missing game_event_tools array');
+      }
+      return errors;
+    },
+  });
 }
 
 /**
@@ -451,8 +765,11 @@ function handleImport() {
       }
 
       currentTools = imported;
+      loadSystemToolStates();
+      
       await mcpTools.update(currentProjectId, currentTools);
       renderToolsList();
+      renderSystemTools();
       toast.success('Tools Imported', 'MCP tools have been imported.');
     } catch (error) {
       toast.error('Import Failed', error.message);

@@ -4,6 +4,7 @@
 
 import { knowledge } from '../api.js';
 import { toast, modal, loading, renderTemplate, updateNav, debounce } from '../components.js';
+import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
 
 let currentProjectId = null;
@@ -31,12 +32,104 @@ export async function initKnowledgePage(params) {
   // Load knowledge base
   await loadKnowledgeBase(projectId);
 
+  // Bind inline form handlers
+  bindInlineFormHandlers();
+
   // Bind event handlers
-  document.getElementById('btn-add-category')?.addEventListener('click', handleAddCategory);
-  document.getElementById('btn-empty-add-category')?.addEventListener('click', handleAddCategory);
   document.getElementById('btn-import-knowledge')?.addEventListener('click', handleImportKnowledge);
   document.getElementById('btn-export-knowledge')?.addEventListener('click', handleExportKnowledge);
   document.getElementById('btn-download-kb-template')?.addEventListener('click', handleDownloadTemplate);
+  document.getElementById('btn-edit-raw-json')?.addEventListener('click', handleEditRawJson);
+}
+
+/**
+ * Bind inline form toggle and submission handlers
+ */
+function bindInlineFormHandlers() {
+  const form = document.getElementById('inline-create-form');
+  const toggle = document.getElementById('inline-form-toggle');
+  const body = document.getElementById('inline-form-body');
+  const cancelBtn = document.getElementById('btn-cancel-create');
+  const confirmBtn = document.getElementById('btn-confirm-create');
+
+  toggle?.addEventListener('click', () => {
+    const isExpanded = !form.classList.contains('collapsed');
+    if (isExpanded) {
+      collapseInlineForm();
+    } else {
+      expandInlineForm();
+    }
+  });
+
+  cancelBtn?.addEventListener('click', collapseInlineForm);
+  confirmBtn?.addEventListener('click', handleCreateCategory);
+}
+
+function expandInlineForm() {
+  const form = document.getElementById('inline-create-form');
+  const body = document.getElementById('inline-form-body');
+  form.classList.remove('collapsed');
+  body.style.display = 'block';
+}
+
+function collapseInlineForm() {
+  const form = document.getElementById('inline-create-form');
+  const body = document.getElementById('inline-form-body');
+  form.classList.add('collapsed');
+  body.style.display = 'none';
+  // Reset form
+  document.getElementById('new-cat-id').value = '';
+  document.getElementById('new-cat-desc').value = '';
+  document.getElementById('new-cat-depth').value = '3';
+}
+
+async function handleCreateCategory() {
+  const catId = document.getElementById('new-cat-id').value.trim();
+  const description = document.getElementById('new-cat-desc').value.trim();
+  const depthCount = parseInt(document.getElementById('new-cat-depth').value);
+
+  // Validate category ID
+  if (!catId) {
+    toast.warning('ID Required', 'Please enter a category ID');
+    return;
+  }
+
+  if (!/^[a-z][a-z0-9_]*$/.test(catId)) {
+    toast.warning('Invalid Category ID', 'Use lowercase letters, numbers, and underscores. Must start with a letter.');
+    return;
+  }
+
+  // Check if already exists
+  if (currentKnowledgeBase.categories?.[catId]) {
+    toast.warning('Category Exists', `Category "${catId}" already exists.`);
+    return;
+  }
+
+  // Create depths object
+  const depths = {};
+  for (let i = 0; i < depthCount; i++) {
+    depths[i] = '';
+  }
+
+  // Add category
+  currentKnowledgeBase.categories = currentKnowledgeBase.categories || {};
+  currentKnowledgeBase.categories[catId] = {
+    id: catId,
+    description,
+    depths,
+  };
+
+  await saveKnowledgeBase();
+  collapseInlineForm();
+  
+  // Scroll to the new category
+  setTimeout(() => {
+    const newCard = document.querySelector(`[data-category="${catId}"]`);
+    if (newCard) {
+      newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      newCard.classList.add('expanded');
+    }
+  }, 100);
 }
 
 async function loadKnowledgeBase(projectId) {
@@ -67,51 +160,55 @@ function renderCategories(categories) {
   const container = document.getElementById('knowledge-categories');
 
   container.innerHTML = categories
-    .map(
-      ([catId, category]) => `
-      <div class="knowledge-category" data-category="${catId}">
-        <div class="category-header">
-          <h3>
-            <span class="category-icon">◈</span>
-            ${escapeHtml(catId)}
-          </h3>
-          <div class="category-actions">
-            <button class="btn btn-sm btn-ghost" data-action="edit" title="Edit category">✎</button>
-            <button class="btn btn-sm btn-ghost" data-action="delete" title="Delete category">✕</button>
-            <span class="category-toggle">▼</span>
+    .map(([catId, category]) => {
+      const depths = category.depths || {};
+      const depthCount = Object.keys(depths).length;
+      const entryCount = Object.values(depths).filter(d => d && d.trim()).length;
+      
+      return `
+        <div class="knowledge-category-card" data-category="${catId}">
+          <div class="category-card-header">
+            <div class="category-card-icon">◈</div>
+            <div class="category-card-info">
+              <div class="category-card-name">${escapeHtml(catId)}</div>
+              <div class="category-card-meta">
+                <span>${depthCount} depth${depthCount !== 1 ? 's' : ''}</span>
+                <span>•</span>
+                <span>${entryCount} with content</span>
+              </div>
+            </div>
+            <div class="category-card-actions">
+              <button class="btn btn-sm btn-ghost" data-action="delete" title="Delete category">✕</button>
+            </div>
+            <div class="category-card-expand">▼</div>
+          </div>
+          <div class="category-card-body">
+            <div class="category-description">
+              <label>Description</label>
+              <textarea class="input textarea category-description-edit" data-desc-cat="${catId}" rows="2" 
+                placeholder="What kind of knowledge does this category contain?">${escapeHtml(category.description || '')}</textarea>
+            </div>
+            <div class="depth-tier-list">
+              ${renderDepthTiers(catId, depths)}
+            </div>
+            <button class="btn btn-sm btn-outline" data-action="add-depth" style="margin-top: var(--space-3)">
+              <span class="icon">+</span>
+              Add Depth Level
+            </button>
           </div>
         </div>
-        <div class="category-content">
-          <div class="category-description">
-            <p>${escapeHtml(category.description || 'No description')}</p>
-          </div>
-          <div class="depth-tiers">
-            ${renderDepthTiers(catId, category.depths || {})}
-          </div>
-          <button class="btn btn-sm btn-outline" data-action="add-depth" style="margin-top: var(--space-3)">
-            <span class="icon">+</span>
-            Add Depth Level
-          </button>
-        </div>
-      </div>
-    `
-    )
+      `;
+    })
     .join('');
 
   // Bind category interactions
-  container.querySelectorAll('.knowledge-category').forEach((categoryEl) => {
+  container.querySelectorAll('.knowledge-category-card').forEach((categoryEl) => {
     const catId = categoryEl.dataset.category;
 
     // Toggle expand/collapse
-    categoryEl.querySelector('.category-header')?.addEventListener('click', (e) => {
+    categoryEl.querySelector('.category-card-header')?.addEventListener('click', (e) => {
       if (e.target.closest('[data-action]')) return;
       categoryEl.classList.toggle('expanded');
-    });
-
-    // Edit category
-    categoryEl.querySelector('[data-action="edit"]')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleEditCategory(catId);
     });
 
     // Delete category
@@ -125,8 +222,17 @@ function renderCategories(categories) {
       handleAddDepth(catId);
     });
 
+    // Description change
+    categoryEl.querySelector('.category-description-edit')?.addEventListener('input', debounce((e) => {
+      const category = currentKnowledgeBase.categories[catId];
+      if (category) {
+        category.description = e.target.value;
+        saveKnowledgeBase(false);
+      }
+    }, 500));
+
     // Bind depth tier text changes
-    categoryEl.querySelectorAll('.depth-content textarea').forEach((textarea) => {
+    categoryEl.querySelectorAll('.depth-tier-content textarea').forEach((textarea) => {
       textarea.addEventListener('input', debounce((e) => {
         const depth = parseInt(e.target.dataset.depth);
         handleUpdateDepth(catId, depth, e.target.value);
@@ -148,66 +254,19 @@ function renderDepthTiers(catId, depths) {
     .sort(([a], [b]) => parseInt(a) - parseInt(b))
     .map(
       ([depth, content]) => `
-      <div class="depth-tier" data-depth="${depth}">
-        <div class="depth-level">${depth}</div>
-        <div class="depth-content">
+      <div class="depth-tier-item" data-depth="${depth}">
+        <div class="depth-tier-badge">${depth}</div>
+        <div class="depth-tier-content">
           <textarea class="input textarea" data-depth="${depth}" rows="3"
             placeholder="Knowledge content for depth ${depth}...">${escapeHtml(content)}</textarea>
         </div>
-        <button class="btn btn-sm btn-ghost" data-action="delete-depth" data-depth="${depth}" title="Remove depth">✕</button>
+        <div class="depth-tier-actions">
+          <button class="btn btn-sm btn-ghost" data-action="delete-depth" data-depth="${depth}" title="Remove depth">✕</button>
+        </div>
       </div>
     `
     )
     .join('');
-}
-
-async function handleAddCategory() {
-  const categoryId = await modal.prompt(
-    'Add Knowledge Category',
-    'Enter an ID for the category (e.g., "world_history", "local_gossip"):',
-    ''
-  );
-
-  if (!categoryId) return;
-
-  // Validate category ID
-  if (!/^[a-z][a-z0-9_]*$/.test(categoryId)) {
-    toast.warning('Invalid Category ID', 'Use lowercase letters, numbers, and underscores. Must start with a letter.');
-    return;
-  }
-
-  // Check if already exists
-  if (currentKnowledgeBase.categories?.[categoryId]) {
-    toast.warning('Category Exists', `Category "${categoryId}" already exists.`);
-    return;
-  }
-
-  // Add category
-  currentKnowledgeBase.categories = currentKnowledgeBase.categories || {};
-  currentKnowledgeBase.categories[categoryId] = {
-    id: categoryId,
-    description: '',
-    depths: {
-      0: '',
-    },
-  };
-
-  await saveKnowledgeBase();
-}
-
-async function handleEditCategory(catId) {
-  const category = currentKnowledgeBase.categories[catId];
-
-  const description = await modal.prompt(
-    'Edit Category Description',
-    `Description for "${catId}":`,
-    category.description || ''
-  );
-
-  if (description === null) return;
-
-  category.description = description;
-  await saveKnowledgeBase();
 }
 
 async function handleDeleteCategory(catId) {
@@ -286,6 +345,41 @@ async function saveKnowledgeBase(showToast = true) {
   } catch (error) {
     toast.error('Failed to Save', error.message);
   }
+}
+
+/**
+ * Open raw JSON editor for the knowledge base
+ */
+function handleEditRawJson() {
+  openJsonEditor('Edit Knowledge Base JSON', currentKnowledgeBase, {
+    readOnly: false,
+    onSave: async (parsedJson) => {
+      // Validate and update
+      const errors = validateKnowledgeBase(parsedJson);
+      if (errors.length > 0) {
+        toast.error('Validation Failed', errors.join('; '));
+        return;
+      }
+      
+      // Ensure each category has an id field
+      const processedCategories = {};
+      for (const [catId, category] of Object.entries(parsedJson.categories || {})) {
+        processedCategories[catId] = {
+          ...category,
+          id: catId,
+        };
+      }
+      
+      currentKnowledgeBase = {
+        ...parsedJson,
+        categories: processedCategories,
+      };
+      
+      await saveKnowledgeBase();
+      toast.success('JSON Applied', 'Knowledge base updated from JSON.');
+    },
+    validate: validateKnowledgeBase,
+  });
 }
 
 /**

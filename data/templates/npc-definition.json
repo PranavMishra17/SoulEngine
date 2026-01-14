@@ -1,64 +1,116 @@
 {
-  "name": "Example NPC",
-  "description": "A brief description of this character's role and appearance. (For your reference only - not visible to NPC)",
+  "name": "",
+  "description": "",
   "profile_image": "",
   "core_anchor": {
-    "backstory": "Born in a small fishing village, raised by a single mother who taught them the value of honest work. Witnessed a devastating flood at age 12 that shaped their cautious worldview.",
-    "principles": [
-      "Always help those in genuine need",
-      "Never break a promise once given",
-      "Respect earned through actions, not words"
-    ],
-    "trauma_flags": [
-      "fear of deep water",
-      "distrust of authority figures"
-    ]
+    "backstory": "",
+    "principles": [],
+    "trauma_flags": []
   },
   "personality_baseline": {
-    "openness": 0.6,
-    "conscientiousness": 0.7,
-    "extraversion": 0.4,
-    "agreeableness": 0.65,
-    "neuroticism": 0.35
+    "openness": 0.5,
+    "conscientiousness": 0.5,
+    "extraversion": 0.5,
+    "agreeableness": 0.5,
+    "neuroticism": 0.5
   },
   "salience_threshold": 0.5,
   "voice": {
     "provider": "cartesia",
-    "voice_id": "your-voice-id-here",
+    "voice_id": "",
     "speed": 1.0
   },
-  "knowledge_access": {
-    "world_history": 2,
-    "local_gossip": 3
-  },
+  "knowledge_access": {},
   "mcp_permissions": {
-    "conversation_tools": ["exit_convo", "refuse_service"],
-    "game_event_tools": ["flee_to", "alert_guards"],
+    "conversation_tools": [],
+    "game_event_tools": [],
     "denied": []
   },
-  "schedule": [
-    {
-      "start": "06:00",
-      "end": "12:00",
-      "location_id": "market_stall",
-      "activity": "selling goods"
-    },
-    {
-      "start": "12:00",
-      "end": "13:00",
-      "location_id": "tavern",
-      "activity": "lunch break"
-    },
-    {
-      "start": "13:00",
-      "end": "18:00",
-      "location_id": "market_stall",
-      "activity": "selling goods"
-    }
-  ],
+  "schedule": [],
   "network": [],
   "player_recognition": {
     "can_know_player": true,
     "reveal_player_identity": true
+  },
+  "_examples": {
+    "_note": "These are example values. Replace the empty fields above with your own values.",
+    "name_example": "Elena Blackwood",
+    "description_example": "A weathered merchant in her 40s with sharp eyes and calloused hands. Known for her fair prices and no-nonsense attitude. Usually found at her market stall.",
+    "backstory_example": "Born in a small fishing village, raised by a single mother who taught her the value of honest work. Witnessed a devastating flood at age 12 that shaped her cautious worldview. Lost her husband to bandits five years ago, leaving her to raise two children alone.",
+    "principles_examples": [
+      "Always help those in genuine need",
+      "Never break a promise once given",
+      "Respect is earned through actions, not words",
+      "Family comes before profit",
+      "Trust must be built slowly, broken trust is rarely restored"
+    ],
+    "trauma_flags_examples": [
+      "Flooding or water disasters",
+      "Bandits or highway robbery",
+      "Abandonment by loved ones",
+      "Being called a liar"
+    ],
+    "personality_explanation": {
+      "openness": "0.0-1.0 | Low=traditional/practical, High=curious/creative",
+      "conscientiousness": "0.0-1.0 | Low=flexible/careless, High=organized/disciplined",
+      "extraversion": "0.0-1.0 | Low=reserved/quiet, High=outgoing/energetic",
+      "agreeableness": "0.0-1.0 | Low=competitive/skeptical, High=cooperative/trusting",
+      "neuroticism": "0.0-1.0 | Low=calm/stable, High=anxious/emotional"
+    },
+    "salience_threshold_explanation": "0.0-1.0 | Lower = better memory (remembers more), Higher = worse memory (forgets more). Default: 0.5",
+    "knowledge_access_example": {
+      "world_history": 2,
+      "local_gossip": 3,
+      "trade_knowledge": 3,
+      "_explanation": "Category ID -> depth level (0-3). Higher depth = more detailed knowledge."
+    },
+    "mcp_permissions_example": {
+      "conversation_tools": ["exit_conversation", "refuse_service", "give_item"],
+      "game_event_tools": ["receive_gift", "update_log"],
+      "denied": ["call_security"],
+      "_explanation": "Tools the NPC can use. 'denied' overrides the others."
+    },
+    "schedule_example": [
+      {
+        "start": "06:00",
+        "end": "12:00",
+        "location_id": "market_stall",
+        "activity": "selling goods"
+      },
+      {
+        "start": "12:00",
+        "end": "13:00",
+        "location_id": "tavern",
+        "activity": "lunch break"
+      },
+      {
+        "start": "13:00",
+        "end": "18:00",
+        "location_id": "market_stall",
+        "activity": "selling goods"
+      },
+      {
+        "start": "18:00",
+        "end": "22:00",
+        "location_id": "home",
+        "activity": "family time and rest"
+      }
+    ],
+    "network_example": [
+      {
+        "npc_id": "npc_baker_tom",
+        "familiarity_tier": 3,
+        "_explanation": "Tier 1=acquaintance (name only), 2=familiar (+ backstory/schedule), 3=close (+ personality/principles)"
+      },
+      {
+        "npc_id": "npc_guard_marcus",
+        "familiarity_tier": 1
+      }
+    ],
+    "voice_providers": {
+      "cartesia": "Cartesia TTS - requires voice_id from Cartesia dashboard",
+      "elevenlabs": "ElevenLabs TTS - requires voice_id from ElevenLabs",
+      "openai": "OpenAI TTS - voice_id options: alloy, echo, fable, onyx, nova, shimmer"
+    }
   }
 }

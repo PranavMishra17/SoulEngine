@@ -13,36 +13,104 @@ export * from './knowledge.js';
 export * from './mcp-tools.js';
 export * from './secrets.js';
 
-// Stub functions for image operations (local mode doesn't support Supabase storage)
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
+const DATA_DIR = process.env.DATA_DIR || './data';
+
+// Local file-based image storage
 export async function uploadNpcImage(
-  _projectId: string,
-  _npcId: string,
-  _imageData: Buffer,
-  _contentType: string
+  projectId: string,
+  npcId: string,
+  imageData: Buffer,
+  contentType: string
 ): Promise<string> {
-  // In local mode, images are stored directly in the project folder
-  // This is handled by the NPC routes
-  throw new Error('Image upload via this function is not supported in local mode. Use the NPC routes instead.');
+  // Determine file extension from content type
+  const extMap: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+  };
+  const ext = extMap[contentType] || 'png';
+  const filename = `${npcId}_profile.${ext}`;
+
+  const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+  const filePath = path.join(npcDir, filename);
+
+  // Ensure directory exists
+  await fs.mkdir(npcDir, { recursive: true });
+
+  // Delete old avatar files with different extensions
+  try {
+    const files = await fs.readdir(npcDir);
+    for (const file of files) {
+      if (file.startsWith(`${npcId}_profile.`) && file !== filename) {
+        await fs.unlink(path.join(npcDir, file)).catch(() => {});
+      }
+    }
+  } catch {
+    // Directory may not exist yet
+  }
+
+  // Write the file
+  await fs.writeFile(filePath, imageData);
+
+  // Return the filename (not full URL in local mode)
+  return filename;
 }
 
 export async function deleteNpcImage(
-  _projectId: string,
-  _npcId: string
+  projectId: string,
+  npcId: string
 ): Promise<void> {
-  // In local mode, images are deleted directly from the project folder
-  // This is handled by the NPC routes
+  const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+  
+  try {
+    const files = await fs.readdir(npcDir);
+    for (const file of files) {
+      if (file.startsWith(`${npcId}_profile.`)) {
+        await fs.unlink(path.join(npcDir, file)).catch(() => {});
+      }
+    }
+  } catch {
+    // Directory may not exist
+  }
 }
 
 export async function getNpcImageUrl(
-  _projectId: string,
-  _npcId: string
+  projectId: string,
+  npcId: string
 ): Promise<string | null> {
-  // In local mode, image URLs are constructed from the file path
+  const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+  
+  try {
+    const files = await fs.readdir(npcDir);
+    const imageFile = files.find(f => f.startsWith(`${npcId}_profile.`));
+    if (imageFile) {
+      return imageFile;
+    }
+  } catch {
+    // Directory may not exist
+  }
+  
   return null;
 }
 
-export async function deleteProjectImages(_projectId: string): Promise<void> {
-  // In local mode, project images are deleted with the project folder
+export async function deleteProjectImages(projectId: string): Promise<void> {
+  const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
+  
+  try {
+    const files = await fs.readdir(npcDir);
+    for (const file of files) {
+      if (file.includes('_profile.')) {
+        await fs.unlink(path.join(npcDir, file)).catch(() => {});
+      }
+    }
+  } catch {
+    // Directory may not exist
+  }
 }
 
 // Stub client functions for compatibility

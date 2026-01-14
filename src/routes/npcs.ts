@@ -10,6 +10,9 @@ import {
   deleteDefinition,
   listDefinitions,
   getProject,
+  uploadNpcImage,
+  deleteNpcImage,
+  storageMode,
   StorageNotFoundError,
   StorageValidationError,
   StorageLimitError,
@@ -21,10 +24,15 @@ const logger = createLogger('routes-npcs');
 
 /**
  * Zod schemas for request validation
+ * 
+ * Note: Many fields allow empty values to support draft/incomplete NPC saves.
+ * The frontend handles validation warnings and status indicators.
  */
+
+// Core Anchor - allows empty backstory/principles for drafts
 const CoreAnchorSchema = z.object({
-  backstory: z.string().min(1).max(2000),
-  principles: z.array(z.string().min(1).max(500)).min(1).max(10),
+  backstory: z.string().max(2000).default(''),
+  principles: z.array(z.string().max(500)).max(10).default([]),
   trauma_flags: z.array(z.string().max(200)).default([]),
 });
 
@@ -36,9 +44,10 @@ const PersonalityBaselineSchema = z.object({
   neuroticism: z.number().min(0).max(1),
 });
 
+// Voice config - allows empty voice_id for drafts
 const VoiceConfigSchema = z.object({
   provider: z.string().default('cartesia'),
-  voice_id: z.string().min(1),
+  voice_id: z.string().default(''),
   speed: z.number().min(0.5).max(2).default(1),
 });
 
@@ -70,12 +79,27 @@ const PlayerRecognitionSchema = z.object({
   reveal_player_identity: z.boolean(),
 });
 
+// Create schema - allows empty description for drafts, increased network limit to 20
 const CreateNPCSchema = z.object({
   name: z.string().min(1).max(100),
-  description: z.string().min(1).max(1000),
-  core_anchor: CoreAnchorSchema,
-  personality_baseline: PersonalityBaselineSchema,
-  voice: VoiceConfigSchema,
+  description: z.string().max(1000).default(''),
+  core_anchor: CoreAnchorSchema.default({
+    backstory: '',
+    principles: [],
+    trauma_flags: [],
+  }),
+  personality_baseline: PersonalityBaselineSchema.default({
+    openness: 0.5,
+    conscientiousness: 0.5,
+    extraversion: 0.5,
+    agreeableness: 0.5,
+    neuroticism: 0.5,
+  }),
+  voice: VoiceConfigSchema.default({
+    provider: 'cartesia',
+    voice_id: '',
+    speed: 1,
+  }),
   schedule: z.array(ScheduleBlockSchema).default([]),
   mcp_permissions: MCPPermissionsSchema.default({
     conversation_tools: [],
@@ -83,21 +107,26 @@ const CreateNPCSchema = z.object({
     denied: [],
   }),
   knowledge_access: KnowledgeAccessSchema.default({}),
-  network: z.array(NPCNetworkEntrySchema).max(5).default([]),
+  network: z.array(NPCNetworkEntrySchema).max(20).default([]),
   player_recognition: PlayerRecognitionSchema.optional(),
+  salience_threshold: z.number().min(0).max(1).optional(),
+  status: z.enum(['draft', 'complete']).optional(),
 });
 
+// Update schema - all fields optional, increased network limit to 20
 const UpdateNPCSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  description: z.string().min(1).max(1000).optional(),
+  description: z.string().max(1000).optional(),
   core_anchor: CoreAnchorSchema.partial().optional(),
   personality_baseline: PersonalityBaselineSchema.partial().optional(),
   voice: VoiceConfigSchema.partial().optional(),
   schedule: z.array(ScheduleBlockSchema).optional(),
   mcp_permissions: MCPPermissionsSchema.partial().optional(),
   knowledge_access: KnowledgeAccessSchema.optional(),
-  network: z.array(NPCNetworkEntrySchema).max(5).optional(),
+  network: z.array(NPCNetworkEntrySchema).max(20).optional(),
   player_recognition: PlayerRecognitionSchema.optional(),
+  salience_threshold: z.number().min(0).max(1).optional(),
+  status: z.enum(['draft', 'complete']).optional(),
 });
 
 /**
@@ -119,8 +148,8 @@ async function addToOtherNpcNetwork(
       return;
     }
 
-    // Check limit
-    if (network.length >= 5) {
+    // Check limit (20 max)
+    if (network.length >= 20) {
       logger.warn({ projectId, otherNpcId, thisNpcId }, 'Cannot add to network - limit reached');
       return;
     }
@@ -464,7 +493,7 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
 
   try {
     // Verify NPC exists
-    const npc = await getDefinition(projectId, npcId);
+    await getDefinition(projectId, npcId);
 
     // Parse multipart form data
     const formData = await c.req.formData();
@@ -486,48 +515,24 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
       return c.json({ error: 'Invalid file type. Allowed: PNG, JPG, WebP, GIF' }, 400);
     }
 
-    // Determine file extension
-    const extMap: Record<string, string> = {
-      'image/png': 'png',
-      'image/jpeg': 'jpg',
-      'image/jpg': 'jpg',
-      'image/webp': 'webp',
-      'image/gif': 'gif',
-    };
-    const ext = extMap[file.type] || 'png';
-
-    // Create filename with NPC ID to avoid collisions
-    const filename = `${npcId}-avatar.${ext}`;
-    const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
-    const filePath = path.join(npcDir, filename);
-
-    // Ensure directory exists
-    await fs.mkdir(npcDir, { recursive: true });
-
-    // Delete old avatar if exists (different extension)
-    const oldAvatar = npc.profile_image;
-    if (oldAvatar && oldAvatar !== filename) {
-      try {
-        await fs.unlink(path.join(npcDir, oldAvatar));
-      } catch {
-        // Ignore if file doesn't exist
-      }
-    }
-
-    // Write file
+    // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+    const imageBuffer = Buffer.from(arrayBuffer);
 
-    // Update NPC definition with new profile_image
-    await updateDefinition(projectId, npcId, { profile_image: filename });
+    // Use storage abstraction to upload image
+    // In Supabase mode: uploads to Supabase Storage, returns public URL
+    // In local mode: saves to disk, returns local path
+    const imageUrl = await uploadNpcImage(projectId, npcId, imageBuffer, file.type);
+
+    // Update NPC definition with new profile_image (URL in prod, filename in local)
+    await updateDefinition(projectId, npcId, { profile_image: imageUrl });
 
     const duration = Date.now() - startTime;
-    logger.info({ projectId, npcId, filename, duration }, 'NPC avatar uploaded');
+    logger.info({ projectId, npcId, url: imageUrl, storageMode, duration }, 'NPC avatar uploaded');
 
     return c.json({ 
       message: 'Avatar uploaded', 
-      filename,
-      url: `/api/projects/${projectId}/npcs/${npcId}/avatar`
+      url: imageUrl
     });
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -545,6 +550,9 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
 
 /**
  * GET /api/projects/:projectId/npcs/:npcId/avatar - Get NPC profile image
+ * 
+ * In Supabase mode: redirects to public CDN URL
+ * In local mode: serves file from disk
  */
 npcRoutes.get('/:npcId/avatar', async (c) => {
   const projectId = c.req.param('projectId');
@@ -561,6 +569,12 @@ npcRoutes.get('/:npcId/avatar', async (c) => {
       return c.json({ error: 'No avatar set' }, 404);
     }
 
+    // If profile_image is a full URL (Supabase Storage), redirect to it
+    if (npc.profile_image.startsWith('http://') || npc.profile_image.startsWith('https://')) {
+      return c.redirect(npc.profile_image, 302);
+    }
+
+    // Local mode: serve file from disk
     const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
     const filePath = path.join(npcDir, npc.profile_image);
 
@@ -617,20 +631,15 @@ npcRoutes.delete('/:npcId/avatar', async (c) => {
       return c.json({ message: 'No avatar to delete' });
     }
 
-    const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
-    const filePath = path.join(npcDir, npc.profile_image);
-
-    // Delete file
-    try {
-      await fs.unlink(filePath);
-    } catch {
-      // Ignore if file doesn't exist
-    }
+    // Use storage abstraction to delete image
+    // In Supabase mode: deletes from Supabase Storage
+    // In local mode: deletes from disk
+    await deleteNpcImage(projectId, npcId);
 
     // Update NPC definition
     await updateDefinition(projectId, npcId, { profile_image: undefined });
 
-    logger.info({ projectId, npcId }, 'NPC avatar deleted');
+    logger.info({ projectId, npcId, storageMode }, 'NPC avatar deleted');
 
     return c.json({ message: 'Avatar deleted' });
   } catch (error) {

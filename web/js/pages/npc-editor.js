@@ -4,7 +4,9 @@
 
 import { npcs, knowledge, projects, mcpTools } from '../api.js';
 import { toast, modal, loading, renderTemplate, updateNav, createTagInput, describePersonality } from '../components.js';
+import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
+import { getAccessToken } from '../auth.js';
 
 let currentProjectId = null;
 let currentNpcId = null;
@@ -140,17 +142,30 @@ async function loadNpcList(projectId) {
     emptyState.style.display = 'none';
     grid.innerHTML = npcList
       .map(
-        (npc) => `
-        <div class="npc-card" data-id="${npc.id}">
-          <div class="npc-card-avatar">${
-            npc.profile_image && npc.profile_image.trim() !== ''
-              ? `<img src="/api/projects/${projectId}/npcs/${npc.id}/avatar" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='◇'">`
-              : '◇'
-          }</div>
-          <h3>${escapeHtml(npc.name)}</h3>
-          <p>${escapeHtml(npc.description || 'No description')}</p>
-        </div>
-      `
+        (npc) => {
+          // Handle both full URLs (Supabase) and filenames (local)
+          let avatarSrc = '';
+          if (npc.profile_image && npc.profile_image.trim() !== '') {
+            if (npc.profile_image.startsWith('http://') || npc.profile_image.startsWith('https://')) {
+              avatarSrc = npc.profile_image;
+            } else {
+              avatarSrc = `/api/projects/${projectId}/npcs/${npc.id}/avatar`;
+            }
+          }
+          
+          return `
+          <div class="npc-card" data-id="${npc.id}">
+            ${npc.status === 'draft' ? '<span class="npc-status-badge draft">Draft</span>' : ''}
+            <div class="npc-card-avatar">${
+              avatarSrc
+                ? `<img src="${avatarSrc}" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='◇'">`
+                : '◇'
+            }</div>
+            <h3>${escapeHtml(npc.name)}</h3>
+            <p>${escapeHtml(npc.description || 'No description')}</p>
+          </div>
+        `;
+        }
       )
       .join('');
 
@@ -219,6 +234,12 @@ export async function initNpcEditorPage(params) {
   document.getElementById('btn-import-npc')?.addEventListener('click', handleImportNpc);
   document.getElementById('btn-export-npc')?.addEventListener('click', handleExportNpc);
   document.getElementById('btn-download-template')?.addEventListener('click', handleDownloadTemplate);
+  document.getElementById('btn-edit-npc-json')?.addEventListener('click', handleEditNpcJson);
+  
+  // LLM Generation buttons
+  document.getElementById('btn-generate-backstory')?.addEventListener('click', () => openLlmGenerationModal('backstory'));
+  document.getElementById('btn-generate-principles')?.addEventListener('click', () => openLlmGenerationModal('principles'));
+  document.getElementById('btn-generate-trauma')?.addEventListener('click', () => openLlmGenerationModal('trauma_flags'));
 }
 
 async function initEditor(projectId, npcId) {
@@ -367,9 +388,16 @@ function populateForm(definition) {
     updateMemoryHint(clampedRetention);
   }
 
-  // Profile image
+  // Profile image - handle both full URLs (Supabase) and filenames (local)
   if (definition.profile_image && currentNpcId) {
-    const imageUrl = `/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`;
+    let imageUrl;
+    if (definition.profile_image.startsWith('http://') || definition.profile_image.startsWith('https://')) {
+      // Full URL from Supabase Storage
+      imageUrl = definition.profile_image;
+    } else {
+      // Local filename - use API endpoint
+      imageUrl = `/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`;
+    }
     updateProfilePreview(imageUrl);
   } else {
     updateProfilePreview(null);
@@ -492,18 +520,29 @@ function bindFormHandlers() {
         const formData = new FormData();
         formData.append('avatar', file);
         
+        // Get auth headers
+        const headers = {};
+        const token = getAccessToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
         const response = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
           method: 'POST',
+          headers,
           body: formData,
         });
         
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.error || 'Upload failed');
+          throw new Error(error.error || error.details || 'Upload failed');
         }
         
         const result = await response.json();
-        currentDefinition.profile_image = result.filename;
+        // Store the URL (full URL in production, filename in local)
+        currentDefinition.profile_image = result.url;
+        // Update preview with cache-busting
+        updateProfilePreview(result.url + '?t=' + Date.now());
         toast.success('Avatar Uploaded', 'Profile picture saved.');
       } catch (error) {
         toast.error('Upload Failed', error.message);
@@ -518,9 +557,23 @@ function bindFormHandlers() {
   document.getElementById('btn-remove-profile')?.addEventListener('click', async () => {
     if (currentNpcId && currentDefinition.profile_image) {
       try {
-        await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
+        // Get auth headers
+        const headers = {};
+        const token = getAccessToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
           method: 'DELETE',
+          headers,
         });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Delete failed');
+        }
+        
         toast.success('Avatar Removed', 'Profile picture deleted.');
       } catch (error) {
         toast.error('Delete Failed', error.message);
@@ -1102,9 +1155,9 @@ function renderNetworkDropdown() {
     return;
   }
 
-  // Check limit
-  if ((currentDefinition.network || []).length >= 5) {
-    list.innerHTML = '<p class="dropdown-empty">Maximum 5 connections reached</p>';
+  // Check limit (increased to 20)
+  if ((currentDefinition.network || []).length >= 20) {
+    list.innerHTML = '<p class="dropdown-empty">Maximum 20 connections reached</p>';
     return;
   }
 
@@ -1124,8 +1177,8 @@ function renderNetworkDropdown() {
         currentDefinition.network = [];
       }
       
-      if (currentDefinition.network.length >= 5) {
-        toast.warning('Limit Reached', 'NPCs can only know up to 5 other NPCs');
+      if (currentDefinition.network.length >= 20) {
+        toast.warning('Limit Reached', 'NPCs can only know up to 20 other NPCs');
         return;
       }
       
@@ -1144,7 +1197,7 @@ function updateNetworkCount() {
   const count = currentDefinition.network?.length || 0;
   const countEl = document.getElementById('network-count');
   if (countEl) {
-    countEl.textContent = `${count} / 5`;
+    countEl.textContent = `${count} / 20`;
   }
 }
 
@@ -1276,32 +1329,45 @@ function applyPersonalityPreset(presetId) {
 }
 
 async function handleSaveNpc() {
-  // Validate required fields
+  // Validate fields but allow saving as draft
   const errors = [];
 
   if (!currentDefinition.name?.trim()) {
     errors.push('Name is required');
   }
 
+  // Check for draft status - validate but don't block save
+  const draftWarnings = [];
+  
   if (!currentDefinition.description?.trim()) {
-    errors.push('Description is required');
+    draftWarnings.push('Description is missing');
   }
 
   if (!currentDefinition.core_anchor?.backstory?.trim()) {
-    errors.push('Backstory is required (Core Anchor section)');
+    draftWarnings.push('Backstory is missing (Core Anchor)');
   }
 
   if (!currentDefinition.core_anchor?.principles?.length) {
-    errors.push('At least one principle is required (Core Anchor section)');
+    draftWarnings.push('Principles are missing (Core Anchor)');
   }
 
   if (!currentDefinition.voice?.voice_id) {
-    errors.push('Voice selection is required (Voice section)');
+    draftWarnings.push('Voice not selected');
   }
 
+  // Only name is truly required - can't save without it
   if (errors.length > 0) {
-    toast.warning('Missing Required Fields', errors.join('\n'));
+    toast.error('Cannot Save', errors.join('\n'));
     return;
+  }
+
+  // Set status based on completeness
+  const isComplete = draftWarnings.length === 0;
+  currentDefinition.status = isComplete ? 'complete' : 'draft';
+
+  // Warn about draft status but don't block
+  if (!isComplete) {
+    toast.warning('Saving as Draft', `NPC is incomplete: ${draftWarnings.join(', ')}`);
   }
 
   const saveBtn = document.getElementById('btn-save-npc');
@@ -1322,8 +1388,17 @@ async function handleSaveNpc() {
         try {
           const formData = new FormData();
           formData.append('avatar', pendingProfileImage);
+          
+          // Get auth headers
+          const avatarHeaders = {};
+          const token = getAccessToken();
+          if (token) {
+            avatarHeaders['Authorization'] = `Bearer ${token}`;
+          }
+          
           await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
             method: 'POST',
+            headers: avatarHeaders,
             body: formData,
           });
         } catch (err) {
@@ -1747,6 +1822,227 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text || '';
   return div.innerHTML;
+}
+
+/**
+ * Open raw JSON editor for NPC definition
+ */
+function handleEditNpcJson() {
+  openJsonEditor('Edit NPC Definition JSON', currentDefinition, {
+    readOnly: false,
+    onSave: (parsedJson) => {
+      // Validate basic structure
+      if (!parsedJson.name) {
+        toast.error('Invalid NPC', 'NPC must have a name');
+        return;
+      }
+      
+      // Merge with defaults to ensure all fields exist
+      currentDefinition = {
+        ...getDefaultDefinition(),
+        ...parsedJson,
+        core_anchor: {
+          ...getDefaultDefinition().core_anchor,
+          ...(parsedJson.core_anchor || {}),
+        },
+        personality_baseline: {
+          ...getDefaultDefinition().personality_baseline,
+          ...(parsedJson.personality_baseline || {}),
+        },
+        voice: {
+          ...getDefaultDefinition().voice,
+          ...(parsedJson.voice || {}),
+        },
+        mcp_permissions: {
+          ...getDefaultDefinition().mcp_permissions,
+          ...(parsedJson.mcp_permissions || {}),
+        },
+      };
+      
+      // Re-populate form
+      populateForm(currentDefinition);
+      
+      // Re-init tag inputs
+      principlesInput = createTagInput(
+        document.getElementById('principles-tags').parentElement,
+        {
+          tags: currentDefinition.core_anchor?.principles || [],
+          placeholder: 'Add a principle...',
+          onChange: (tags) => {
+            currentDefinition.core_anchor.principles = tags;
+          },
+        }
+      );
+
+      traumaInput = createTagInput(
+        document.getElementById('trauma-tags').parentElement,
+        {
+          tags: currentDefinition.core_anchor?.trauma_flags || [],
+          placeholder: 'Add a trauma flag...',
+          onChange: (tags) => {
+            currentDefinition.core_anchor.trauma_flags = tags;
+          },
+        }
+      );
+      
+      updatePreview();
+      updatePersonalitySummary();
+      toast.success('JSON Applied', 'NPC definition updated from JSON.');
+    },
+    validate: (data) => {
+      const errors = [];
+      if (!data.name) errors.push('Name is required');
+      return errors;
+    },
+  });
+}
+
+/**
+ * Open LLM generation modal for Core Anchor fields
+ */
+async function openLlmGenerationModal(field) {
+  const fieldLabels = {
+    backstory: 'Backstory',
+    principles: 'Principles',
+    trauma_flags: 'Trauma Flags',
+  };
+  
+  const fieldHints = {
+    backstory: 'Describe the character briefly: their role, setting, and key personality traits.',
+    principles: 'Describe the character\'s role and values to generate core beliefs.',
+    trauma_flags: 'Describe any difficult experiences or emotional triggers for this character.',
+  };
+  
+  const currentValue = field === 'backstory' 
+    ? currentDefinition.core_anchor?.backstory || ''
+    : (currentDefinition.core_anchor?.[field] || []).join(', ');
+
+  const content = document.createElement('div');
+  content.className = 'llm-gen-container';
+  content.innerHTML = `
+    <div class="llm-gen-input">
+      <label>Describe your character</label>
+      <textarea id="llm-gen-prompt" class="input textarea" rows="4" 
+        placeholder="${fieldHints[field]}">${escapeHtml(currentValue || currentDefinition.name || '')}</textarea>
+      <span class="hint">The more detail you provide, the better the results.</span>
+    </div>
+    <div class="llm-gen-results" id="llm-gen-results" style="display: none;">
+      <h4>Generated Variations</h4>
+      <div id="llm-results-list"></div>
+    </div>
+    <div class="llm-gen-loading" id="llm-gen-loading" style="display: none;">
+      <div class="spinner"></div>
+      <span>Generating...</span>
+    </div>
+  `;
+
+  const footer = document.createElement('div');
+  footer.innerHTML = `
+    <button class="btn btn-outline" data-action="cancel">Cancel</button>
+    <button class="btn btn-primary" data-action="generate" id="btn-llm-generate">
+      <span class="icon">✨</span> Generate
+    </button>
+    <button class="btn btn-primary" data-action="use" id="btn-llm-use" style="display: none;">
+      Use Selected
+    </button>
+  `;
+
+  const modalInstance = modal.open({
+    title: `Generate ${fieldLabels[field]} with AI`,
+    content,
+    footer,
+    size: 'large',
+  });
+
+  let selectedResult = null;
+
+  footer.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
+    modalInstance.close();
+  });
+
+  footer.querySelector('[data-action="generate"]')?.addEventListener('click', async () => {
+    const prompt = content.querySelector('#llm-gen-prompt').value.trim();
+    if (!prompt) {
+      toast.warning('Input Required', 'Please describe your character first.');
+      return;
+    }
+
+    const loadingEl = content.querySelector('#llm-gen-loading');
+    const resultsEl = content.querySelector('#llm-gen-results');
+    const generateBtn = footer.querySelector('#btn-llm-generate');
+    
+    loadingEl.style.display = 'flex';
+    resultsEl.style.display = 'none';
+    generateBtn.disabled = true;
+
+    try {
+      const response = await fetch(`/api/projects/${currentProjectId}/generate-npc-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, prompt }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Generation failed');
+      }
+
+      const data = await response.json();
+      const variations = data.variations || [];
+
+      if (variations.length === 0) {
+        throw new Error('No variations generated');
+      }
+
+      // Display results
+      const listEl = content.querySelector('#llm-results-list');
+      listEl.innerHTML = variations.map((v, i) => `
+        <div class="llm-gen-result" data-index="${i}">
+          <p>${escapeHtml(v)}</p>
+        </div>
+      `).join('');
+
+      // Bind click handlers
+      listEl.querySelectorAll('.llm-gen-result').forEach((el) => {
+        el.addEventListener('click', () => {
+          listEl.querySelectorAll('.llm-gen-result').forEach(r => r.classList.remove('selected'));
+          el.classList.add('selected');
+          selectedResult = variations[parseInt(el.dataset.index)];
+          footer.querySelector('#btn-llm-use').style.display = 'inline-block';
+        });
+      });
+
+      loadingEl.style.display = 'none';
+      resultsEl.style.display = 'block';
+      generateBtn.textContent = '🔄 Regenerate';
+      generateBtn.disabled = false;
+
+    } catch (error) {
+      loadingEl.style.display = 'none';
+      generateBtn.disabled = false;
+      toast.error('Generation Failed', error.message);
+    }
+  });
+
+  footer.querySelector('[data-action="use"]')?.addEventListener('click', () => {
+    if (!selectedResult) return;
+
+    if (field === 'backstory') {
+      currentDefinition.core_anchor.backstory = selectedResult;
+      document.getElementById('anchor-backstory').value = selectedResult;
+    } else if (field === 'principles') {
+      const items = selectedResult.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+      currentDefinition.core_anchor.principles = items;
+      principlesInput?.setTags?.(items);
+    } else if (field === 'trauma_flags') {
+      const items = selectedResult.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+      currentDefinition.core_anchor.trauma_flags = items;
+      traumaInput?.setTags?.(items);
+    }
+
+    toast.success('Applied', `${fieldLabels[field]} updated from AI generation.`);
+    modalInstance.close();
+  });
 }
 
 export default { initNpcListPage, initNpcEditorPage };

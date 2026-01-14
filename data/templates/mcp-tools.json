@@ -1,124 +1,144 @@
 {
-  "conversation_tools": [
-    {
-      "id": "lock_door",
-      "name": "Lock Door",
-      "description": "Lock a nearby door to prevent others from entering. Use when feeling threatened or wanting privacy.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "door_id": {
-            "type": "string",
-            "description": "The ID of the door to lock"
-          }
-        },
-        "required": ["door_id"]
-      }
-    },
-    {
-      "id": "call_guards",
-      "name": "Call Guards",
-      "description": "Summon nearby guards for assistance. Use when witnessing a crime or feeling in danger.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string",
-            "description": "The reason for calling guards"
-          },
-          "urgency": {
-            "type": "string",
-            "description": "How urgent the situation is (low, medium, high)"
-          }
-        },
-        "required": ["reason"]
-      }
-    },
-    {
+  "conversation_tools": [],
+  "game_event_tools": [],
+  "_examples": {
+    "_note": "These are example tool definitions. Copy them to conversation_tools or game_event_tools and customize.",
+    "conversation_tool_example": {
       "id": "give_item",
       "name": "Give Item",
-      "description": "Give an item from inventory to the player. Use when rewarding or trading.",
+      "description": "Give an item from the NPC's inventory to the player. Use when rewarding, trading, or gifting.",
       "parameters": {
         "type": "object",
         "properties": {
           "item_id": {
             "type": "string",
-            "description": "The ID of the item to give"
-          },
-          "quantity": {
-            "type": "number",
-            "description": "How many to give"
-          }
-        },
-        "required": ["item_id"]
-      }
-    }
-  ],
-  "game_event_tools": [
-    {
-      "id": "receive_gift",
-      "name": "Receive Gift",
-      "description": "Called when the player gives this NPC a gift. Affects mood and relationship.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "item_id": {
-            "type": "string",
-            "description": "The ID of the item received"
+            "description": "Unique identifier of the item to give"
           },
           "item_name": {
             "type": "string",
-            "description": "The display name of the item"
+            "description": "Human-readable name of the item"
           },
-          "value": {
+          "quantity": {
             "type": "number",
-            "description": "The monetary value of the item"
+            "description": "How many to give (default: 1)"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the NPC is giving this item"
           }
         },
         "required": ["item_id", "item_name"]
       }
     },
-    {
-      "id": "witness_crime",
-      "name": "Witness Crime",
-      "description": "Called when this NPC witnesses a crime. May affect trust and trigger reactions.",
+    "conversation_tools_more_examples": [
+      {
+        "id": "exit_conversation",
+        "name": "Exit Conversation",
+        "description": "End the current conversation. Use when conversation reaches natural end or NPC wants to leave.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": { "type": "string", "description": "Why ending the conversation" },
+            "mood": { "type": "string", "enum": ["friendly", "neutral", "annoyed"], "description": "NPC's mood when leaving" }
+          },
+          "required": ["reason"]
+        }
+      },
+      {
+        "id": "refuse_service",
+        "name": "Refuse Service",
+        "description": "Decline to help or provide information. Use for inappropriate requests or insufficient trust.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": { "type": "string", "description": "Why refusing" },
+            "alternative": { "type": "string", "description": "Suggestion for what the player could try instead" }
+          },
+          "required": ["reason"]
+        }
+      },
+      {
+        "id": "call_security",
+        "name": "Call Security",
+        "description": "Alert guards or security. Use when feeling threatened or witnessing violations.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": { "type": "string", "description": "The reason for calling security" },
+            "urgency": { "type": "string", "enum": ["low", "medium", "high"], "description": "How urgent" }
+          },
+          "required": ["reason", "urgency"]
+        }
+      }
+    ],
+    "game_event_tool_example": {
+      "id": "receive_gift",
+      "name": "Receive Gift",
+      "description": "Called when the player gives this NPC a gift. Affects mood and relationship based on gift value and appropriateness.",
       "parameters": {
         "type": "object",
         "properties": {
-          "crime_type": {
+          "item_id": {
             "type": "string",
-            "description": "Type of crime (theft, assault, vandalism, etc.)"
+            "description": "The unique identifier of the received item"
           },
-          "perpetrator_id": {
+          "item_name": {
             "type": "string",
-            "description": "ID of who committed the crime"
+            "description": "Human-readable name of the item"
           },
-          "victim_id": {
-            "type": "string",
-            "description": "ID of the victim, if any"
+          "value": {
+            "type": "number",
+            "description": "Approximate monetary value of the item"
+          },
+          "is_appropriate": {
+            "type": "boolean",
+            "description": "Whether this is an appropriate gift for this NPC"
           }
         },
-        "required": ["crime_type", "perpetrator_id"]
+        "required": ["item_id", "item_name"]
       }
     },
-    {
-      "id": "time_of_day_change",
-      "name": "Time of Day Change",
-      "description": "Called when the game time changes significantly (morning, afternoon, evening, night).",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "time_period": {
-            "type": "string",
-            "description": "The new time period (morning, afternoon, evening, night)"
+    "game_event_tools_more_examples": [
+      {
+        "id": "time_of_day_change",
+        "name": "Time of Day Change",
+        "description": "Called when game time period changes (morning/afternoon/evening/night). NPC may need to change location.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "time_period": { "type": "string", "enum": ["morning", "afternoon", "evening", "night"], "description": "Current time period" },
+            "game_hour": { "type": "number", "description": "Current hour (0-23)" }
           },
-          "game_hour": {
-            "type": "number",
-            "description": "The current hour in game time (0-23)"
-          }
-        },
-        "required": ["time_period"]
+          "required": ["time_period"]
+        }
+      },
+      {
+        "id": "witness_crime",
+        "name": "Witness Crime",
+        "description": "Called when NPC witnesses a crime. May affect trust and trigger reactions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "crime_type": { "type": "string", "enum": ["theft", "assault", "vandalism", "trespassing"], "description": "Type of crime" },
+            "perpetrator_id": { "type": "string", "description": "Who committed the crime" },
+            "victim_id": { "type": "string", "description": "Who was affected" }
+          },
+          "required": ["crime_type", "perpetrator_id"]
+        }
+      },
+      {
+        "id": "unlock_door",
+        "name": "Unlock Door",
+        "description": "Grant access to a restricted area. Called when NPC opens a door for the player.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "door_id": { "type": "string", "description": "The door to unlock" },
+            "duration": { "type": "number", "description": "Seconds to stay unlocked (0 = permanent)" }
+          },
+          "required": ["door_id"]
+        }
       }
-    }
-  ]
+    ]
+  }
 }

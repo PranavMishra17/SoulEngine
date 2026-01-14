@@ -9,17 +9,24 @@ const logger = createLogger('supabase-definitions');
 /**
  * Validate NPC definition structure
  */
+/**
+ * Validate NPC definition
+ * Relaxed validation to allow draft saves - only name is strictly required
+ */
 function validateDefinition(def: NPCDefinition): void {
+  // Only name is strictly required
   if (!def.name || typeof def.name !== 'string') {
     throw new StorageValidationError('NPC definition must have a name');
   }
 
+  // Core anchor structure must exist, but backstory/principles can be empty
   if (!def.core_anchor) {
     throw new StorageValidationError('NPC definition must have a core_anchor');
   }
 
-  if (!def.core_anchor.backstory || typeof def.core_anchor.backstory !== 'string') {
-    throw new StorageValidationError('NPC core_anchor must have a backstory');
+  // Backstory can be empty string for drafts
+  if (def.core_anchor.backstory !== undefined && typeof def.core_anchor.backstory !== 'string') {
+    throw new StorageValidationError('NPC core_anchor.backstory must be a string');
   }
 
   if (!Array.isArray(def.core_anchor.principles)) {
@@ -40,17 +47,18 @@ function validateDefinition(def: NPCDefinition): void {
     }
   }
 
-  if (!def.voice || !def.voice.voice_id) {
-    throw new StorageValidationError('NPC definition must have voice configuration with voice_id');
+  // Voice config must exist, but voice_id can be empty for drafts
+  if (!def.voice) {
+    throw new StorageValidationError('NPC definition must have voice configuration');
   }
 
-  // Validate network (optional field)
+  // Validate network (optional field, increased limit to 20)
   if (def.network) {
     if (!Array.isArray(def.network)) {
       throw new StorageValidationError('NPC network must be an array');
     }
-    if (def.network.length > 5) {
-      throw new StorageValidationError('NPC network cannot exceed 5 entries');
+    if (def.network.length > 20) {
+      throw new StorageValidationError('NPC network cannot exceed 20 entries');
     }
   }
 

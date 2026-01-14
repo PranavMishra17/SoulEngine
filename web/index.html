@@ -425,6 +425,9 @@
             </button>
           </div>
           
+          <button class="btn btn-ghost btn-sm" id="btn-refresh-dashboard" title="Refresh Dashboard">
+            <span class="icon">&#8635;</span>
+          </button>
           <button class="btn btn-outline" id="btn-project-settings">
             <span class="icon">&#9881;</span>
             Settings
@@ -480,6 +483,21 @@
         </a>
       </div>
       
+      <!-- Starter Pack Section -->
+      <div class="starter-pack-section" id="starter-pack-section">
+        <div class="starter-pack-card">
+          <div class="starter-pack-icon">&#127775;</div>
+          <div class="starter-pack-content">
+            <h3>Starter Pack Available</h3>
+            <p>Load example content to explore the system: 5 interconnected NPCs, 6 knowledge categories, and 15 MCP tools - all set in the "Stellar Haven" sci-fi space station.</p>
+            <button class="btn btn-primary" id="btn-load-starter-pack">
+              <span class="icon">&#10148;</span>
+              Load Examples
+            </button>
+          </div>
+        </div>
+      </div>
+      
       <!-- Stats Section -->
       <div class="dashboard-stats">
         <h2 class="stats-title">Project Metrics</h2>
@@ -519,68 +537,111 @@
       <div class="dashboard-flowchart">
         <h2 class="flowchart-title">Project Structure</h2>
         <div class="flowchart-container">
-          <div class="flowchart">
-            <!-- Project Node -->
-            <div class="flow-node flow-node-project">
-              <div class="flow-node-icon">&#9733;</div>
-              <div class="flow-node-label">Project</div>
-            </div>
-            
-            <!-- Connectors -->
-            <div class="flow-connectors">
-              <div class="flow-line flow-line-1"></div>
-              <div class="flow-line flow-line-2"></div>
-              <div class="flow-line flow-line-3"></div>
-            </div>
-            
-            <!-- Child Nodes Row -->
-            <div class="flow-children">
-              <!-- NPCs Branch -->
-              <div class="flow-branch">
-                <div class="flow-node flow-node-npc">
-                  <div class="flow-node-icon">&#9671;</div>
-                  <div class="flow-node-label">NPCs</div>
-                  <div class="flow-node-count" id="flow-npc-count">0</div>
-                </div>
-                <div class="flow-sub-connector"></div>
-                <div class="flow-node flow-node-sub">
-                  <div class="flow-node-label">Instances</div>
-                  <div class="flow-node-count" id="flow-instance-count">0</div>
+          <div class="flowchart-v2">
+            <!-- Row 1: Project -->
+            <div class="flow-row flow-row-project">
+              <div class="flow-node-v2 flow-node-project-v2">
+                <div class="flow-node-icon-v2">&#9733;</div>
+                <div class="flow-node-content">
+                  <div class="flow-node-label-v2">Project</div>
                 </div>
               </div>
-              
-              <!-- Knowledge Branch -->
-              <div class="flow-branch">
-                <div class="flow-node flow-node-knowledge">
-                  <div class="flow-node-icon">&#9672;</div>
-                  <div class="flow-node-label">Knowledge</div>
-                  <div class="flow-node-count" id="flow-knowledge-count">0</div>
+            </div>
+            
+            <!-- Connector: Project to Resources -->
+            <div class="flow-connector-v2">
+              <div class="flow-line-v flow-line-split"></div>
+            </div>
+            
+            <!-- Row 2: Knowledge Base & MCP Tools (Project Resources) -->
+            <div class="flow-row flow-row-resources">
+              <div class="flow-node-v2 flow-node-knowledge-v2">
+                <div class="flow-node-icon-v2">&#9672;</div>
+                <div class="flow-node-content">
+                  <div class="flow-node-label-v2">Knowledge Base</div>
+                  <div class="flow-node-sub-label">Categories / Depth Tiers</div>
                 </div>
-                <div class="flow-sub-connector"></div>
-                <div class="flow-node flow-node-sub">
-                  <div class="flow-node-label">Categories</div>
-                  <div class="flow-node-count" id="flow-category-count">0</div>
-                </div>
+                <div class="flow-node-count-v2" id="flow-knowledge-count">0</div>
               </div>
               
-              <!-- MCP Tools Branch -->
-              <div class="flow-branch">
-                <div class="flow-node flow-node-mcp">
-                  <div class="flow-node-icon">&#11043;</div>
-                  <div class="flow-node-label">MCP Tools</div>
-                  <div class="flow-node-count" id="flow-tools-count">0</div>
+              <div class="flow-node-v2 flow-node-mcp-v2">
+                <div class="flow-node-icon-v2">&#11043;</div>
+                <div class="flow-node-content">
+                  <div class="flow-node-label-v2">MCP Tools</div>
+                  <div class="flow-node-sub-label">Conv / Game Events</div>
                 </div>
-                <div class="flow-sub-connector"></div>
-                <div class="flow-sub-nodes">
-                  <div class="flow-node flow-node-sub">
-                    <div class="flow-node-label">Conversation</div>
-                    <div class="flow-node-count" id="flow-conv-count">0</div>
-                  </div>
-                  <div class="flow-node flow-node-sub">
-                    <div class="flow-node-label">Game Events</div>
-                    <div class="flow-node-count" id="flow-game-count">0</div>
-                  </div>
+                <div class="flow-node-count-v2" id="flow-tools-count">0</div>
+              </div>
+            </div>
+            
+            <!-- Connector: Resources to NPCs -->
+            <div class="flow-connector-v2">
+              <div class="flow-line-v flow-line-merge"></div>
+              <div class="flow-derive-label">NPCs derive from</div>
+            </div>
+            
+            <!-- Row 3: NPCs -->
+            <div class="flow-row flow-row-npcs">
+              <div class="flow-node-v2 flow-node-npcs-v2">
+                <div class="flow-node-icon-v2">&#9671;</div>
+                <div class="flow-node-content">
+                  <div class="flow-node-label-v2">NPCs</div>
+                  <div class="flow-node-sub-label">Character Definitions</div>
                 </div>
+                <div class="flow-node-count-v2" id="flow-npc-count">0</div>
+              </div>
+            </div>
+            
+            <!-- Connector: NPCs to Instances -->
+            <div class="flow-connector-v2">
+              <div class="flow-line-v"></div>
+            </div>
+            
+            <!-- Row 4: NPC Grid -->
+            <div class="flow-row flow-row-npc-grid">
+              <div class="npc-instances-grid" id="flow-npc-grid">
+                <div class="npc-instance-placeholder">
+                  <span class="npc-placeholder-icon">&#9671;</span>
+                  <span class="npc-placeholder-label">NPC 1</span>
+                </div>
+                <div class="npc-instance-placeholder">
+                  <span class="npc-placeholder-icon">&#9671;</span>
+                  <span class="npc-placeholder-label">NPC 2</span>
+                </div>
+                <div class="npc-instance-placeholder npc-placeholder-more">
+                  <span class="npc-placeholder-icon">...</span>
+                  <span class="npc-placeholder-label">NPC n</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Connector: NPC Instance to Components -->
+            <div class="flow-connector-v2">
+              <div class="flow-line-v flow-line-expand"></div>
+              <div class="flow-derive-label">Each NPC contains</div>
+            </div>
+            
+            <!-- Row 5: NPC Components -->
+            <div class="flow-row flow-row-components">
+              <div class="flow-node-v2 flow-node-component">
+                <div class="flow-node-icon-v2">&#9672;</div>
+                <div class="flow-node-label-v2">Knowledge Tier</div>
+                <div class="flow-node-hint">Selective access</div>
+              </div>
+              <div class="flow-node-v2 flow-node-component">
+                <div class="flow-node-icon-v2">&#11043;</div>
+                <div class="flow-node-label-v2">MCP Tool Set</div>
+                <div class="flow-node-hint">Permissions</div>
+              </div>
+              <div class="flow-node-v2 flow-node-component">
+                <div class="flow-node-icon-v2">&#128101;</div>
+                <div class="flow-node-label-v2">Social Network</div>
+                <div class="flow-node-hint">NPC relationships</div>
+              </div>
+              <div class="flow-node-v2 flow-node-component">
+                <div class="flow-node-icon-v2">&#9829;</div>
+                <div class="flow-node-label-v2">Personality</div>
+                <div class="flow-node-hint">Schedule + Cycles</div>
               </div>
             </div>
           </div>
@@ -646,6 +707,9 @@
           <h1 id="editor-title">Create NPC</h1>
         </div>
         <div class="page-header-actions">
+          <button class="btn btn-ghost" id="btn-edit-npc-json" title="Edit Raw JSON">
+            <span class="icon">{ }</span> Edit JSON
+          </button>
           <button class="btn btn-ghost" id="btn-download-template" title="Download NPC template">
             <span class="icon">&#8595;</span> NPC Template
           </button>
@@ -688,9 +752,6 @@
             <a href="#section-network" class="editor-nav-item" data-section="network">
               <span class="nav-icon">&#11042;</span> Network
             </a>
-            <a href="#section-player" class="editor-nav-item" data-section="player">
-              <span class="nav-icon">&#9786;</span> Player Recognition
-            </a>
           </nav>
         </aside>
         <div class="editor-content">
@@ -728,12 +789,22 @@
             <h2>Core Anchor</h2>
             <p class="section-desc">Immutable psychological DNA. This never changes after creation.</p>
             <div class="form-group">
-              <label for="anchor-backstory">Backstory</label>
+              <div class="form-label-row">
+                <label for="anchor-backstory">Backstory</label>
+                <button type="button" class="btn btn-sm btn-outline" id="btn-generate-backstory">
+                  <span class="icon">✨</span> Generate with AI
+                </button>
+              </div>
               <textarea id="anchor-backstory" class="input textarea code" rows="6" placeholder="100-200 tokens encoding the character's fundamental worldview..."></textarea>
               <span class="input-hint">This should capture childhood context and core experiences that shape their perspective.</span>
             </div>
             <div class="form-group">
-              <label>Principles</label>
+              <div class="form-label-row">
+                <label>Principles</label>
+                <button type="button" class="btn btn-sm btn-ghost" id="btn-generate-principles">
+                  <span class="icon">✨</span> AI Assist
+                </button>
+              </div>
               <div class="tag-input-container">
                 <div class="tag-input-tags" id="principles-tags"></div>
                 <input type="text" id="principle-input" class="input tag-input" placeholder="Add a principle and press Enter">
@@ -741,7 +812,12 @@
               <span class="input-hint">3-5 unbreakable beliefs</span>
             </div>
             <div class="form-group">
-              <label>Trauma Flags</label>
+              <div class="form-label-row">
+                <label>Trauma Flags</label>
+                <button type="button" class="btn btn-sm btn-ghost" id="btn-generate-trauma">
+                  <span class="icon">✨</span> AI Assist
+                </button>
+              </div>
               <div class="tag-input-container">
                 <div class="tag-input-tags" id="trauma-tags"></div>
                 <input type="text" id="trauma-input" class="input tag-input" placeholder="Add a trauma flag and press Enter">
@@ -933,8 +1009,19 @@
             </div>
           </section>
           <section class="editor-section" id="section-network">
-            <h2>NPC Network</h2>
-            <p class="section-desc">Who does this NPC know? Add connections to other NPCs.</p>
+            <h2>NPC Network & Recognition</h2>
+            <p class="section-desc">Who does this NPC know? Add connections to other NPCs and configure player recognition.</p>
+            
+            <!-- Player Recognition (consolidated from separate section) -->
+            <div class="network-header-options">
+              <label class="checkbox-item">
+                <input type="checkbox" id="reveal-player-identity" checked>
+                <span>NPC can recognize players by name</span>
+              </label>
+              <span class="input-hint">When enabled, player name/info is included in NPC's context at session start</span>
+            </div>
+            
+            <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-3);">NPC Connections</h3>
             
             <div class="network-connections" id="network-connections">
               <!-- Dynamically populated connection cards -->
@@ -948,7 +1035,7 @@
               <button type="button" class="btn btn-primary" id="btn-add-connection">
                 <span class="icon">+</span> Add Connection
               </button>
-              <span class="network-count" id="network-count">0 / 5</span>
+              <span class="network-count" id="network-count">0 / 20</span>
               <label class="checkbox-item network-bidirectional">
                 <input type="checkbox" id="network-bidirectional" checked>
                 <span>Two-way</span>
@@ -969,17 +1056,6 @@
               <div class="tier-legend-item"><span class="tier-badge tier-1">1</span><div><strong>Acquaintance</strong><p>Knows name and description</p></div></div>
               <div class="tier-legend-item"><span class="tier-badge tier-2">2</span><div><strong>Familiar</strong><p>Also knows backstory</p></div></div>
               <div class="tier-legend-item"><span class="tier-badge tier-3">3</span><div><strong>Close</strong><p>Also knows personality</p></div></div>
-            </div>
-          </section>
-          <section class="editor-section" id="section-player">
-            <h2>Player Recognition</h2>
-            <p class="section-desc">Configure how this NPC recognizes and interacts with players.</p>
-            <div class="form-group">
-              <label class="checkbox-item">
-                <input type="checkbox" id="reveal-player-identity" checked>
-                <span>NPC can recognize players by name</span>
-              </label>
-              <p class="hint">When checked, player name/info will be included in NPC's context at session start</p>
             </div>
           </section>
         </div>
@@ -1067,19 +1143,55 @@
           <h1>Knowledge Base</h1>
         </div>
         <div class="page-header-actions">
+          <button class="btn btn-ghost" id="btn-edit-raw-json" title="Edit Raw JSON"><span class="icon">{ }</span> Edit JSON</button>
           <button class="btn btn-ghost" id="btn-download-kb-template" title="Download template"><span class="icon">&#8595;</span> Template</button>
           <button class="btn btn-ghost" id="btn-import-knowledge" title="Import"><span class="icon">&#8593;</span> Import</button>
           <button class="btn btn-ghost" id="btn-export-knowledge" title="Export"><span class="icon">&#8595;</span> Export</button>
-          <button class="btn btn-primary" id="btn-add-category"><span class="icon">+</span> Add Category</button>
         </div>
       </header>
+      
+      <!-- Inline Category Creation Form -->
+      <div class="inline-create-form collapsed" id="inline-create-form">
+        <div class="inline-form-header" id="inline-form-toggle">
+          <span class="icon">+</span>
+          <h3>Add New Category</h3>
+        </div>
+        <div class="inline-form-body" id="inline-form-body" style="display: none;">
+          <div class="inline-form-row">
+            <div class="form-group">
+              <label for="new-cat-id">Category ID</label>
+              <input type="text" id="new-cat-id" class="input" placeholder="e.g., world_history, local_gossip">
+              <span class="input-hint">Lowercase letters, numbers, underscores. Starts with letter.</span>
+            </div>
+            <div class="form-group">
+              <label for="new-cat-depth">Initial Depths</label>
+              <select id="new-cat-depth" class="input select">
+                <option value="1">1 depth level</option>
+                <option value="2">2 depth levels</option>
+                <option value="3" selected>3 depth levels</option>
+                <option value="4">4 depth levels</option>
+                <option value="5">5 depth levels</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="new-cat-desc">Description</label>
+            <textarea id="new-cat-desc" class="input textarea" rows="2" placeholder="What kind of knowledge does this category contain?"></textarea>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-outline" id="btn-cancel-create">Cancel</button>
+            <button class="btn btn-primary" id="btn-confirm-create"><span class="icon">+</span> Create Category</button>
+          </div>
+        </div>
+      </div>
+      
       <div class="knowledge-layout">
         <div class="knowledge-categories" id="knowledge-categories"></div>
         <div class="empty-state" id="empty-knowledge" style="display: none;">
           <div class="empty-icon">&#9672;</div>
           <h3>No knowledge categories</h3>
           <p>Create categories to define what NPCs can know</p>
-          <button class="btn btn-primary" id="btn-empty-add-category"><span class="icon">+</span> Add Category</button>
+          <p class="hint">Click "Add New Category" above to get started</p>
         </div>
       </div>
     </div>
@@ -1097,37 +1209,101 @@
             <span>MCP Tools</span>
           </div>
           <h1>MCP Tools</h1>
-          <p class="page-subtitle">Define tools that NPCs can use</p>
+          <p class="page-subtitle">Define tools that NPCs can use during conversations and game events</p>
         </div>
         <div class="page-header-actions">
+          <button class="btn btn-ghost" id="btn-edit-tools-json" title="Edit Raw JSON"><span class="icon">{ }</span> Edit JSON</button>
           <button class="btn btn-ghost" id="btn-download-tools-template" title="Download template"><span class="icon">&#8595;</span> Template</button>
           <button class="btn btn-ghost" id="btn-import-tools" title="Import"><span class="icon">&#8593;</span> Import</button>
           <button class="btn btn-ghost" id="btn-export-tools" title="Export"><span class="icon">&#8595;</span> Export</button>
         </div>
       </header>
+      
+      <!-- Inline Tool Creation Form -->
+      <div class="inline-create-form collapsed" id="inline-tool-form">
+        <div class="inline-form-header" id="inline-tool-toggle">
+          <span class="icon">+</span>
+          <h3>Add New Tool</h3>
+        </div>
+        <div class="inline-form-body" id="inline-tool-body" style="display: none;">
+          <div class="inline-form-row">
+            <div class="form-group">
+              <label for="new-tool-id">Tool ID</label>
+              <input type="text" id="new-tool-id" class="input" placeholder="e.g., lock_door, give_item">
+              <span class="input-hint">Unique identifier (snake_case recommended)</span>
+            </div>
+            <div class="form-group">
+              <label for="new-tool-name">Display Name</label>
+              <input type="text" id="new-tool-name" class="input" placeholder="e.g., Lock Door">
+            </div>
+          </div>
+          <div class="inline-form-row">
+            <div class="form-group">
+              <label for="new-tool-type">Tool Type</label>
+              <select id="new-tool-type" class="input select">
+                <option value="conversation">Conversation Tool</option>
+                <option value="game_event">Game Event Tool</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>&nbsp;</label>
+              <span class="input-hint" style="margin-top: 0.5rem; display: block;">Conversation tools are used during dialogue. Game event tools are triggered by game logic.</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="new-tool-desc">Description</label>
+            <textarea id="new-tool-desc" class="input textarea" rows="2" placeholder="What does this tool do? When should the NPC use it?"></textarea>
+            <span class="input-hint">This helps the LLM decide when to use the tool</span>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-outline" id="btn-cancel-tool">Cancel</button>
+            <button class="btn btn-primary" id="btn-confirm-tool"><span class="icon">+</span> Create Tool</button>
+          </div>
+        </div>
+      </div>
+      
       <div class="mcp-tools-layout">
-        <section class="tools-section">
-          <div class="tools-section-header">
-            <div class="tools-section-info">
-              <h2>Conversation Tools</h2>
-              <p class="tools-section-desc">Tools the NPC decides to use during dialogue</p>
-            </div>
-            <button class="btn btn-primary btn-sm" id="btn-add-conv-tool"><span class="icon">+</span> Add Tool</button>
+        <!-- Conversation Tools Section -->
+        <div class="tools-category">
+          <div class="tools-category-header">
+            <h3>Conversation Tools</h3>
+            <span class="tools-category-badge" id="conv-tools-count">0 tools</span>
           </div>
-          <div class="tools-list" id="conversation-tools"></div>
-          <div class="empty-state-inline" id="empty-conv-tools" style="display: none;"><p>No conversation tools defined yet.</p></div>
-        </section>
-        <section class="tools-section">
-          <div class="tools-section-header">
-            <div class="tools-section-info">
-              <h2>Game Event Tools</h2>
-              <p class="tools-section-desc">Tools triggered by game logic</p>
+          
+          <!-- System Tools -->
+          <div class="system-tools-section" id="system-conv-tools">
+            <div class="system-tools-header">
+              <h4>⚙ System Tools</h4>
+              <span class="input-hint">Built-in tools for safety and control</span>
             </div>
-            <button class="btn btn-primary btn-sm" id="btn-add-game-tool"><span class="icon">+</span> Add Tool</button>
+            <div class="system-tools-list" id="system-conv-tools-list"></div>
           </div>
-          <div class="tools-list" id="game-event-tools"></div>
-          <div class="empty-state-inline" id="empty-game-tools" style="display: none;"><p>No game event tools defined yet.</p></div>
-        </section>
+          
+          <!-- Custom Tools -->
+          <div class="custom-tools-grid" id="conversation-tools"></div>
+          <div class="empty-state-inline" id="empty-conv-tools" style="display: none;"><p>No custom conversation tools. Add tools using the form above.</p></div>
+        </div>
+        
+        <!-- Game Event Tools Section -->
+        <div class="tools-category">
+          <div class="tools-category-header">
+            <h3>Game Event Tools</h3>
+            <span class="tools-category-badge" id="game-tools-count">0 tools</span>
+          </div>
+          
+          <!-- System Tools -->
+          <div class="system-tools-section" id="system-game-tools">
+            <div class="system-tools-header">
+              <h4>⚙ System Tools</h4>
+              <span class="input-hint">Built-in tools for common game actions</span>
+            </div>
+            <div class="system-tools-list" id="system-game-tools-list"></div>
+          </div>
+          
+          <!-- Custom Tools -->
+          <div class="custom-tools-grid" id="game-event-tools"></div>
+          <div class="empty-state-inline" id="empty-game-tools" style="display: none;"><p>No custom game event tools. Add tools using the form above.</p></div>
+        </div>
       </div>
     </div>
   </template>

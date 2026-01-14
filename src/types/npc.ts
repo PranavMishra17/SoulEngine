@@ -78,7 +78,7 @@ export interface NPCDefinition {
   schedule: ScheduleBlock[];
   mcp_permissions: MCPPermissions;
   knowledge_access: KnowledgeAccess;
-  /** NPCs this character knows (max 5) - now with bidirectional support */
+  /** NPCs this character knows (max 20) - now with bidirectional support */
   network: NPCNetworkEntry[];
   /** Player recognition settings */
   player_recognition?: PlayerRecognition;
@@ -94,6 +94,13 @@ export interface NPCDefinition {
    * For UI display only - not used in NPC context
    */
   profile_image?: string;
+  /**
+   * NPC configuration status
+   * - 'draft': Incomplete configuration, may have missing required fields
+   * - 'complete': Fully configured and ready for use
+   * Default: undefined (treated as complete for backward compatibility)
+   */
+  status?: 'draft' | 'complete';
 }
 
 export interface Memory {

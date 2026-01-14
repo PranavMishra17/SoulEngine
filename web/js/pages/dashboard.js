@@ -3,15 +3,16 @@
  */
 
 import { projects, mcpTools } from '../api.js';
-import { toast, renderTemplate, updateNav } from '../components.js';
+import { toast, modal, renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
+import { getAccessToken } from '../auth.js';
 
 let currentProject = null;
 let currentProjectId = null;
 
 // Cache configuration
 const STATS_CACHE_KEY = 'soulengine_dashboard_stats';
-const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const STATS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes (shorter TTL for fresher data)
 
 export async function initDashboardPage(params) {
   const { projectId } = params;
@@ -63,6 +64,19 @@ export async function initDashboardPage(params) {
     } catch (err) {
       toast.error('Copy Failed', 'Could not copy to clipboard');
     }
+  });
+
+  // Bind starter pack button
+  document.getElementById('btn-load-starter-pack')?.addEventListener('click', async () => {
+    await loadStarterPack(projectId);
+  });
+
+  // Bind refresh button (if exists)
+  document.getElementById('btn-refresh-dashboard')?.addEventListener('click', async () => {
+    // Clear cache and reload
+    sessionStorage.removeItem(`${STATS_CACHE_KEY}_${projectId}`);
+    await loadProjectData(projectId);
+    toast.success('Refreshed', 'Dashboard data updated');
   });
 
   // Load project data
@@ -141,6 +155,16 @@ async function loadProjectData(projectId) {
     // Update flowchart
     updateFlowchart(stats);
 
+    // Show/hide starter pack section based on content
+    const starterSection = document.getElementById('starter-pack-section');
+    if (starterSection) {
+      // Hide if project already has content (NPCs OR knowledge OR tools)
+      const hasContent = (stats.npcs?.total > 0) || 
+                         (stats.knowledge?.categories > 0) || 
+                         (stats.tools?.total > 0);
+      starterSection.style.display = hasContent ? 'none' : 'block';
+    }
+
   } catch (error) {
     toast.error('Failed to Load Project', error.message);
     router.navigate('/projects');
@@ -187,12 +211,27 @@ function populateNpcBoard(npcsData) {
     return;
   }
 
-  gridEl.innerHTML = definitions.map(npc => `
-    <div class="board-item board-item-npc">
-      <div class="board-item-icon">${npc.hasImage ? '&#128100;' : '&#9671;'}</div>
-      <div class="board-item-name">${escapeHtml(npc.name)}</div>
-    </div>
-  `).join('');
+  gridEl.innerHTML = definitions.map(npc => {
+    // Handle both full URLs (Supabase) and filenames (local)
+    let avatarHtml = '<div class="board-item-icon">&#9671;</div>';
+    const profileImg = npc.profile_image;
+    if (profileImg && profileImg.trim() !== '') {
+      let avatarSrc;
+      if (profileImg.startsWith('http://') || profileImg.startsWith('https://')) {
+        avatarSrc = profileImg;
+      } else {
+        avatarSrc = `/api/projects/${currentProjectId}/npcs/${npc.id}/avatar`;
+      }
+      avatarHtml = `<div class="board-item-avatar"><img src="${avatarSrc}" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='&#9671;'"></div>`;
+    }
+    
+    return `
+      <div class="board-item board-item-npc">
+        ${avatarHtml}
+        <div class="board-item-name">${escapeHtml(npc.name)}</div>
+      </div>
+    `;
+  }).join('');
 
   // Add "+N more" if there are more than displayed
   if (npcsData.total > definitions.length) {
@@ -288,36 +327,147 @@ function populateMcpBoard(toolsData) {
 }
 
 /**
- * Update flowchart counts
+ * Update flowchart counts and NPC grid
  */
 function updateFlowchart(stats) {
-  // NPCs
-  const npcCount = document.getElementById('flow-npc-count');
-  if (npcCount) npcCount.textContent = stats.npcs?.total || 0;
-
-  // Instances
-  const instanceCount = document.getElementById('flow-instance-count');
-  if (instanceCount) instanceCount.textContent = stats.instances?.total || 0;
-
-  // Knowledge
+  // Knowledge Base count
   const knowledgeCount = document.getElementById('flow-knowledge-count');
-  if (knowledgeCount) knowledgeCount.textContent = stats.knowledge?.totalEntries || 0;
+  if (knowledgeCount) knowledgeCount.textContent = stats.knowledge?.categories || 0;
 
-  // Categories
-  const categoryCount = document.getElementById('flow-category-count');
-  if (categoryCount) categoryCount.textContent = stats.knowledge?.categories || 0;
-
-  // Tools total
+  // MCP Tools count
   const toolsCount = document.getElementById('flow-tools-count');
   if (toolsCount) toolsCount.textContent = stats.tools?.total || 0;
 
-  // Conversation tools
-  const convCount = document.getElementById('flow-conv-count');
-  if (convCount) convCount.textContent = stats.tools?.conversation || 0;
+  // NPCs count
+  const npcCount = document.getElementById('flow-npc-count');
+  if (npcCount) npcCount.textContent = stats.npcs?.total || 0;
 
-  // Game event tools
-  const gameCount = document.getElementById('flow-game-count');
-  if (gameCount) gameCount.textContent = stats.tools?.gameEvent || 0;
+  // Update NPC grid with actual NPCs
+  const npcGrid = document.getElementById('flow-npc-grid');
+  if (npcGrid && stats.npcs?.definitions?.length > 0) {
+    const npcs = stats.npcs.definitions.slice(0, 5);
+    let gridHtml = npcs.map((npc, i) => `
+      <div class="npc-instance-placeholder">
+        <span class="npc-placeholder-icon">${npc.hasImage ? '&#128100;' : '&#9671;'}</span>
+        <span class="npc-placeholder-label">${escapeHtml(npc.name.substring(0, 8))}</span>
+      </div>
+    `).join('');
+    
+    // Add "more" placeholder if there are more NPCs
+    if (stats.npcs.total > 5) {
+      gridHtml += `
+        <div class="npc-instance-placeholder npc-placeholder-more">
+          <span class="npc-placeholder-icon">+${stats.npcs.total - 5}</span>
+          <span class="npc-placeholder-label">more</span>
+        </div>
+      `;
+    } else if (stats.npcs.total === 0) {
+      gridHtml = `
+        <div class="npc-instance-placeholder npc-placeholder-more">
+          <span class="npc-placeholder-icon">&#9671;</span>
+          <span class="npc-placeholder-label">NPC 1</span>
+        </div>
+        <div class="npc-instance-placeholder npc-placeholder-more">
+          <span class="npc-placeholder-icon">&#9671;</span>
+          <span class="npc-placeholder-label">NPC n</span>
+        </div>
+      `;
+    }
+    
+    npcGrid.innerHTML = gridHtml;
+  }
+}
+
+/**
+ * Load starter pack examples into the project
+ */
+async function loadStarterPack(projectId) {
+  const btn = document.getElementById('btn-load-starter-pack');
+  if (!btn) return;
+  
+  // Show custom confirmation modal
+  const confirmContent = document.createElement('div');
+  confirmContent.innerHTML = `
+    <div class="starter-pack-confirm">
+      <p style="margin-bottom: var(--space-4);">Load the <strong>Stellar Haven Station</strong> example content into your project?</p>
+      <div class="starter-pack-confirm-details">
+        <div class="confirm-item">&#9671; <strong>5</strong> interconnected NPCs</div>
+        <div class="confirm-item">&#9672; <strong>6</strong> knowledge categories</div>
+        <div class="confirm-item">&#11043; <strong>15</strong> MCP tools</div>
+      </div>
+      <p class="text-secondary" style="margin-top: var(--space-4); font-size: var(--text-sm);">Existing content will NOT be overwritten.</p>
+    </div>
+  `;
+  
+  const confirmFooter = document.createElement('div');
+  confirmFooter.innerHTML = `
+    <button class="btn btn-outline" data-action="cancel">Cancel</button>
+    <button class="btn btn-primary" data-action="confirm">Load Examples</button>
+  `;
+  
+  const confirmModal = modal.open({
+    title: 'Load Starter Pack',
+    content: confirmContent,
+    footer: confirmFooter,
+  });
+  
+  // Handle cancel
+  confirmFooter.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
+    confirmModal.close();
+  });
+  
+  // Handle confirm
+  confirmFooter.querySelector('[data-action="confirm"]')?.addEventListener('click', async () => {
+    confirmModal.close();
+    
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      
+      const response = await fetch(`/api/projects/${projectId}/load-starter-pack`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to load starter pack');
+      }
+      
+      const result = await response.json();
+      
+      toast.success(
+        'Starter Pack Loaded!', 
+        `Added ${result.npcs_added} NPCs, ${result.knowledge_categories_added} categories, ${result.conversation_tools_added + result.game_event_tools_added} tools`
+      );
+      
+      // Clear cache and reload dashboard
+      sessionStorage.removeItem(`${STATS_CACHE_KEY}_${projectId}`);
+      await loadProjectData(projectId);
+      
+      // Hide the starter pack section after loading
+      const starterSection = document.getElementById('starter-pack-section');
+      if (starterSection) {
+        starterSection.style.display = 'none';
+      }
+      
+    } catch (error) {
+      toast.error('Failed to Load Starter Pack', error.message);
+      btn.disabled = false;
+      btn.textContent = 'Load Examples';
+    }
+  });
+}
+
+/**
+ * Get auth headers if logged in
+ */
+function getAuthHeaders() {
+  const token = getAccessToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
 /**

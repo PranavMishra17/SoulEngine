@@ -2,6 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import {
+  STARTER_PACK_NPCS,
+  STARTER_PACK_KNOWLEDGE,
+  STARTER_PACK_TOOLS,
+} from '../data/starter-pack.js';
+import {
   createProject,
   getProject,
   updateProject,
@@ -13,6 +18,10 @@ import {
   listInstances,
   getKnowledgeBase,
   getMCPTools,
+  updateKnowledgeBase,
+  saveMCPTools,
+  createDefinition,
+  updateDefinition,
   StorageNotFoundError,
   StorageValidationError,
 } from '../storage/index.js';
@@ -464,9 +473,10 @@ projectRoutes.get('/:projectId/stats', async (c) => {
     // Calculate stats
     const categories = knowledgeBase.categories || {};
     const categoryCount = Object.keys(categories).length;
+    // Count number of depth levels across all categories (depths are key-value pairs, not arrays)
     const totalKnowledgeEntries = Object.values(categories).reduce((sum: number, cat) => {
-      const depths = (cat as { depths?: Record<string, string[]> }).depths || {};
-      return sum + Object.values(depths).reduce((s: number, entries) => s + (entries?.length || 0), 0);
+      const depths = (cat as { depths?: Record<string, string> }).depths || {};
+      return sum + Object.keys(depths).length;
     }, 0);
 
     const conversationTools = mcpTools.conversation_tools || [];
@@ -488,6 +498,7 @@ projectRoutes.get('/:projectId/stats', async (c) => {
           name: d.name,
           description: d.description || '',
           hasImage: !!d.profile_image,
+          profile_image: d.profile_image || '',
         })),
       },
       instances: {
@@ -525,5 +536,290 @@ projectRoutes.get('/:projectId/stats', async (c) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, error: errorMessage, duration }, 'Failed to get project stats');
     return c.json({ error: 'Failed to get project stats', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/generate-npc-content - Generate NPC content using LLM
+ */
+const GenerateContentSchema = z.object({
+  field: z.enum(['backstory', 'principles', 'trauma_flags']),
+  prompt: z.string().min(1).max(2000),
+});
+
+projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    // Verify project exists and get API keys
+    await getProject(projectId);
+    const apiKeys = await loadApiKeys(projectId);
+
+    const body = await c.req.json();
+    const parsed = GenerateContentSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
+    }
+
+    const { field, prompt } = parsed.data;
+
+    // Find an LLM key to use
+    const llmKey = apiKeys.gemini || apiKeys.openai || apiKeys.anthropic || apiKeys.grok;
+    const llmProvider = apiKeys.gemini ? 'gemini' : apiKeys.openai ? 'openai' : apiKeys.anthropic ? 'anthropic' : 'grok';
+
+    if (!llmKey) {
+      return c.json({ error: 'No LLM API key configured. Add a key in Project Settings.' }, 400);
+    }
+
+    // Build the generation prompt based on field
+    let systemPrompt = '';
+    let userPrompt = '';
+
+    if (field === 'backstory') {
+      systemPrompt = `You are a creative writer helping design NPCs for a video game. Generate a concise backstory (100-200 words) that establishes the character's fundamental worldview based on the user's description. Focus on formative experiences, childhood context, and core psychological drivers. Return ONLY the backstory text, no explanations.`;
+      userPrompt = `Generate 3 different backstory variations for this character. Separate each variation with "---" on its own line.\n\nCharacter description: ${prompt}`;
+    } else if (field === 'principles') {
+      systemPrompt = `You are a creative writer helping design NPCs for a video game. Generate 3-5 core principles or unbreakable beliefs for the character. These should be fundamental values that the character would never compromise. Return ONLY a comma-separated list of principles.`;
+      userPrompt = `Generate 3 different sets of principles for this character. Separate each set with "---" on its own line.\n\nCharacter description: ${prompt}`;
+    } else if (field === 'trauma_flags') {
+      systemPrompt = `You are a creative writer helping design NPCs for a video game. Generate trauma flags or emotional triggers for the character. These are past experiences that affect their behavior and reactions. Return ONLY a comma-separated list of trauma flags (keep each brief, 2-5 words).`;
+      userPrompt = `Generate 3 different sets of trauma flags for this character. Separate each set with "---" on its own line.\n\nCharacter description: ${prompt}`;
+    }
+
+    // Call the appropriate LLM API
+    let variations: string[] = [];
+
+    if (llmProvider === 'gemini') {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${llmKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
+          generationConfig: { temperature: 0.9, maxOutputTokens: 1024 },
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        logger.error({ error: err }, 'Gemini API error');
+        throw new Error('LLM generation failed');
+      }
+
+      const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      variations = text.split('---').map((s: string) => s.trim()).filter(Boolean);
+
+    } else if (llmProvider === 'openai') {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${llmKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.9,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        logger.error({ error: err }, 'OpenAI API error');
+        throw new Error('LLM generation failed');
+      }
+
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const text = data.choices?.[0]?.message?.content || '';
+      variations = text.split('---').map((s: string) => s.trim()).filter(Boolean);
+
+    } else if (llmProvider === 'anthropic') {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': llmKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        logger.error({ error: err }, 'Anthropic API error');
+        throw new Error('LLM generation failed');
+      }
+
+      const data = await response.json() as { content?: Array<{ text?: string }> };
+      const text = data.content?.[0]?.text || '';
+      variations = text.split('---').map((s: string) => s.trim()).filter(Boolean);
+    }
+
+    // Ensure we have at least 1 variation
+    if (variations.length === 0) {
+      variations = ['Generation produced no results. Please try again with more detail.'];
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, field, variationCount: variations.length, duration }, 'NPC content generated');
+
+    return c.json({ variations });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to generate NPC content');
+    return c.json({ error: 'Failed to generate content', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/load-starter-pack - Load starter pack examples into project
+ * 
+ * This loads the example NPCs, knowledge base, and MCP tools from embedded data
+ * into the project. NPCs get new IDs to avoid collisions.
+ * Works in both local development and production (Render/Supabase).
+ */
+projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  if (!projectId) {
+    return c.json({ error: 'Project ID is required' }, 400);
+  }
+
+  try {
+    // Verify project exists
+    await getProject(projectId);
+
+    const results = {
+      npcs_added: 0,
+      knowledge_categories_added: 0,
+      conversation_tools_added: 0,
+      game_event_tools_added: 0,
+    };
+
+    // Map old NPC IDs to new ones for network connections
+    const npcIdMap: Record<string, string> = {};
+
+    // Load NPCs from embedded data
+    for (const npc of STARTER_PACK_NPCS) {
+      try {
+        // Remove id - let storage generate new one
+        const { id: oldId, ...npcData } = npc;
+        
+        // Temporarily clear network (will update after all NPCs created)
+        const npcToCreate = {
+          ...npcData,
+          network: [],
+        };
+        
+        const created = await createDefinition(projectId, npcToCreate as Parameters<typeof createDefinition>[1]);
+        
+        npcIdMap[oldId] = created.id;
+        results.npcs_added++;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn({ npcName: npc.name, error: errorMessage }, 'Failed to create starter pack NPC');
+      }
+    }
+
+    // Now update networks with correct IDs
+    for (const npc of STARTER_PACK_NPCS) {
+      const newId = npcIdMap[npc.id];
+      
+      if (newId && npc.network && npc.network.length > 0) {
+        try {
+          // Map network IDs to new IDs - cast explicitly for type safety
+          const newNetwork = npc.network
+            .map(entry => ({
+              npc_id: npcIdMap[entry.npc_id] || entry.npc_id,
+              familiarity_tier: entry.familiarity_tier as 1 | 2 | 3,
+            }))
+            .filter(entry => npcIdMap[entry.npc_id]); // Only include mapped IDs
+          
+          if (newNetwork.length > 0) {
+            await updateDefinition(projectId, newId, { network: newNetwork });
+          }
+        } catch (error) {
+          logger.warn({ npcId: newId }, 'Failed to update NPC network');
+        }
+      }
+    }
+
+    // Load knowledge base - merge with existing
+    try {
+      const existing = await getKnowledgeBase(projectId);
+      const mergedCategories = {
+        ...existing.categories,
+        ...STARTER_PACK_KNOWLEDGE,
+      };
+      
+      await updateKnowledgeBase(projectId, { categories: mergedCategories });
+      results.knowledge_categories_added = Object.keys(STARTER_PACK_KNOWLEDGE).length;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn({ error: errorMessage }, 'Failed to load starter pack knowledge base');
+    }
+
+    // Load MCP tools - merge with existing
+    try {
+      const existing = await getMCPTools(projectId);
+      
+      const existingConvIds = new Set(existing.conversation_tools.map(t => t.id));
+      const existingGameIds = new Set(existing.game_event_tools.map(t => t.id));
+      
+      // Filter out duplicates - use unknown cast for flexibility
+      const newConvTools = (STARTER_PACK_TOOLS.conversation_tools as unknown as typeof existing.conversation_tools)
+        .filter(t => !existingConvIds.has(t.id));
+      const newGameTools = (STARTER_PACK_TOOLS.game_event_tools as unknown as typeof existing.game_event_tools)
+        .filter(t => !existingGameIds.has(t.id));
+      
+      const merged = {
+        conversation_tools: [...existing.conversation_tools, ...newConvTools],
+        game_event_tools: [...existing.game_event_tools, ...newGameTools],
+      };
+      
+      await saveMCPTools(projectId, merged);
+      results.conversation_tools_added = newConvTools.length;
+      results.game_event_tools_added = newGameTools.length;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn({ error: errorMessage }, 'Failed to load starter pack MCP tools');
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, results, duration }, 'Starter pack loaded');
+
+    return c.json({
+      message: 'Starter pack loaded successfully',
+      ...results,
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to load starter pack');
+    return c.json({ error: 'Failed to load starter pack', details: errorMessage }, 500);
   }
 });
