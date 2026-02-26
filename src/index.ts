@@ -32,8 +32,9 @@ import { mcpToolRegistry } from './mcp/registry.js';
 
 // Session cleanup
 import { sessionStore } from './session/store.js';
-import { getDefinition, storageMode } from './storage/index.js';
-import { authMiddleware, isAuthEnabled } from './middleware/auth.js';
+import { storageMode } from './storage/index.js';
+import { getStorageForUser } from './storage/hybrid.js';
+import { optionalAuthMiddleware, isAuthEnabled } from './middleware/auth.js';
 
 const logger = createLogger('server');
 const config = getConfig();
@@ -85,12 +86,14 @@ app.get('/api/config', (c) => {
   });
 });
 
-// Apply authentication middleware to protected routes in production
+// Always apply optional auth — extracts userId if present, allows through if not
+// Logged-in users → Supabase storage, logged-out users → local file storage
+app.use('/api/projects/*', optionalAuthMiddleware);
+app.use('/api/session/*', optionalAuthMiddleware);
+app.use('/api/instances/*', optionalAuthMiddleware);
+
 if (isAuthEnabled()) {
-  logger.info('Authentication enabled - protecting API routes');
-  app.use('/api/projects/*', authMiddleware);
-  app.use('/api/session/*', authMiddleware);
-  app.use('/api/instances/*', authMiddleware);
+  logger.info('Authentication enabled - hybrid storage active (logged-in→Supabase, logged-out→local)');
 } else {
   logger.info('Authentication disabled - running in development mode');
 }
@@ -357,8 +360,9 @@ wss.on('connection', (ws, req) => {
   // Load NPC definition to get voice config (async)
   const projectId = stored.state.project_id;
   const npcId = stored.state.definition_id;
+  const wsStorage = getStorageForUser(stored.userId);
 
-  getDefinition(projectId, npcId).then((definition) => {
+  wsStorage.getDefinition(projectId, npcId).then((definition) => {
     const voiceConfig = definition.voice;
     const ttsProviderType = (voiceConfig.provider || 'cartesia') as TTSProviderType;
     const ttsApiKey = ttsProviderType === 'elevenlabs' ? config.providers.elevenLabsApiKey : cartesiaKey;

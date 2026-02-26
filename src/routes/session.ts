@@ -8,7 +8,8 @@ import {
   getSessionStats,
   SessionError,
 } from '../session/manager.js';
-import { getOrCreateInstance, StorageNotFoundError } from '../storage/index.js';
+import { StorageNotFoundError } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
 
 const logger = createLogger('routes-session');
@@ -60,8 +61,9 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       }
 
       const { project_id, npc_id, player_id, player_info, mode } = parsed.data;
+      const userId = c.get('userId') ?? undefined;
 
-      const result = await startSession(project_id, npc_id, player_id, player_info, mode);
+      const result = await startSession(project_id, npc_id, player_id, player_info, mode, userId);
 
       const duration = Date.now() - startTime;
       logger.info({ sessionId: result.session_id, projectId: project_id, npcId: npc_id, playerId: player_id, duration }, 'Session started via API');
@@ -142,7 +144,10 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
     }
 
     try {
-      const instance = await getOrCreateInstance(projectId, npcId, playerId);
+      const userId = c.get('userId') ?? undefined;
+      const storage = getStorageForUser(userId);
+
+      const instance = await storage.getOrCreateInstance(projectId, npcId, playerId);
 
       const duration = Date.now() - startTime;
       logger.debug({ projectId, npcId, playerId, instanceId: instance.id, duration }, 'Instance retrieved via API');

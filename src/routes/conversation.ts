@@ -8,7 +8,8 @@ import { rateLimiter } from '../security/rate-limiter.js';
 import { assembleSystemPrompt, assembleConversationHistory } from '../core/context.js';
 import { getAvailableTools, isExitConvoTool, validateToolArguments } from '../core/tools.js';
 import { blendMoods } from '../core/personality.js';
-import type { LLMProvider, LLMMessage } from '../providers/llm/interface.js';
+import type { LLMProvider, LLMMessage, LLMProviderType } from '../providers/llm/interface.js';
+import { createLlmProvider, getDefaultModel, getDefaultLlmProviderType, isLlmProviderSupported } from '../providers/llm/factory.js';
 import type { Message } from '../types/session.js';
 import type { SecurityContext } from '../types/security.js';
 import type { ToolCall, ToolResult } from '../types/mcp.js';
@@ -143,13 +144,31 @@ export function createConversationRoutes(
         20
       );
 
-      // 11. Call LLM
+      // 11. Resolve per-project LLM provider (overrides the global default)
+      const projectSettings = sessionContext.project.settings;
+      const defaultProviderType = getDefaultLlmProviderType();
+      const rawProviderType = projectSettings.llm_provider || defaultProviderType;
+      const providerType: LLMProviderType = isLlmProviderSupported(rawProviderType)
+        ? rawProviderType
+        : defaultProviderType;
+      const modelId = projectSettings.llm_model || getDefaultModel(providerType);
+      const projectApiKey = sessionContext.apiKeys[providerType as keyof typeof sessionContext.apiKeys];
+
+      const activeProvider = projectApiKey
+        ? createLlmProvider({ provider: providerType, apiKey: projectApiKey, model: modelId })
+        : llmProvider; // fall back to global if no per-project key
+
+      if (!activeProvider) {
+        return c.json({ error: 'No LLM provider configured' }, 503);
+      }
+
+      // 12. Call LLM
       let responseText = '';
       const toolCalls: ToolCall[] = [];
 
       const llmMessages: LLMMessage[] = conversationHistory;
 
-      for await (const chunk of llmProvider.streamChat({
+      for await (const chunk of activeProvider.streamChat({
         systemPrompt,
         messages: llmMessages,
         tools: availableTools.length > 0 ? availableTools : undefined,
@@ -162,7 +181,7 @@ export function createConversationRoutes(
         }
       }
 
-      // 12. Handle tool calls
+      // 13. Handle tool calls
       const toolResults: ToolResult[] = [];
       let exitConvoResult: ExitConvoResult | undefined;
 
@@ -226,14 +245,14 @@ export function createConversationRoutes(
         }
       }
 
-      // 13. Add assistant message to history
+      // 14. Add assistant message to history
       const assistantMessage: Message = {
         role: 'assistant',
         content: responseText,
       };
       addMessageToSession(sessionId, assistantMessage);
 
-      // 14. Update mood based on conversation (subtle drift)
+      // 15. Update mood based on conversation (subtle drift)
       const instance_updated = { ...instance };
       if (moderationResult.action === 'warn') {
         // Negative mood shift if moderation warned
@@ -246,7 +265,7 @@ export function createConversationRoutes(
       }
       updateSessionInstance(sessionId, instance_updated);
 
-      // 15. Build response
+      // 16. Build response
       const response: ConversationResponse = {
         response: responseText,
         mood: instance_updated.current_mood,

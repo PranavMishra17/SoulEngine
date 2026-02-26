@@ -2,6 +2,7 @@ export type ProjectID = string;
 
 export interface ProjectSettings {
   llm_provider: string;
+  llm_model?: string;
   stt_provider: string;
   tts_provider: string;
   default_voice_id: string;

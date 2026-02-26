@@ -12,6 +12,7 @@ const logger = createLogger('supabase-projects');
 function getDefaultSettings(): ProjectSettings {
   return {
     llm_provider: 'gemini',
+    llm_model: '',
     stt_provider: 'deepgram',
     tts_provider: 'cartesia',
     default_voice_id: '',

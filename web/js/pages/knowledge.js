@@ -24,6 +24,7 @@ export async function initKnowledgePage(params) {
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge', active: true },
     { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
     { href: `/projects/${projectId}/playground`, label: 'Playground' },
+    { href: `/projects/${projectId}/settings`, label: 'Settings' },
   ]);
 
   // Update breadcrumb

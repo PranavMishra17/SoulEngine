@@ -10,7 +10,7 @@ import type {
 
 const logger = createLogger('grok-provider');
 
-const DEFAULT_MODEL = 'grok-beta';
+const DEFAULT_MODEL = 'grok-3';
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TEMPERATURE = 0.7;
 

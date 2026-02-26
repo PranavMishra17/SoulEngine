@@ -17,6 +17,7 @@ let isVoiceActive = false;
 let micVAD = null; // @ricky0123/vad-web instance
 let messageCount = 0;
 let responseBuffer = '';
+let currentNpcInfo = null; // Store {name, profile_image, id} for chat bubbles and header
 
 // Audio playback state
 let audioContext = null;
@@ -56,6 +57,7 @@ export async function initPlaygroundPage(params) {
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
     { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
     { href: `/projects/${projectId}/playground`, label: 'Playground', active: true },
+    { href: `/projects/${projectId}/settings`, label: 'Settings' },
   ]);
 
   // Update breadcrumb
@@ -167,16 +169,43 @@ async function loadNpcInfo(npcId) {
     const npc = await npcs.get(currentProjectId, npcId);
     document.getElementById('info-npc-name').textContent = npc.name;
     document.getElementById('info-npc-description').textContent = npc.description || 'No description';
-    
+
+    // Set sidebar avatar
+    const avatarImg = document.getElementById('info-npc-avatar-img');
+    const avatarInitials = document.getElementById('info-npc-avatar-initials');
+    const avatarContainer = document.getElementById('info-npc-avatar');
+
+    if (npc.profile_image && npc.profile_image.trim() !== '') {
+      const src = (npc.profile_image.startsWith('http://') || npc.profile_image.startsWith('https://'))
+        ? npc.profile_image
+        : `/api/projects/${currentProjectId}/npcs/${npcId}/avatar`;
+      avatarImg.src = src;
+      avatarImg.alt = npc.name;
+      avatarImg.style.display = 'block';
+      avatarInitials.style.display = 'none';
+      avatarContainer.style.background = '';
+      avatarImg.onerror = () => {
+        avatarImg.style.display = 'none';
+        avatarInitials.style.display = 'flex';
+        avatarInitials.textContent = npc.name.charAt(0).toUpperCase();
+        avatarContainer.style.background = 'linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary))';
+      };
+    } else {
+      avatarImg.style.display = 'none';
+      avatarInitials.style.display = 'flex';
+      avatarInitials.textContent = npc.name.charAt(0).toUpperCase();
+      avatarContainer.style.background = 'linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary))';
+    }
+
     // Enable/disable player name field based on NPC settings
     const playerNameField = document.getElementById('player-name');
     const playerCheckbox = document.getElementById('enable-player-recognition');
-    
+
     if (playerNameField && playerCheckbox) {
       const supportsRecognition = npc.player_recognition?.reveal_player_identity !== false;
       playerNameField.disabled = !supportsRecognition;
       playerCheckbox.disabled = !supportsRecognition;
-      
+
       if (!supportsRecognition) {
         playerNameField.placeholder = 'This NPC does not support player recognition';
         playerCheckbox.checked = false;
@@ -227,6 +256,17 @@ async function handleStartSession() {
     const result = await session.start(currentProjectId, currentNpcId, playerId, playerInfo, currentConversationMode);
     currentSessionId = result.session_id;
 
+    // Fetch NPC data for avatar (may already be loaded in sidebar, but need it here for header/bubbles)
+    let npc;
+    try {
+      npc = await npcs.get(currentProjectId, currentNpcId);
+    } catch (e) {
+      npc = { name: result.npc_name, profile_image: null, id: currentNpcId };
+    }
+
+    // Store NPC info for chat bubbles
+    currentNpcInfo = { name: npc.name, profile_image: npc.profile_image, id: currentNpcId };
+
     // Update UI
     document.getElementById('npc-info-panel').style.display = 'none';
     document.getElementById('session-panel').style.display = 'block';
@@ -239,6 +279,43 @@ async function handleStartSession() {
     // Clear chat
     const messages = document.getElementById('chat-messages');
     messages.innerHTML = '';
+
+    // Show and populate chat NPC header
+    const chatHeader = document.getElementById('chat-npc-header');
+    chatHeader.style.display = 'flex';
+    document.getElementById('chat-header-name').textContent = npc.name;
+    document.getElementById('chat-header-mood').textContent = `${moodPreset.emoji} ${moodPreset.label}`;
+
+    const headerImg = document.getElementById('chat-header-avatar-img');
+    const headerInitials = document.getElementById('chat-header-avatar-initials');
+    const headerAvatar = document.getElementById('chat-header-avatar');
+    if (npc.profile_image && npc.profile_image.trim() !== '') {
+      const src = (npc.profile_image.startsWith('http://') || npc.profile_image.startsWith('https://'))
+        ? npc.profile_image
+        : `/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`;
+      headerImg.src = src;
+      headerImg.alt = npc.name;
+      headerImg.style.display = 'block';
+      headerInitials.style.display = 'none';
+      headerAvatar.style.background = '';
+      headerImg.onerror = () => {
+        headerImg.style.display = 'none';
+        headerInitials.style.display = 'flex';
+        headerInitials.textContent = npc.name.charAt(0).toUpperCase();
+        headerAvatar.style.background = 'linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary))';
+      };
+    } else {
+      headerImg.style.display = 'none';
+      headerInitials.style.display = 'flex';
+      headerInitials.textContent = npc.name.charAt(0).toUpperCase();
+      headerAvatar.style.background = 'linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary))';
+    }
+
+    // Wire up end session button in header
+    const btnEndHeader = document.getElementById('btn-end-session-header');
+    // Remove old listener to avoid stacking
+    btnEndHeader.replaceWith(btnEndHeader.cloneNode(true));
+    document.getElementById('btn-end-session-header').addEventListener('click', () => handleEndSession());
 
     // Add system message with context
     const taskLabel = taskSelect === 'custom' ? customTask : taskSelect.replace('_', ' ');
@@ -292,11 +369,18 @@ async function handleEndSession(exitConvoUsed = false) {
     document.getElementById('session-panel').style.display = 'none';
     document.getElementById('npc-info-panel').style.display = 'block';
     document.getElementById('chat-input-area').style.display = 'none';
-    
+
+    // Hide chat NPC header
+    const chatHeader = document.getElementById('chat-npc-header');
+    if (chatHeader) chatHeader.style.display = 'none';
+
+    // Clear stored NPC info
+    currentNpcInfo = null;
+
     // Show session setup panel again for next session
     const setupPanel = document.getElementById('session-setup-panel');
     if (setupPanel) setupPanel.style.display = 'block';
-    
+
     // Reset chat interface (show mode toggle again for next session)
     resetChatInterface();
 
@@ -983,12 +1067,43 @@ function addChatMessage(role, content) {
     placeholder.remove();
   }
 
-  const messageEl = document.createElement('div');
-  messageEl.className = `chat-message ${role}`;
-  messageEl.textContent = content;
+  if (role === 'assistant' && currentNpcInfo) {
+    // Wrap assistant message in a row with a mini avatar
+    const rowEl = document.createElement('div');
+    rowEl.className = 'chat-message-row assistant';
 
-  messages.appendChild(messageEl);
+    const avatarEl = document.createElement('div');
+    avatarEl.innerHTML = buildMiniAvatar(currentNpcInfo);
+    const avatarNode = avatarEl.firstElementChild;
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message assistant';
+    messageEl.textContent = content;
+
+    rowEl.appendChild(avatarNode);
+    rowEl.appendChild(messageEl);
+    messages.appendChild(rowEl);
+  } else {
+    const messageEl = document.createElement('div');
+    messageEl.className = `chat-message ${role}`;
+    messageEl.textContent = content;
+    messages.appendChild(messageEl);
+  }
+
   messages.scrollTop = messages.scrollHeight;
+}
+
+/**
+ * Build a small avatar element for chat message rows
+ */
+function buildMiniAvatar(npc) {
+  if (npc.profile_image && npc.profile_image.trim() !== '') {
+    const src = (npc.profile_image.startsWith('http://') || npc.profile_image.startsWith('https://'))
+      ? npc.profile_image
+      : `/api/projects/${currentProjectId}/npcs/${npc.id}/avatar`;
+    return `<div class="msg-avatar"><img src="${src}" alt="${escapeHtml(npc.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="msg-avatar-fallback" style="display:none;">${escapeHtml(npc.name.charAt(0).toUpperCase())}</span></div>`;
+  }
+  return `<div class="msg-avatar msg-avatar-initials">${escapeHtml(npc.name.charAt(0).toUpperCase())}</div>`;
 }
 
 /**

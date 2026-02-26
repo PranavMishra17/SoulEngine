@@ -2,16 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import {
-  getKnowledgeBase,
-  updateKnowledgeBase,
-  upsertCategory,
-  deleteCategory,
-  getCategory,
-  getProject,
   StorageNotFoundError,
   StorageValidationError,
   StorageLimitError,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 
 const logger = createLogger('routes-knowledge');
 
@@ -47,10 +42,13 @@ knowledgeRoutes.get('/', async (c) => {
   }
 
   try {
-    // Verify project exists
-    await getProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
-    const knowledgeBase = await getKnowledgeBase(projectId);
+    // Verify project exists
+    await storage.getProject(projectId);
+
+    const knowledgeBase = await storage.getKnowledgeBase(projectId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, categoryCount: Object.keys(knowledgeBase.categories).length, duration }, 'Knowledge base retrieved via API');
@@ -82,8 +80,11 @@ knowledgeRoutes.put('/', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     const body = await c.req.json();
     const parsed = UpdateKnowledgeBaseSchema.safeParse(body);
@@ -93,7 +94,7 @@ knowledgeRoutes.put('/', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    await updateKnowledgeBase(projectId, parsed.data);
+    await storage.updateKnowledgeBase(projectId, parsed.data);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, categoryCount: Object.keys(parsed.data.categories).length, duration }, 'Knowledge base updated via API');
@@ -136,10 +137,13 @@ knowledgeRoutes.get('/categories/:categoryId', async (c) => {
   }
 
   try {
-    // Verify project exists
-    await getProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
-    const category = await getCategory(projectId, categoryId);
+    // Verify project exists
+    await storage.getProject(projectId);
+
+    const category = await storage.getCategory(projectId, categoryId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, categoryId, duration }, 'Category retrieved via API');
@@ -176,8 +180,11 @@ knowledgeRoutes.put('/categories/:categoryId', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     const body = await c.req.json();
 
@@ -190,7 +197,7 @@ knowledgeRoutes.put('/categories/:categoryId', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    const knowledgeBase = await upsertCategory(projectId, parsed.data);
+    const knowledgeBase = await storage.upsertCategory(projectId, parsed.data);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, categoryId, duration }, 'Category upserted via API');
@@ -233,10 +240,13 @@ knowledgeRoutes.delete('/categories/:categoryId', async (c) => {
   }
 
   try {
-    // Verify project exists
-    await getProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
-    await deleteCategory(projectId, categoryId);
+    // Verify project exists
+    await storage.getProject(projectId);
+
+    await storage.deleteCategory(projectId, categoryId);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, categoryId, duration }, 'Category deleted via API');

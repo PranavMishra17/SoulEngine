@@ -38,6 +38,7 @@ function getProjectConfigPath(projectId: string): string {
 function getDefaultSettings(): ProjectSettings {
   return {
     llm_provider: 'gemini',
+    llm_model: '',
     stt_provider: 'deepgram',
     tts_provider: 'cartesia',
     default_voice_id: '',

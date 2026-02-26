@@ -69,9 +69,9 @@ export function getDefaultModel(provider: LLMProviderType): string {
     case 'openai':
       return 'gpt-4o';
     case 'anthropic':
-      return 'claude-3-5-sonnet-20241022';
+      return 'claude-sonnet-4-6';
     case 'grok':
-      return 'grok-beta';
+      return 'grok-3';
     default:
       return 'gemini-2.5-flash';
   }
@@ -86,25 +86,26 @@ export function getModelsForProvider(provider: LLMProviderType): { id: string; n
       return [
         { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Fast)' },
         { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Smart)' },
-        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+        { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview (Latest)' },
       ];
     case 'openai':
       return [
         { id: 'gpt-4o', name: 'GPT-4o (Recommended)' },
         { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast)' },
-        { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-        { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo (Economy)' },
+        { id: 'gpt-4.1', name: 'GPT-4.1 (Latest)' },
+        { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini (Economy)' },
       ];
     case 'anthropic':
       return [
-        { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Recommended)' },
-        { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Smart)' },
-        { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Fast)' },
+        { id: 'claude-opus-4-6', name: 'Claude Opus 4.6 (Most Capable)' },
+        { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Recommended)' },
+        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)' },
       ];
     case 'grok':
       return [
-        { id: 'grok-beta', name: 'Grok Beta' },
-        { id: 'grok-2', name: 'Grok 2' },
+        { id: 'grok-4', name: 'Grok 4 (Most Capable)' },
+        { id: 'grok-3', name: 'Grok 3 (Recommended)' },
+        { id: 'grok-3-mini', name: 'Grok 3 Mini (Economy)' },
       ];
     default:
       return [];

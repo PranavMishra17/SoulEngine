@@ -2,14 +2,9 @@ import { createLogger } from '../logger.js';
 import { getConfig } from '../config.js';
 import { sessionStore, StoredSession } from './store.js';
 import {
-  getProject,
-  getDefinition,
-  getOrCreateInstance,
-  saveInstance,
-  getKnowledgeBase,
-  loadApiKeys,
   type ApiKeys,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 import { validateAnchorIntegrity } from '../security/anchor-guard.js';
 import { resolveKnowledge } from '../core/knowledge.js';
 import { summarizeConversation, NPCPerspective } from '../core/summarizer.js';
@@ -93,10 +88,13 @@ export async function startSession(
   npcId: string,
   playerId: string,
   playerInfo?: PlayerInfo,
-  mode?: ConversationMode
+  mode?: ConversationMode,
+  userId?: string | null
 ): Promise<SessionStartResult> {
   const startTime = Date.now();
   logger.info({ projectId, npcId, playerId }, 'Starting session');
+
+  const storage = getStorageForUser(userId);
 
   try {
     // Check if project can accept more sessions
@@ -109,11 +107,11 @@ export async function startSession(
     }
 
     // Load project
-    const project = await getProject(projectId);
+    const project = await storage.getProject(projectId);
 
     // Load NPC definition
-    const definition = await getDefinition(projectId, npcId);
-    
+    const definition = await storage.getDefinition(projectId, npcId);
+
     // Player info is always accepted if provided (can_know_player is always true functionally)
     // Whether it's used depends on reveal_player_identity in context assembly
     const effectivePlayerInfo = playerInfo || null;
@@ -122,7 +120,7 @@ export async function startSession(
     const effectiveMode = mode || CONVERSATION_MODES.TEXT_TEXT;
 
     // Get or create instance for this player
-    const instance = await getOrCreateInstance(projectId, npcId, playerId);
+    const instance = await storage.getOrCreateInstance(projectId, npcId, playerId);
 
     // Note: Knowledge base and API keys are loaded on-demand via getSessionContext()
     // during conversation processing, not cached at session start
@@ -152,8 +150,8 @@ export async function startSession(
       trauma_flags: [...definition.core_anchor.trauma_flags],
     };
 
-    // Store session
-    sessionStore.create(sessionId, sessionState, originalAnchor);
+    // Store session with userId so endSession and getSessionContext can pick the right backend
+    sessionStore.create(sessionId, sessionState, originalAnchor, userId);
 
     const duration = Date.now() - startTime;
     logger.info(
@@ -213,11 +211,12 @@ export async function endSession(
     throw new SessionError(`Session not found: ${sessionId}`, 'SESSION_NOT_FOUND');
   }
 
-  const { state, originalAnchor } = stored;
+  const { state, originalAnchor, userId } = stored;
+  const storage = getStorageForUser(userId);
 
   try {
     // Load definition for summarization context
-    const definition = await getDefinition(state.project_id, state.definition_id);
+    const definition = await storage.getDefinition(state.project_id, state.definition_id);
 
     let memorySaved = false;
     const instance = state.instance;
@@ -272,7 +271,7 @@ export async function endSession(
     }
 
     // Save instance state
-    const saveResult = await saveInstance(instance);
+    const saveResult = await storage.saveInstance(instance);
 
     // Remove session from store
     sessionStore.delete(sessionId);
@@ -323,13 +322,14 @@ export async function getSessionContext(sessionId: SessionID): Promise<SessionCo
     throw new SessionError(`Session not found: ${sessionId}`, 'SESSION_NOT_FOUND');
   }
 
-  const { state } = stored;
+  const { state, userId } = stored;
+  const storage = getStorageForUser(userId);
 
   const [project, definition, knowledgeBase, apiKeys] = await Promise.all([
-    getProject(state.project_id),
-    getDefinition(state.project_id, state.definition_id),
-    getKnowledgeBase(state.project_id),
-    loadApiKeys(state.project_id),
+    storage.getProject(state.project_id),
+    storage.getDefinition(state.project_id, state.definition_id),
+    storage.getKnowledgeBase(state.project_id),
+    storage.loadApiKeys(state.project_id),
   ]);
 
   const resolvedKnowledge = resolveKnowledge(knowledgeBase, definition.knowledge_access);

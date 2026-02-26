@@ -9,27 +9,28 @@ import { router } from '../router.js';
 let currentProject = null;
 let currentProjectId = null;
 
-// LLM models by provider
+// LLM models by provider (Feb 2026 — keep in sync with src/providers/llm/factory.ts)
 const LLM_MODELS = {
   gemini: [
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Fast)' },
     { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Smart)' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview (Latest)' },
   ],
   openai: [
     { id: 'gpt-4o', name: 'GPT-4o (Recommended)' },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast)' },
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo (Economy)' },
+    { id: 'gpt-4.1', name: 'GPT-4.1 (Latest)' },
+    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini (Economy)' },
   ],
   anthropic: [
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Recommended)' },
-    { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Smart)' },
-    { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Fast)' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Recommended)' },
+    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6 (Most Capable)' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Fast)' },
   ],
   grok: [
-    { id: 'grok-beta', name: 'Grok Beta' },
+    { id: 'grok-3', name: 'Grok 3 (Recommended)' },
+    { id: 'grok-4', name: 'Grok 4 (Most Capable)' },
+    { id: 'grok-3-mini', name: 'Grok 3 Mini (Economy)' },
   ],
 };
 

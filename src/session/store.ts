@@ -13,6 +13,8 @@ export interface StoredSession {
   originalAnchor: CoreAnchor;
   createdAt: number;
   lastActivity: number;
+  /** User ID from auth context — null if logged out (uses local storage) */
+  userId?: string | null;
 }
 
 /**
@@ -34,7 +36,7 @@ class SessionStore {
   /**
    * Create a new session in the store
    */
-  create(sessionId: SessionID, state: SessionState, originalAnchor: CoreAnchor): void {
+  create(sessionId: SessionID, state: SessionState, originalAnchor: CoreAnchor, userId?: string | null): void {
     const now = Date.now();
 
     const stored: StoredSession = {
@@ -42,6 +44,7 @@ class SessionStore {
       originalAnchor,
       createdAt: now,
       lastActivity: now,
+      userId,
     };
 
     this.sessions.set(sessionId, stored);

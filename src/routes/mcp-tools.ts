@@ -2,13 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import {
-  getMCPTools,
-  saveMCPTools,
-  getProject,
   StorageNotFoundError,
   StorageValidationError,
   type ProjectMCPTools,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 
 const logger = createLogger('routes-mcp-tools');
 
@@ -61,10 +59,13 @@ mcpToolsRoutes.get('/', async (c) => {
   }
 
   try {
-    // Verify project exists
-    await getProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
-    const tools = await getMCPTools(projectId);
+    // Verify project exists
+    await storage.getProject(projectId);
+
+    const tools = await storage.getMCPTools(projectId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, duration }, 'MCP tools retrieved via API');
@@ -96,8 +97,11 @@ mcpToolsRoutes.put('/', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     const body = await c.req.json();
     const parsed = UpdateMCPToolsSchema.safeParse(body);
@@ -107,7 +111,7 @@ mcpToolsRoutes.put('/', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    await saveMCPTools(projectId, parsed.data as ProjectMCPTools);
+    await storage.saveMCPTools(projectId, parsed.data as ProjectMCPTools);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, duration }, 'MCP tools updated via API');

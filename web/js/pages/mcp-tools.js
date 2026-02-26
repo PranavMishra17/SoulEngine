@@ -80,6 +80,7 @@ export async function initMcpToolsPage(params) {
     { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
     { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools', active: true },
     { href: `/projects/${projectId}/playground`, label: 'Playground' },
+    { href: `/projects/${projectId}/settings`, label: 'Settings' },
   ]);
 
   // Update breadcrumb

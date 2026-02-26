@@ -7,24 +7,10 @@ import {
   STARTER_PACK_TOOLS,
 } from '../data/starter-pack.js';
 import {
-  createProject,
-  getProject,
-  updateProject,
-  deleteProject,
-  listProjects,
-  saveApiKeys,
-  loadApiKeys,
-  listDefinitions,
-  listInstances,
-  getKnowledgeBase,
-  getMCPTools,
-  updateKnowledgeBase,
-  saveMCPTools,
-  createDefinition,
-  updateDefinition,
   StorageNotFoundError,
   StorageValidationError,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 
 const logger = createLogger('routes-projects');
 
@@ -95,10 +81,11 @@ projectRoutes.post('/', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    // Get user ID from auth context (will be null in dev mode, required in prod with Supabase)
+    // Get user ID from auth context (null if logged out → local storage)
     const userId = c.get('userId') ?? undefined;
-    
-    const project = await createProject(parsed.data.name, userId);
+    const storage = getStorageForUser(userId);
+
+    const project = await storage.createProject(parsed.data.name, userId);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId: project.id, userId, duration }, 'Project created via API');
@@ -121,8 +108,9 @@ projectRoutes.get('/', async (c) => {
   try {
     // Get user ID from auth context to filter projects (undefined in dev mode = all projects)
     const userId = c.get('userId') ?? undefined;
-    
-    const projects = await listProjects(userId);
+    const storage = getStorageForUser(userId);
+
+    const projects = await storage.listProjects(userId);
 
     const duration = Date.now() - startTime;
     logger.debug({ count: projects.length, userId, duration }, 'Projects listed via API');
@@ -144,7 +132,10 @@ projectRoutes.get('/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    const project = await getProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const project = await storage.getProject(projectId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, duration }, 'Project retrieved via API');
@@ -180,13 +171,16 @@ projectRoutes.put('/:projectId', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Only include fields that are present in the request
-    const updates: Parameters<typeof updateProject>[1] = {};
+    const updates: Parameters<typeof storage.updateProject>[1] = {};
     if (parsed.data.name !== undefined) updates.name = parsed.data.name;
     if (parsed.data.settings !== undefined) updates.settings = parsed.data.settings as typeof updates.settings;
     if (parsed.data.limits !== undefined) updates.limits = parsed.data.limits as typeof updates.limits;
 
-    const project = await updateProject(projectId, updates);
+    const project = await storage.updateProject(projectId, updates);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, duration }, 'Project updated via API');
@@ -219,11 +213,14 @@ projectRoutes.get('/:projectId/keys', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     // Load keys and return masked status
-    const keys = await loadApiKeys(projectId);
+    const keys = await storage.loadApiKeys(projectId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, duration }, 'API keys status retrieved via API');
@@ -262,8 +259,11 @@ projectRoutes.put('/:projectId/keys', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     const body = await c.req.json();
     const parsed = UpdateApiKeysSchema.safeParse(body);
@@ -274,7 +274,7 @@ projectRoutes.put('/:projectId/keys', async (c) => {
     }
 
     // Load existing keys and merge with updates
-    const existingKeys = await loadApiKeys(projectId);
+    const existingKeys = await storage.loadApiKeys(projectId);
     const mergedKeys = { ...existingKeys };
 
     // Only update provided keys
@@ -289,7 +289,7 @@ projectRoutes.put('/:projectId/keys', async (c) => {
     if (parsed.data.cartesia !== undefined) mergedKeys.cartesia = parsed.data.cartesia;
     if (parsed.data.elevenlabs !== undefined) mergedKeys.elevenlabs = parsed.data.elevenlabs;
 
-    await saveApiKeys(projectId, mergedKeys);
+    await storage.saveApiKeys(projectId, mergedKeys);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, duration }, 'API keys updated via API');
@@ -334,7 +334,10 @@ projectRoutes.delete('/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    await deleteProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    await storage.deleteProject(projectId);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, duration }, 'Project deleted via API');
@@ -363,9 +366,12 @@ projectRoutes.get('/:projectId/voices', async (c) => {
   const provider = c.req.query('provider') || 'cartesia';
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists and load API keys
-    await getProject(projectId);
-    const apiKeys = await loadApiKeys(projectId);
+    await storage.getProject(projectId);
+    const apiKeys = await storage.loadApiKeys(projectId);
 
     let voices: Array<{ id: string; name: string; description?: string; preview_url?: string }> = [];
 
@@ -458,16 +464,19 @@ projectRoutes.get('/:projectId/stats', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    const project = await getProject(projectId);
+    const project = await storage.getProject(projectId);
 
     // Gather stats in parallel
     const [definitions, instances, knowledgeBase, mcpTools, apiKeys] = await Promise.all([
-      listDefinitions(projectId).catch(() => []),
-      listInstances(projectId).catch(() => []),
-      getKnowledgeBase(projectId).catch(() => ({ categories: {} })),
-      getMCPTools(projectId).catch(() => ({ conversation_tools: [], game_event_tools: [] })),
-      loadApiKeys(projectId).catch(() => ({})),
+      storage.listDefinitions(projectId).catch(() => []),
+      storage.listInstances(projectId).catch(() => []),
+      storage.getKnowledgeBase(projectId).catch(() => ({ categories: {} })),
+      storage.getMCPTools(projectId).catch(() => ({ conversation_tools: [], game_event_tools: [] })),
+      storage.loadApiKeys(projectId).catch(() => ({})),
     ]);
 
     // Calculate stats
@@ -552,9 +561,12 @@ projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists and get API keys
-    await getProject(projectId);
-    const apiKeys = await loadApiKeys(projectId);
+    await storage.getProject(projectId);
+    const apiKeys = await storage.loadApiKeys(projectId);
 
     const body = await c.req.json();
     const parsed = GenerateContentSchema.safeParse(body);
@@ -704,8 +716,11 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     const results = {
       npcs_added: 0,
@@ -722,15 +737,15 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
       try {
         // Remove id - let storage generate new one
         const { id: oldId, ...npcData } = npc;
-        
+
         // Temporarily clear network (will update after all NPCs created)
         const npcToCreate = {
           ...npcData,
           network: [],
         };
-        
-        const created = await createDefinition(projectId, npcToCreate as Parameters<typeof createDefinition>[1]);
-        
+
+        const created = await storage.createDefinition(projectId, npcToCreate as Parameters<typeof storage.createDefinition>[1]);
+
         npcIdMap[oldId] = created.id;
         results.npcs_added++;
       } catch (error) {
@@ -742,7 +757,7 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
     // Now update networks with correct IDs
     for (const npc of STARTER_PACK_NPCS) {
       const newId = npcIdMap[npc.id];
-      
+
       if (newId && npc.network && npc.network.length > 0) {
         try {
           // Map network IDs to new IDs - cast explicitly for type safety
@@ -752,9 +767,9 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
               familiarity_tier: entry.familiarity_tier as 1 | 2 | 3,
             }))
             .filter(entry => npcIdMap[entry.npc_id]); // Only include mapped IDs
-          
+
           if (newNetwork.length > 0) {
-            await updateDefinition(projectId, newId, { network: newNetwork });
+            await storage.updateDefinition(projectId, newId, { network: newNetwork });
           }
         } catch (error) {
           logger.warn({ npcId: newId }, 'Failed to update NPC network');
@@ -764,13 +779,13 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
 
     // Load knowledge base - merge with existing
     try {
-      const existing = await getKnowledgeBase(projectId);
+      const existing = await storage.getKnowledgeBase(projectId);
       const mergedCategories = {
         ...existing.categories,
         ...STARTER_PACK_KNOWLEDGE,
       };
-      
-      await updateKnowledgeBase(projectId, { categories: mergedCategories });
+
+      await storage.updateKnowledgeBase(projectId, { categories: mergedCategories });
       results.knowledge_categories_added = Object.keys(STARTER_PACK_KNOWLEDGE).length;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -779,23 +794,23 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
 
     // Load MCP tools - merge with existing
     try {
-      const existing = await getMCPTools(projectId);
-      
+      const existing = await storage.getMCPTools(projectId);
+
       const existingConvIds = new Set(existing.conversation_tools.map(t => t.id));
       const existingGameIds = new Set(existing.game_event_tools.map(t => t.id));
-      
+
       // Filter out duplicates - use unknown cast for flexibility
       const newConvTools = (STARTER_PACK_TOOLS.conversation_tools as unknown as typeof existing.conversation_tools)
         .filter(t => !existingConvIds.has(t.id));
       const newGameTools = (STARTER_PACK_TOOLS.game_event_tools as unknown as typeof existing.game_event_tools)
         .filter(t => !existingGameIds.has(t.id));
-      
+
       const merged = {
         conversation_tools: [...existing.conversation_tools, ...newConvTools],
         game_event_tools: [...existing.game_event_tools, ...newGameTools],
       };
-      
-      await saveMCPTools(projectId, merged);
+
+      await storage.saveMCPTools(projectId, merged);
       results.conversation_tools_added = newConvTools.length;
       results.game_event_tools_added = newGameTools.length;
     } catch (error) {

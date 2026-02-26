@@ -4,19 +4,12 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createLogger } from '../logger.js';
 import {
-  createDefinition,
-  getDefinition,
-  updateDefinition,
-  deleteDefinition,
-  listDefinitions,
-  getProject,
-  uploadNpcImage,
-  deleteNpcImage,
   storageMode,
   StorageNotFoundError,
   StorageValidationError,
   StorageLimitError,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 
@@ -133,14 +126,17 @@ const UpdateNPCSchema = z.object({
  * Helper functions for bidirectional network updates
  */
 
+type StorageBackend = ReturnType<typeof getStorageForUser>;
+
 async function addToOtherNpcNetwork(
+  storage: StorageBackend,
   projectId: string,
   otherNpcId: string,
   thisNpcId: string,
   tier: 1 | 2 | 3
 ): Promise<void> {
   try {
-    const otherNpc = await getDefinition(projectId, otherNpcId);
+    const otherNpc = await storage.getDefinition(projectId, otherNpcId);
     const network = otherNpc.network || [];
 
     // Check if already in network
@@ -155,7 +151,7 @@ async function addToOtherNpcNetwork(
     }
 
     network.push({ npc_id: thisNpcId, familiarity_tier: tier });
-    await updateDefinition(projectId, otherNpcId, { network });
+    await storage.updateDefinition(projectId, otherNpcId, { network });
     logger.debug({ projectId, otherNpcId, thisNpcId, tier }, 'Added to other NPC network');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -164,12 +160,13 @@ async function addToOtherNpcNetwork(
 }
 
 async function removeFromOtherNpcNetwork(
+  storage: StorageBackend,
   projectId: string,
   otherNpcId: string,
   thisNpcId: string
 ): Promise<void> {
   try {
-    const otherNpc = await getDefinition(projectId, otherNpcId);
+    const otherNpc = await storage.getDefinition(projectId, otherNpcId);
     const network = otherNpc.network || [];
 
     const idx = network.findIndex(n => n.npc_id === thisNpcId);
@@ -178,7 +175,7 @@ async function removeFromOtherNpcNetwork(
     }
 
     network.splice(idx, 1);
-    await updateDefinition(projectId, otherNpcId, { network });
+    await storage.updateDefinition(projectId, otherNpcId, { network });
     logger.debug({ projectId, otherNpcId, thisNpcId }, 'Removed from other NPC network');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -187,24 +184,25 @@ async function removeFromOtherNpcNetwork(
 }
 
 async function updateOtherNpcNetworkTier(
+  storage: StorageBackend,
   projectId: string,
   otherNpcId: string,
   thisNpcId: string,
   tier: 1 | 2 | 3
 ): Promise<void> {
   try {
-    const otherNpc = await getDefinition(projectId, otherNpcId);
+    const otherNpc = await storage.getDefinition(projectId, otherNpcId);
     const network = otherNpc.network || [];
 
     const entry = network.find(n => n.npc_id === thisNpcId);
     if (!entry) {
       // Not in their network, add them
-      await addToOtherNpcNetwork(projectId, otherNpcId, thisNpcId, tier);
+      await addToOtherNpcNetwork(storage, projectId, otherNpcId, thisNpcId, tier);
       return;
     }
 
     entry.familiarity_tier = tier;
-    await updateDefinition(projectId, otherNpcId, { network });
+    await storage.updateDefinition(projectId, otherNpcId, { network });
     logger.debug({ projectId, otherNpcId, thisNpcId, tier }, 'Updated tier in other NPC network');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -229,8 +227,11 @@ npcRoutes.post('/', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify project exists
-    await getProject(projectId);
+    await storage.getProject(projectId);
 
     const body = await c.req.json();
     const parsed = CreateNPCSchema.safeParse(body);
@@ -240,7 +241,7 @@ npcRoutes.post('/', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    const definition = await createDefinition(projectId, parsed.data);
+    const definition = await storage.createDefinition(projectId, parsed.data);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, npcId: definition.id, name: definition.name, duration }, 'NPC created via API');
@@ -282,10 +283,13 @@ npcRoutes.get('/', async (c) => {
   }
 
   try {
-    // Verify project exists
-    await getProject(projectId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
-    const definitions = await listDefinitions(projectId);
+    // Verify project exists
+    await storage.getProject(projectId);
+
+    const definitions = await storage.listDefinitions(projectId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, count: definitions.length, duration }, 'NPCs listed via API');
@@ -318,7 +322,10 @@ npcRoutes.get('/:npcId', async (c) => {
   }
 
   try {
-    const definition = await getDefinition(projectId, npcId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const definition = await storage.getDefinition(projectId, npcId);
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, npcId, duration }, 'NPC retrieved via API');
@@ -358,6 +365,9 @@ npcRoutes.put('/:npcId', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     const body = await c.req.json();
     const parsed = UpdateNPCSchema.safeParse(body);
 
@@ -369,7 +379,7 @@ npcRoutes.put('/:npcId', async (c) => {
     // Handle bidirectional network updates
     if (bidirectional && parsed.data.network !== undefined) {
       try {
-        const currentDef = await getDefinition(projectId, npcId);
+        const currentDef = await storage.getDefinition(projectId, npcId);
         const oldNetwork = currentDef.network || [];
         const newNetwork = parsed.data.network || [];
 
@@ -387,15 +397,15 @@ npcRoutes.put('/:npcId', async (c) => {
 
         // Apply reciprocal changes
         for (const entry of added) {
-          await addToOtherNpcNetwork(projectId, entry.npc_id, npcId, entry.familiarity_tier);
+          await addToOtherNpcNetwork(storage, projectId, entry.npc_id, npcId, entry.familiarity_tier);
         }
 
         for (const entry of removed) {
-          await removeFromOtherNpcNetwork(projectId, entry.npc_id, npcId);
+          await removeFromOtherNpcNetwork(storage, projectId, entry.npc_id, npcId);
         }
 
         for (const entry of changed) {
-          await updateOtherNpcNetworkTier(projectId, entry.npc_id, npcId, entry.familiarity_tier);
+          await updateOtherNpcNetworkTier(storage, projectId, entry.npc_id, npcId, entry.familiarity_tier);
         }
 
         logger.debug(
@@ -409,7 +419,7 @@ npcRoutes.put('/:npcId', async (c) => {
       }
     }
 
-    const definition = await updateDefinition(projectId, npcId, parsed.data as Parameters<typeof updateDefinition>[2]);
+    const definition = await storage.updateDefinition(projectId, npcId, parsed.data as Parameters<typeof storage.updateDefinition>[2]);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, npcId, duration }, 'NPC updated via API');
@@ -451,7 +461,10 @@ npcRoutes.delete('/:npcId', async (c) => {
   }
 
   try {
-    await deleteDefinition(projectId, npcId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    await storage.deleteDefinition(projectId, npcId);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, npcId, duration }, 'NPC deleted via API');
@@ -492,8 +505,11 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
   }
 
   try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
     // Verify NPC exists
-    await getDefinition(projectId, npcId);
+    await storage.getDefinition(projectId, npcId);
 
     // Parse multipart form data
     const formData = await c.req.formData();
@@ -522,10 +538,10 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
     // Use storage abstraction to upload image
     // In Supabase mode: uploads to Supabase Storage, returns public URL
     // In local mode: saves to disk, returns local path
-    const imageUrl = await uploadNpcImage(projectId, npcId, imageBuffer, file.type);
+    const imageUrl = await storage.uploadNpcImage(projectId, npcId, imageBuffer, file.type);
 
     // Update NPC definition with new profile_image (URL in prod, filename in local)
-    await updateDefinition(projectId, npcId, { profile_image: imageUrl });
+    await storage.updateDefinition(projectId, npcId, { profile_image: imageUrl });
 
     const duration = Date.now() - startTime;
     logger.info({ projectId, npcId, url: imageUrl, storageMode, duration }, 'NPC avatar uploaded');
@@ -563,7 +579,10 @@ npcRoutes.get('/:npcId/avatar', async (c) => {
   }
 
   try {
-    const npc = await getDefinition(projectId, npcId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const npc = await storage.getDefinition(projectId, npcId);
 
     if (!npc.profile_image) {
       return c.json({ error: 'No avatar set' }, 404);
@@ -625,7 +644,10 @@ npcRoutes.delete('/:npcId/avatar', async (c) => {
   }
 
   try {
-    const npc = await getDefinition(projectId, npcId);
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const npc = await storage.getDefinition(projectId, npcId);
 
     if (!npc.profile_image) {
       return c.json({ message: 'No avatar to delete' });
@@ -634,10 +656,10 @@ npcRoutes.delete('/:npcId/avatar', async (c) => {
     // Use storage abstraction to delete image
     // In Supabase mode: deletes from Supabase Storage
     // In local mode: deletes from disk
-    await deleteNpcImage(projectId, npcId);
+    await storage.deleteNpcImage(projectId, npcId);
 
     // Update NPC definition
-    await updateDefinition(projectId, npcId, { profile_image: undefined });
+    await storage.updateDefinition(projectId, npcId, { profile_image: undefined });
 
     logger.info({ projectId, npcId, storageMode }, 'NPC avatar deleted');
 
