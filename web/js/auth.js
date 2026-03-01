@@ -182,11 +182,25 @@ export function getUser() {
 }
 
 /**
- * Get the current access token
- * @returns {string|null} The access token or null
+ * Get the current access token.
+ * If the in-memory session hasn't been populated yet (page-load race),
+ * falls back to a live Supabase getSession() call so the token is always
+ * available even before onAuthStateChange fires.
+ * @returns {Promise<string|null>}
  */
-export function getAccessToken() {
-  return currentSession?.access_token || null;
+export async function getAccessToken() {
+  if (currentSession?.access_token) return currentSession.access_token;
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) {
+      currentSession = data.session;
+      currentUser = data.session.user;
+    }
+    return data?.session?.access_token || null;
+  } catch {
+    return null;
+  }
 }
 
 /**

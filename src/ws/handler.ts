@@ -5,10 +5,11 @@ import { endSession, getSessionContext } from '../session/manager.js';
 import { createVoicePipeline, VoicePipeline, VoicePipelineEvents } from '../voice/pipeline.js';
 import { decodeClientAudio } from '../voice/audio.js';
 import { canStartConversation } from '../mcp/exit-handler.js';
-
-import type { STTProvider } from '../providers/stt/interface.js';
-import type { TTSProvider } from '../providers/tts/interface.js';
-import type { LLMProvider } from '../providers/llm/interface.js';
+import { DeepgramSttProvider } from '../providers/stt/deepgram.js';
+import { createTtsProvider } from '../providers/tts/factory.js';
+import type { TTSProviderType } from '../providers/tts/interface.js';
+import { createLlmProvider } from '../providers/llm/factory.js';
+import type { LLMProviderType, LLMProvider } from '../providers/llm/interface.js';
 import type { VoiceConfig, ConversationMode } from '../types/voice.js';
 import { CONVERSATION_MODES } from '../types/voice.js';
 
@@ -125,6 +126,7 @@ interface VoiceConnection {
   sessionId: string;
   pipeline: VoicePipeline | null;
   ws: WebSocket;
+  llmProvider: LLMProvider;
 }
 
 /**
@@ -133,12 +135,16 @@ interface VoiceConnection {
 const activeConnections = new Map<string, VoiceConnection>();
 
 /**
- * Provider dependencies for voice WebSocket handler
+ * Provider API key config for voice WebSocket handler.
+ * Providers are created lazily in handleInitMessage after loading the NPC definition.
  */
 export interface VoiceWebSocketDependencies {
-  sttProvider: STTProvider;
-  ttsProvider: TTSProvider;
-  llmProvider: LLMProvider;
+  deepgramApiKey: string;
+  cartesiaApiKey: string;
+  elevenLabsApiKey?: string;
+  llmProviderType: LLMProviderType;
+  llmApiKey: string;
+  defaultLlmModel: string;
 }
 
 /**
@@ -213,11 +219,19 @@ export async function handleVoiceWebSocket(
   const connectionId = `voice_${sessionId}_${Date.now()}`;
   logger.info({ sessionId, connectionId }, 'Voice WebSocket connected');
 
+  // Create the LLM provider synchronously (needed for session cleanup on close/end)
+  const llmProvider: LLMProvider = createLlmProvider({
+    provider: deps.llmProviderType,
+    apiKey: deps.llmApiKey,
+    model: deps.defaultLlmModel,
+  });
+
   // Create connection state
   const connection: VoiceConnection = {
     sessionId,
     pipeline: null,
     ws,
+    llmProvider,
   };
   activeConnections.set(connectionId, connection);
 
@@ -241,7 +255,7 @@ export async function handleVoiceWebSocket(
   // Set up close handler
   ws.onclose = async () => {
     logger.info({ sessionId, connectionId }, 'Voice WebSocket closed');
-    await cleanupConnection(connection, deps.llmProvider);
+    await cleanupConnection(connection, connection.llmProvider);
     activeConnections.delete(connectionId);
   };
 
@@ -301,7 +315,7 @@ async function handleInboundMessage(
       break;
 
     case 'end':
-      await handleEndMessage(connection, deps.llmProvider);
+      await handleEndMessage(connection, connection.llmProvider);
       break;
 
     default:
@@ -385,7 +399,26 @@ async function handleInitMessage(
       },
     };
 
-    logger.info({ sessionId }, 'handleInitMessage: creating pipeline');
+    logger.info({ sessionId }, 'handleInitMessage: creating providers');
+
+    // Create providers from API key config + voice config loaded above
+    const ttsProviderType = (voiceConfig.provider || 'cartesia') as TTSProviderType;
+    const ttsApiKey = ttsProviderType === 'elevenlabs' ? deps.elevenLabsApiKey : deps.cartesiaApiKey;
+    if (!ttsApiKey) {
+      logger.error({ sessionId, ttsProviderType }, 'handleInitMessage: TTS API key not configured');
+      sendMessage(ws, { type: 'error', code: 'TTS_KEY_MISSING', message: `${ttsProviderType} API key not configured` });
+      return;
+    }
+
+    const sttProvider = new DeepgramSttProvider({ apiKey: deps.deepgramApiKey });
+    const ttsProvider = createTtsProvider({ provider: ttsProviderType, apiKey: ttsApiKey });
+    const llmProvider: LLMProvider = createLlmProvider({
+      provider: deps.llmProviderType,
+      apiKey: deps.llmApiKey,
+      model: deps.defaultLlmModel,
+    });
+
+    logger.info({ sessionId, ttsProviderType, voiceId: voiceConfig.voice_id }, 'handleInitMessage: providers created');
 
     // Get mode from message or default to voice-voice for WebSocket
     const mode = msg.mode || CONVERSATION_MODES.VOICE_VOICE;
@@ -394,9 +427,9 @@ async function handleInitMessage(
     // Create and initialize pipeline
     const pipeline = createVoicePipeline({
       sessionId,
-      sttProvider: deps.sttProvider,
-      ttsProvider: deps.ttsProvider,
-      llmProvider: deps.llmProvider,
+      sttProvider,
+      ttsProvider,
+      llmProvider,
       voiceConfig,
       events,
       mode,

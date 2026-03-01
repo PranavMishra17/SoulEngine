@@ -23,9 +23,6 @@ import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/hand
 // Providers
 import { createLlmProvider, getDefaultModel } from './providers/llm/factory.js';
 import type { LLMProviderType } from './providers/llm/interface.js';
-import { DeepgramSttProvider } from './providers/stt/deepgram.js';
-import { createTtsProvider } from './providers/tts/factory.js';
-import type { TTSProviderType } from './providers/tts/interface.js';
 
 // MCP
 import { mcpToolRegistry } from './mcp/registry.js';
@@ -33,7 +30,6 @@ import { mcpToolRegistry } from './mcp/registry.js';
 // Session cleanup
 import { sessionStore } from './session/store.js';
 import { storageMode } from './storage/index.js';
-import { getStorageForUser } from './storage/hybrid.js';
 import { optionalAuthMiddleware, isAuthEnabled } from './middleware/auth.js';
 
 const logger = createLogger('server');
@@ -327,7 +323,7 @@ wss.on('connection', (ws, req) => {
 
   logger.info({ sessionId }, 'Voice WebSocket: session verified');
 
-  // Get API keys from config
+  // Get API keys from config (synchronous)
   const deepgramKey = config.providers.deepgramApiKey;
   const cartesiaKey = config.providers.cartesiaApiKey;
   const llmProviderType = config.defaultLlmProvider;
@@ -340,85 +336,33 @@ wss.on('connection', (ws, req) => {
     llmProvider: llmProviderType,
   }, 'Voice WebSocket: API key status');
 
-  // Check if all required keys are available
-  if (!deepgramKey || !cartesiaKey || !llmKey) {
+  // Check required keys (Cartesia is default; ElevenLabs checked lazily in handler)
+  if (!deepgramKey || !llmKey) {
     logger.error({
       sessionId,
       missingKeys: {
         deepgram: !deepgramKey,
-        cartesia: !cartesiaKey,
         llm: !llmKey,
         llmProvider: llmProviderType,
       }
-    }, 'Voice WebSocket: missing API keys');
-    ws.close(1008, `Voice providers not configured. Set DEEPGRAM_API_KEY, CARTESIA_API_KEY, and ${llmProviderType.toUpperCase()}_API_KEY.`);
+    }, 'Voice WebSocket: missing required API keys');
+    ws.close(1008, `Voice providers not configured. Set DEEPGRAM_API_KEY and ${llmProviderType.toUpperCase()}_API_KEY.`);
     return;
   }
 
-  logger.info({ sessionId }, 'Voice WebSocket: loading NPC definition for voice config');
+  // Build deps with API key config — providers created lazily in handleInitMessage
+  const deps: VoiceWebSocketDependencies = {
+    deepgramApiKey: deepgramKey,
+    cartesiaApiKey: cartesiaKey || '',
+    elevenLabsApiKey: config.providers.elevenLabsApiKey,
+    llmProviderType,
+    llmApiKey: llmKey,
+    defaultLlmModel: getDefaultModel(llmProviderType),
+  };
 
-  // Load NPC definition to get voice config (async)
-  const projectId = stored.state.project_id;
-  const npcId = stored.state.definition_id;
-  const wsStorage = getStorageForUser(stored.userId);
-
-  wsStorage.getDefinition(projectId, npcId).then((definition) => {
-    const voiceConfig = definition.voice;
-    const ttsProviderType = (voiceConfig.provider || 'cartesia') as TTSProviderType;
-    const ttsApiKey = ttsProviderType === 'elevenlabs' ? config.providers.elevenLabsApiKey : cartesiaKey;
-
-    if (!ttsApiKey) {
-      logger.error({ sessionId, ttsProvider: ttsProviderType }, 'Voice WebSocket: TTS API key not configured');
-      ws.close(1008, `${ttsProviderType} API key not configured`);
-      return;
-    }
-
-    logger.info({ sessionId, ttsProvider: ttsProviderType, voiceId: voiceConfig.voice_id }, 'Voice WebSocket: using TTS provider');
-
-    try {
-      // Create providers with configured API keys using factory
-      const deps: VoiceWebSocketDependencies = {
-        sttProvider: new DeepgramSttProvider({ apiKey: deepgramKey }),
-        ttsProvider: createTtsProvider({ provider: ttsProviderType, apiKey: ttsApiKey }),
-        llmProvider: createLlmProvider({
-          provider: llmProviderType,
-          apiKey: llmKey,
-          model: getDefaultModel(llmProviderType),
-        }),
-      };
-
-      logger.info({ sessionId, llmProvider: llmProviderType }, 'Voice WebSocket: providers created, calling handler');
-
-      // Handle the voice WebSocket connection
-      handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error({ sessionId, error: errorMessage }, 'Voice WebSocket: provider creation failed');
-      ws.close(1011, 'Provider initialization failed');
-    }
-  }).catch((error) => {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
-    logger.error({
-      sessionId,
-      error: errorMessage,
-      stack: errorStack
-    }, 'Voice WebSocket: provider creation failed');
-
-    // Send error to client before closing
-    try {
-      ws.send(JSON.stringify({
-        type: 'error',
-        code: 'PROVIDER_INIT_FAILED',
-        message: `Failed to initialize voice providers: ${errorMessage}`
-      }));
-    } catch (sendError) {
-      logger.warn('Failed to send error message to client');
-    }
-
-    ws.close(1011, 'Provider initialization failed');
-  });
+  // Call SYNCHRONOUSLY so ws.onmessage is set before the client's init message arrives
+  logger.info({ sessionId }, 'Voice WebSocket: handing off to handler (sync)');
+  handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);
 });
 
 wss.on('error', (error) => {

@@ -22,15 +22,15 @@ export function setAuthFailureHandler(callback) {
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
-  
+
   // Build headers with auth token if available
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
 
-  // Add auth token if authenticated
-  const token = getAccessToken();
+  // Add auth token if authenticated (async — resolves race with Supabase init)
+  const token = await getAccessToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -246,22 +246,22 @@ export class VoiceClient {
     this.ws = null;
     this.connectionState = 'disconnected'; // Track connection state
     this.callbacks = {
-      onReady: () => {},
-      onTranscript: () => {},
-      onTextChunk: () => {},
-      onAudioChunk: () => {},
-      onToolCall: () => {},
-      onGenerationEnd: () => {},
-      onExitConvo: () => {},
-      onSync: () => {},
-      onError: () => {},
-      onClose: () => {},
+      onReady: () => { },
+      onTranscript: () => { },
+      onTextChunk: () => { },
+      onAudioChunk: () => { },
+      onToolCall: () => { },
+      onGenerationEnd: () => { },
+      onExitConvo: () => { },
+      onSync: () => { },
+      onError: () => { },
+      onClose: () => { },
     };
   }
 
   connect(mode = { input: 'voice', output: 'voice' }) {
     this.mode = mode;
-    
+
     return new Promise((resolve, reject) => {
       // Prevent duplicate connections
       if (this.connectionState === 'connecting' || this.connectionState === 'initializing' || this.connectionState === 'ready') {
@@ -319,8 +319,8 @@ export class VoiceClient {
    */
   isReady() {
     return this.connectionState === 'ready' &&
-           this.ws &&
-           this.ws.readyState === WebSocket.OPEN;
+      this.ws &&
+      this.ws.readyState === WebSocket.OPEN;
   }
 
   handleMessage(message, resolveConnect, rejectConnect) {

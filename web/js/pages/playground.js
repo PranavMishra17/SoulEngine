@@ -110,15 +110,23 @@ function bindEventHandlers() {
   // End session
   document.getElementById('btn-end-session')?.addEventListener('click', handleEndSession);
 
-  // Conversation mode selection (new 4-mode grid)
-  document.querySelectorAll('.mode-option').forEach((btn) => {
+  // Conversation mode selection (input/output row buttons)
+  document.querySelectorAll('.mode-btn[data-mode-type]').forEach(btn => {
     btn.addEventListener('click', () => {
-      setConversationMode(btn.dataset.input, btn.dataset.output);
+      const type = btn.dataset.modeType;
+      const value = btn.dataset.modeValue;
+      // Deactivate siblings in same group
+      document.querySelectorAll(`.mode-btn[data-mode-type="${type}"]`).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Update mode
+      const inputVal = document.querySelector('.mode-btn[data-mode-type="input"].active')?.dataset.modeValue || 'text';
+      const outputVal = document.querySelector('.mode-btn[data-mode-type="output"].active')?.dataset.modeValue || 'text';
+      setConversationMode(inputVal, outputVal);
     });
   });
 
-  // Mode toggle (legacy text/voice buttons - now updates conversation mode)
-  document.querySelectorAll('.mode-btn').forEach((btn) => {
+  // Mode toggle (legacy text/voice buttons in chat input area)
+  document.querySelectorAll('.mode-btn[data-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
       setMode(btn.dataset.mode);
     });
@@ -405,18 +413,18 @@ async function handleEndSession(exitConvoUsed = false) {
  */
 function setConversationMode(input, output) {
   currentConversationMode = { input, output };
-  
-  // Update UI - mode grid buttons
-  document.querySelectorAll('.mode-option').forEach(opt => {
-    opt.classList.remove('active');
-    if (opt.dataset.input === input && opt.dataset.output === output) {
-      opt.classList.add('active');
-    }
+
+  // Update session-setup mode-row buttons
+  document.querySelectorAll('.mode-btn[data-mode-type="input"]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.modeValue === input);
+  });
+  document.querySelectorAll('.mode-btn[data-mode-type="output"]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.modeValue === output);
   });
 
-  // Update legacy mode buttons to match input mode
+  // Update legacy mode buttons in chat input area to match input mode
   currentMode = input;
-  document.querySelectorAll('.mode-btn').forEach(btn => {
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === input);
   });
 
@@ -614,6 +622,10 @@ async function connectVoice() {
 
   try {
     updateVoiceStatus('Connecting...');
+    const voiceToggleBtn = document.getElementById('btn-voice-toggle');
+    if (voiceToggleBtn) voiceToggleBtn.disabled = true;
+    const voiceStatusRow = document.getElementById('voice-status-row');
+    if (voiceStatusRow) voiceStatusRow.style.display = 'none';
     console.log('[Playground] Creating VoiceClient with mode:', currentConversationMode);
     voiceClient = new VoiceClient(currentSessionId);
 
@@ -624,8 +636,12 @@ async function connectVoice() {
         currentVoiceConfig = data.voice_config;
         console.log('[Playground] Voice config:', currentVoiceConfig);
         console.log('[Playground] Server confirmed mode:', data.mode);
-        updateVoiceStatus('Connected');
-        
+        updateVoiceStatus('');
+        const readyBtn = document.getElementById('btn-voice-toggle');
+        if (readyBtn) readyBtn.disabled = false;
+        const interruptBtn = document.getElementById('btn-voice-interrupt');
+        if (interruptBtn) interruptBtn.style.display = '';
+
         // Only auto-start live voice if input mode is voice
         if (currentConversationMode.input === 'voice') {
           await startLiveVoice();
@@ -813,7 +829,9 @@ async function startLiveVoice() {
     const btn = document.getElementById('btn-voice-toggle');
     btn?.classList.add('active');
     btn.querySelector('.label').textContent = 'Stop Voice';
-    updateVoiceStatus('Listening...');
+    const statusRow = document.getElementById('voice-status-row');
+    if (statusRow) statusRow.style.display = 'flex';
+    updateVoiceStatus('');
 
     console.log('[Playground] Silero VAD started successfully');
     toast.success('Live Voice Active', 'Speak naturally - Silero VAD will detect your speech.');
@@ -852,8 +870,13 @@ function stopLiveVoice() {
   const btn = document.getElementById('btn-voice-toggle');
   btn?.classList.remove('active');
   btn.querySelector('.label').textContent = 'Start Live Voice';
+  btn.disabled = false;
+  const statusRow = document.getElementById('voice-status-row');
+  if (statusRow) statusRow.style.display = 'none';
+  const interruptBtn = document.getElementById('btn-voice-interrupt');
+  if (interruptBtn) interruptBtn.style.display = 'none';
   updateVadIndicator(false);
-  updateVoiceStatus('Stopped');
+  updateVoiceStatus('');
   resetPipelineTrace();
 }
 
