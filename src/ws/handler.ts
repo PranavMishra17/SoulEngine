@@ -8,8 +8,9 @@ import { canStartConversation } from '../mcp/exit-handler.js';
 import { DeepgramSttProvider } from '../providers/stt/deepgram.js';
 import { createTtsProvider } from '../providers/tts/factory.js';
 import type { TTSProviderType } from '../providers/tts/interface.js';
-import { createLlmProvider } from '../providers/llm/factory.js';
+import { createLlmProvider, getDefaultModel, getDefaultLlmProviderType, isLlmProviderSupported } from '../providers/llm/factory.js';
 import type { LLMProviderType, LLMProvider } from '../providers/llm/interface.js';
+import { getConfig } from '../config.js';
 import type { VoiceConfig, ConversationMode } from '../types/voice.js';
 import { CONVERSATION_MODES } from '../types/voice.js';
 
@@ -410,15 +411,44 @@ async function handleInitMessage(
       return;
     }
 
+    // Resolve per-project LLM provider (same logic as conversation.ts)
+    const projectSettings = context.project.settings;
+    const defaultProviderType = getDefaultLlmProviderType();
+    const rawProviderType = projectSettings.llm_provider || deps.llmProviderType;
+    const resolvedProviderType: LLMProviderType = isLlmProviderSupported(rawProviderType)
+      ? rawProviderType
+      : defaultProviderType;
+    const resolvedModelId = projectSettings.llm_model || getDefaultModel(resolvedProviderType);
+
+    // API key priority: project-specific key → server env key for that provider
+    const projectApiKey = context.apiKeys[resolvedProviderType as keyof typeof context.apiKeys];
+    const serverConfig = getConfig();
+    const serverApiKeyForProvider = (() => {
+      switch (resolvedProviderType) {
+        case 'gemini': return serverConfig.providers.geminiApiKey;
+        case 'openai': return serverConfig.providers.openaiApiKey;
+        case 'anthropic': return serverConfig.providers.anthropicApiKey;
+        case 'grok': return serverConfig.providers.grokApiKey;
+        default: return undefined;
+      }
+    })();
+    const resolvedLlmApiKey = projectApiKey || serverApiKeyForProvider;
+
+    if (!resolvedLlmApiKey) {
+      logger.error({ sessionId, resolvedProviderType }, 'handleInitMessage: LLM API key not configured for project');
+      sendMessage(ws, { type: 'error', code: 'LLM_KEY_MISSING', message: `LLM API key not configured for provider: ${resolvedProviderType}` });
+      return;
+    }
+
     const sttProvider = new DeepgramSttProvider({ apiKey: deps.deepgramApiKey });
     const ttsProvider = createTtsProvider({ provider: ttsProviderType, apiKey: ttsApiKey });
     const llmProvider: LLMProvider = createLlmProvider({
-      provider: deps.llmProviderType,
-      apiKey: deps.llmApiKey,
-      model: deps.defaultLlmModel,
+      provider: resolvedProviderType,
+      apiKey: resolvedLlmApiKey,
+      model: resolvedModelId,
     });
 
-    logger.info({ sessionId, ttsProviderType, voiceId: voiceConfig.voice_id }, 'handleInitMessage: providers created');
+    logger.info({ sessionId, ttsProviderType, voiceId: voiceConfig.voice_id, llmProvider: resolvedProviderType, llmModel: resolvedModelId }, 'handleInitMessage: providers created');
 
     // Get mode from message or default to voice-voice for WebSocket
     const mode = msg.mode || CONVERSATION_MODES.VOICE_VOICE;
