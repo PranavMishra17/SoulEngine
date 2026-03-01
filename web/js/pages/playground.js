@@ -1067,28 +1067,36 @@ function addChatMessage(role, content) {
     placeholder.remove();
   }
 
+  const messageEl = document.createElement('div');
+  messageEl.className = `chat-message ${role}`;
+
   if (role === 'assistant' && currentNpcInfo) {
-    // Wrap assistant message in a row with a mini avatar
-    const rowEl = document.createElement('div');
-    rowEl.className = 'chat-message-row assistant';
+    // Inline avatar circle at the start of the message bubble
+    const avatarDiv = document.createElement('div');
+    avatarDiv.className = 'msg-avatar-inline';
 
-    const avatarEl = document.createElement('div');
-    avatarEl.innerHTML = buildMiniAvatar(currentNpcInfo);
-    const avatarNode = avatarEl.firstElementChild;
+    if (currentNpcInfo.profile_image && currentNpcInfo.profile_image.trim() !== '') {
+      const img = document.createElement('img');
+      img.src = (currentNpcInfo.profile_image.startsWith('http://') || currentNpcInfo.profile_image.startsWith('https://'))
+        ? currentNpcInfo.profile_image
+        : `/api/projects/${currentProjectId}/npcs/${currentNpcInfo.id}/avatar`;
+      img.alt = currentNpcInfo.name;
+      img.onerror = () => { img.remove(); avatarDiv.textContent = currentNpcInfo.name.charAt(0).toUpperCase(); };
+      avatarDiv.appendChild(img);
+    } else {
+      avatarDiv.textContent = currentNpcInfo.name.charAt(0).toUpperCase();
+    }
 
-    const messageEl = document.createElement('div');
-    messageEl.className = 'chat-message assistant';
-    messageEl.textContent = content;
-
-    rowEl.appendChild(avatarNode);
-    rowEl.appendChild(messageEl);
-    messages.appendChild(rowEl);
+    const textSpan = document.createElement('span');
+    textSpan.textContent = content;
+    messageEl.classList.add('with-avatar');
+    messageEl.appendChild(avatarDiv);
+    messageEl.appendChild(textSpan);
   } else {
-    const messageEl = document.createElement('div');
-    messageEl.className = `chat-message ${role}`;
     messageEl.textContent = content;
-    messages.appendChild(messageEl);
   }
+
+  messages.appendChild(messageEl);
 
   messages.scrollTop = messages.scrollHeight;
 }
