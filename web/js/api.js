@@ -115,6 +115,11 @@ export const projects = {
     method: 'POST',
     body: JSON.stringify({ pack_id: packId }),
   }),
+
+  importKeys: (projectId, fromProjectId) => request(`/projects/${projectId}/import-keys`, {
+    method: 'POST',
+    body: JSON.stringify({ from_project_id: fromProjectId }),
+  }),
 };
 
 export const starterPacks = {

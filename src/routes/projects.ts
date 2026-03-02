@@ -323,6 +323,66 @@ projectRoutes.put('/:projectId/keys', async (c) => {
 });
 
 /**
+ * POST /api/projects/:projectId/import-keys - Copy API keys from another project
+ */
+projectRoutes.post('/:projectId/import-keys', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    // Verify target project belongs to this user
+    await storage.getProject(projectId);
+
+    const body = await c.req.json();
+    const fromProjectId = body?.from_project_id;
+
+    if (!fromProjectId || typeof fromProjectId !== 'string') {
+      return c.json({ error: 'from_project_id is required' }, 400);
+    }
+
+    if (fromProjectId === projectId) {
+      return c.json({ error: 'Cannot import from the same project' }, 400);
+    }
+
+    // Verify source project belongs to this user
+    await storage.getProject(fromProjectId);
+
+    const sourceKeys = await storage.loadApiKeys(fromProjectId);
+    const targetKeys = await storage.loadApiKeys(projectId);
+
+    // Merge: non-empty source keys override target
+    const mergedKeys = { ...targetKeys };
+    let copiedCount = 0;
+    for (const [k, v] of Object.entries(sourceKeys)) {
+      if (v) {
+        (mergedKeys as Record<string, string>)[k] = v as string;
+        copiedCount++;
+      }
+    }
+
+    await storage.saveApiKeys(projectId, mergedKeys);
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, fromProjectId, copiedCount, duration }, 'API keys imported from project');
+
+    return c.json({ message: `Imported ${copiedCount} API key${copiedCount !== 1 ? 's' : ''}`, keys_imported: copiedCount });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to import API keys');
+    return c.json({ error: 'Failed to import API keys', details: errorMessage }, 500);
+  }
+});
+
+/**
  * DELETE /api/projects/:projectId - Delete a project
  */
 projectRoutes.delete('/:projectId', async (c) => {

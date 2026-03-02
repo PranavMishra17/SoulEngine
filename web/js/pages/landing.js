@@ -23,6 +23,7 @@ export function initLandingPage() {
       initHeroButtons();
       initSmoothScroll();
       initNavScrollEffect();
+      initBewareTrigger();
     }, 50);
   });
 }
@@ -188,6 +189,22 @@ function initNavScrollEffect() {
   
   window.addEventListener('scroll', handleScroll, { passive: true });
   handleScroll();
+}
+
+function initBewareTrigger() {
+  const trigger = document.getElementById('beware-trigger');
+  const popup = document.getElementById('beware-popup');
+  if (!trigger || !popup) return;
+
+  trigger.addEventListener('click', () => {
+    popup.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!trigger.contains(e.target) && !popup.contains(e.target)) {
+      popup.classList.remove('open');
+    }
+  });
 }
 
 export default { init, cleanup };

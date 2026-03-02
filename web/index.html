@@ -217,43 +217,68 @@
       <section class="section" id="pipeline">
         <div class="container">
           <h2 class="section-title">Real-Time Voice Pipeline</h2>
-          <p class="section-subtitle">Sub-100ms time-to-first-audio with streaming at every stage</p>
+          <p class="section-subtitle">Sub-100ms time-to-first-audio. Every stage streams — no waiting for full outputs.</p>
 
-          <div class="pipeline-diagram">
-            <div class="pipeline-stage">
-              <div class="stage-icon">&#127908;</div>
-              <div class="stage-label">Client Audio</div>
-              <div class="stage-detail">VAD-filtered</div>
+          <div class="pipeline-flowchart">
+            <!-- Row 1: Input path (left to right) -->
+            <div class="pf-row">
+              <div class="pf-node pf-node-input">
+                <div class="pf-node-label">Client Audio</div>
+                <div class="pf-node-detail">Microphone input</div>
+              </div>
+              <div class="pf-arrow">&#8594;</div>
+              <div class="pf-node pf-node-decision">
+                <div class="pf-node-label">VAD</div>
+                <div class="pf-node-detail">Voice activity detection</div>
+                <div class="pf-decision-fork">
+                  <span class="pf-fork-discard">silence &#8599; discarded</span>
+                </div>
+              </div>
+              <div class="pf-arrow">&#8594;</div>
+              <div class="pf-node pf-node-streaming">
+                <div class="pf-node-label">Speech-to-Text</div>
+                <div class="pf-node-detail">WebSocket stream</div>
+                <div class="pf-badge">streaming</div>
+              </div>
+              <div class="pf-arrow">&#8594;</div>
+              <div class="pf-node pf-node-security">
+                <div class="pf-node-label">Security Gate</div>
+                <div class="pf-node-detail">Sanitize + moderate</div>
+                <div class="pf-decision-fork">
+                  <span class="pf-fork-discard">blocked &#8599; dropped</span>
+                </div>
+              </div>
             </div>
-            <div class="pipeline-arrow">&#8594;</div>
-            <div class="pipeline-stage">
-              <div class="stage-icon">&#9671;</div>
-              <div class="stage-label">Deepgram STT</div>
-              <div class="stage-detail">WebSocket</div>
+
+            <!-- Turn connector -->
+            <div class="pf-turn">
+              <div class="pf-turn-label">context injection</div>
+              <div class="pf-turn-arrow">&#8627;</div>
             </div>
-            <div class="pipeline-arrow">&#8594;</div>
-            <div class="pipeline-stage stage-security">
-              <div class="stage-icon">&#11043;</div>
-              <div class="stage-label">Security</div>
-              <div class="stage-detail">Sanitize + Moderate</div>
-            </div>
-            <div class="pipeline-arrow">&#8594;</div>
-            <div class="pipeline-stage stage-llm">
-              <div class="stage-icon">&#9670;</div>
-              <div class="stage-label">Gemini LLM</div>
-              <div class="stage-detail">Streaming</div>
-            </div>
-            <div class="pipeline-arrow">&#8594;</div>
-            <div class="pipeline-stage">
-              <div class="stage-icon">&#9672;</div>
-              <div class="stage-label">Cartesia TTS</div>
-              <div class="stage-detail">40ms latency</div>
-            </div>
-            <div class="pipeline-arrow">&#8594;</div>
-            <div class="pipeline-stage">
-              <div class="stage-icon">&#128266;</div>
-              <div class="stage-label">Audio Out</div>
-              <div class="stage-detail">Client Speaker</div>
+
+            <!-- Row 2: Output path (right to left) -->
+            <div class="pf-row pf-row-reverse">
+              <div class="pf-node pf-node-output">
+                <div class="pf-node-label">Audio Output</div>
+                <div class="pf-node-detail">Client speaker</div>
+              </div>
+              <div class="pf-arrow pf-arrow-left">&#8592;</div>
+              <div class="pf-node pf-node-streaming">
+                <div class="pf-node-label">Speech Synthesis</div>
+                <div class="pf-node-detail">Starts on first token</div>
+                <div class="pf-badge">streaming</div>
+              </div>
+              <div class="pf-arrow pf-arrow-left">&#8592;</div>
+              <div class="pf-node pf-node-llm">
+                <div class="pf-node-label">Streaming LLM</div>
+                <div class="pf-node-detail">NPC persona + memory</div>
+                <div class="pf-badge pf-badge-accent">token stream</div>
+              </div>
+              <div class="pf-arrow pf-arrow-left">&#8592;</div>
+              <div class="pf-node">
+                <div class="pf-node-label">NPC Context</div>
+                <div class="pf-node-detail">Personality + knowledge</div>
+              </div>
             </div>
           </div>
         </div>
@@ -263,38 +288,38 @@
       <section class="section section-dark" id="features">
         <div class="container">
           <h2 class="section-title">Built for Game Developers</h2>
-          <p class="section-subtitle">Everything you need to create believable, memorable NPCs</p>
+          <p class="section-subtitle">Practical, production-ready integration — not just a research prototype</p>
 
           <div class="features-grid">
             <div class="feature-card">
               <div class="feature-icon">&#9672;</div>
               <h3>Transient Sessions</h3>
-              <p>RAM during conversation, persist only on end. No database writes during chat for maximum performance.</p>
+              <p>Everything lives in RAM during a conversation. Persisted only when the session ends — zero database writes mid-chat.</p>
             </div>
             <div class="feature-card">
               <div class="feature-icon">&#9671;</div>
               <h3>State History</h3>
-              <p>Git-like versioning for NPC states. Rollback personality or memories if something goes wrong.</p>
+              <p>Git-like versioning for NPC state. Roll back personality or memories to any prior checkpoint if something goes wrong in production.</p>
             </div>
-            <div class="feature-card">
-              <div class="feature-icon">&#11043;</div>
-              <h3>Knowledge Tiers</h3>
-              <p>NPCs know different things at different depths. Shopkeepers don't know royal secrets.</p>
+            <div class="feature-card feature-card-highlight">
+              <div class="feature-icon">&#9670;</div>
+              <h3>Unity Asset Package <span class="feature-tag">Coming Soon</span></h3>
+              <p>A native Unity package to plug SoulEngine directly into your game. Drop-in NPC prefabs, session lifecycle hooks, and voice pipeline wired out of the box.</p>
             </div>
             <div class="feature-card">
               <div class="feature-icon">&#9684;</div>
-              <h3>Salience Scoring</h3>
-              <p>Emotionally significant events persist. Trivia fades like real human memories.</p>
+              <h3>REST + WebSocket API</h3>
+              <p>Language-agnostic integration. Text conversation over REST, real-time voice over WebSocket. Works with any engine or platform.</p>
             </div>
             <div class="feature-card">
               <div class="feature-icon">&#9681;</div>
-              <h3>Mood Vectors</h3>
-              <p>Valence, arousal, dominance. Mathematical moods that influence behavior and dialogue.</p>
+              <h3>Bring Your Own AI</h3>
+              <p>Swap LLM, STT, and TTS providers per project. Configure API keys per project so different games use different providers independently.</p>
             </div>
             <div class="feature-card">
               <div class="feature-icon">&#9733;</div>
-              <h3>MCP Tools</h3>
-              <p>NPCs can act. Call guards, lock doors, refuse service. Real consequences in your game world.</p>
+              <h3>Full Isolation</h3>
+              <p>Each project is completely sandboxed — its own NPCs, knowledge base, tools, and API keys. Multi-game deployment without collision.</p>
             </div>
           </div>
         </div>
@@ -358,13 +383,16 @@
               <a href="https://github.com/sponsors/PranavMishra17" target="_blank" rel="noopener">Support Development</a>
             </div>
           </div>
-          <!-- Warning Banner -->
-          <div class="footer-warning">
-            <p class="warning-title">⚠️ BEWARE ⚠️</p>
-            <p class="warning-text">They remember. They change. They act.</p>
-          </div>
         </div>
       </footer>
+
+      <!-- Hidden beware trigger — half-circle on right edge -->
+      <div class="beware-trigger" id="beware-trigger" aria-label="Secret message"></div>
+      <div class="beware-popup" id="beware-popup">
+        <p class="beware-line">Hey friend...</p>
+        <p class="beware-line beware-line-bold">beware...</p>
+        <p class="beware-line beware-line-spaced">They listen.<br>They remember.<br>They act.</p>
+      </div>
     </div>
   </template>
 
@@ -435,6 +463,15 @@
         </div>
       </header>
       
+      <!-- Playground CTA -->
+      <div class="playground-cta">
+        <div class="playground-cta-text">
+          <span class="playground-cta-label">Playground</span>
+          <span class="playground-cta-sub">Interact with your NPCs</span>
+        </div>
+        <a href="#" class="btn btn-primary" id="link-playground">Open Playground</a>
+      </div>
+
       <!-- Dashboard Boards -->
       <div class="dashboard-boards">
         <!-- NPCs Board -->
@@ -644,13 +681,6 @@
         </div>
       </div>
       
-      <!-- Quick Access -->
-      <div class="dashboard-quick-access">
-        <a href="#" class="quick-btn" id="link-playground">
-          <span class="quick-icon">&#9654;</span>
-          <span class="quick-label">Open Playground</span>
-        </a>
-      </div>
     </div>
   </template>
 
@@ -1365,9 +1395,12 @@
 
         <!-- LLM API Keys -->
         <section class="settings-card">
-          <div class="settings-card-header">
-            <h2>LLM API Keys</h2>
-            <p class="settings-card-desc">API keys for language model providers</p>
+          <div class="settings-card-header settings-card-header-row">
+            <div>
+              <h2>LLM API Keys</h2>
+              <p class="settings-card-desc">API keys for language model providers</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btn-import-keys">Import from project</button>
           </div>
           <div class="settings-card-body">
             <div class="form-group">

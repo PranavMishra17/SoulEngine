@@ -161,6 +161,11 @@ function bindEventHandlers(projectId) {
     });
   });
 
+  // Import API keys from another project
+  document.getElementById('btn-import-keys')?.addEventListener('click', () => {
+    showImportKeysModal(projectId);
+  });
+
   // Save settings
   document.getElementById('btn-save-settings')?.addEventListener('click', saveSettings);
 
@@ -279,6 +284,66 @@ function confirmDeleteProject(projectId) {
       toast.error('Failed to Delete Project', error.message);
     }
   });
+}
+
+async function showImportKeysModal(projectId) {
+  let allProjects;
+  try {
+    const data = await projects.list();
+    allProjects = Array.isArray(data) ? data : (data.projects ?? []);
+  } catch (error) {
+    toast.error('Failed to Load Projects', error.message);
+    return;
+  }
+
+  const others = allProjects.filter((p) => p.id !== projectId);
+  if (!others.length) {
+    toast.error('No Other Projects', 'Configure API keys on another project first, then import from there.');
+    return;
+  }
+
+  const content = document.createElement('div');
+  content.innerHTML = `
+    <p style="margin-bottom: var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary);">
+      All configured API keys from the selected project will be copied here.
+      Existing keys in this project will be overwritten.
+    </p>
+    <div class="form-group">
+      <label for="import-source-project">Source project</label>
+      <select id="import-source-project" class="input select">
+        ${others.map((p) => `<option value="${escapeHtmlAttr(p.id)}">${escapeHtmlAttr(p.name)}</option>`).join('')}
+      </select>
+    </div>
+  `;
+
+  const footer = document.createElement('div');
+  footer.innerHTML = `
+    <button class="btn btn-outline" data-action="cancel">Cancel</button>
+    <button class="btn btn-primary" data-action="confirm">Import Keys</button>
+  `;
+
+  const m = modal.open({ title: 'Import API Keys', content, footer });
+
+  footer.querySelector('[data-action="cancel"]')?.addEventListener('click', () => m.close());
+  footer.querySelector('[data-action="confirm"]')?.addEventListener('click', async () => {
+    const sourceId = document.getElementById('import-source-project')?.value;
+    m.close();
+    try {
+      const result = await projects.importKeys(projectId, sourceId);
+      toast.success('Keys Imported', result.message);
+      await loadKeyStatus(projectId);
+    } catch (error) {
+      toast.error('Import Failed', error.message);
+    }
+  });
+}
+
+function escapeHtmlAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 export default { initSettingsPage };

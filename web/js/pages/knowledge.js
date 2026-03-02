@@ -169,32 +169,31 @@ function renderCategories(categories) {
       return `
         <div class="knowledge-category-card" data-category="${catId}">
           <div class="category-card-header">
-            <div class="category-card-icon">◈</div>
             <div class="category-card-info">
               <div class="category-card-name">${escapeHtml(catId)}</div>
               <div class="category-card-meta">
                 <span>${depthCount} depth${depthCount !== 1 ? 's' : ''}</span>
-                <span>•</span>
+                <span class="meta-sep">&#183;</span>
                 <span>${entryCount} with content</span>
               </div>
             </div>
             <div class="category-card-actions">
-              <button class="btn btn-sm btn-ghost" data-action="delete" title="Delete category">✕</button>
+              <button class="btn btn-sm btn-ghost" data-action="delete" title="Delete category">&#10005;</button>
             </div>
-            <div class="category-card-expand">▼</div>
+            <div class="category-card-expand">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
           </div>
           <div class="category-card-body">
-            <div class="category-description">
-              <label>Description</label>
-              <textarea class="input textarea category-description-edit" data-desc-cat="${catId}" rows="2" 
-                placeholder="What kind of knowledge does this category contain?">${escapeHtml(category.description || '')}</textarea>
-            </div>
+            <textarea class="input textarea category-description-edit" data-desc-cat="${catId}" rows="2"
+              placeholder="Describe what knowledge this category contains...">${escapeHtml(category.description || '')}</textarea>
             <div class="depth-tier-list">
               ${renderDepthTiers(catId, depths)}
             </div>
-            <button class="btn btn-sm btn-outline" data-action="add-depth" style="margin-top: var(--space-3)">
-              <span class="icon">+</span>
-              Add Depth Level
+            <button class="btn btn-sm btn-ghost category-add-depth" data-action="add-depth">
+              + Add depth level
             </button>
           </div>
         </div>
@@ -256,13 +255,13 @@ function renderDepthTiers(catId, depths) {
     .map(
       ([depth, content]) => `
       <div class="depth-tier-item" data-depth="${depth}">
-        <div class="depth-tier-badge">${depth}</div>
+        <div class="depth-tier-badge">${parseInt(depth) + 1}</div>
         <div class="depth-tier-content">
           <textarea class="input textarea" data-depth="${depth}" rows="3"
-            placeholder="Knowledge content for depth ${depth}...">${escapeHtml(content)}</textarea>
+            placeholder="Depth ${parseInt(depth) + 1} — what do NPCs know at this familiarity level?">${escapeHtml(content)}</textarea>
         </div>
         <div class="depth-tier-actions">
-          <button class="btn btn-sm btn-ghost" data-action="delete-depth" data-depth="${depth}" title="Remove depth">✕</button>
+          <button class="btn btn-sm btn-ghost" data-action="delete-depth" data-depth="${depth}" title="Remove depth">&#10005;</button>
         </div>
       </div>
     `

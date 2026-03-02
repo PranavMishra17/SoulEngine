@@ -11,7 +11,8 @@
       "Bash(node validate-fishing.js --input-type=commonjs)",
       "Bash(node --experimental-require-module validate-fishing.js)",
       "Bash(node -e \"import\\(''./validate-fishing.js''\\)\")",
-      "Bash(node -e \"[''space'',''fishing'',''office''].forEach\\(p => { const d=''data/starter-pack/''+p; [''meta.json'',''npcs.json'',''knowledge-base.json'',''mcp-tools.json''].forEach\\(f => { try{JSON.parse\\(require\\(''fs''\\).readFileSync\\(d+''/''+f,''utf8''\\)\\); console.log\\(''OK: ''+p+''/''+f\\);}catch\\(e\\){console.error\\(''FAIL: ''+p+''/''+f+'': ''+e.message\\);} }\\); }\\)\")"
+      "Bash(node -e \"[''space'',''fishing'',''office''].forEach\\(p => { const d=''data/starter-pack/''+p; [''meta.json'',''npcs.json'',''knowledge-base.json'',''mcp-tools.json''].forEach\\(f => { try{JSON.parse\\(require\\(''fs''\\).readFileSync\\(d+''/''+f,''utf8''\\)\\); console.log\\(''OK: ''+p+''/''+f\\);}catch\\(e\\){console.error\\(''FAIL: ''+p+''/''+f+'': ''+e.message\\);} }\\); }\\)\")",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }
