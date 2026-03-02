@@ -216,70 +216,130 @@
       <!-- Voice Pipeline -->
       <section class="section" id="pipeline">
         <div class="container">
-          <h2 class="section-title">Real-Time Voice Pipeline</h2>
-          <p class="section-subtitle">Sub-100ms time-to-first-audio. Every stage streams — no waiting for full outputs.</p>
+          <h2 class="section-title">How It Works</h2>
+          <p class="section-subtitle">NPC context assembles a rich prompt — the pipeline streams it live in under 100ms.</p>
 
-          <div class="pipeline-flowchart">
-            <!-- Row 1: Input path (left to right) -->
-            <div class="pf-row">
-              <div class="pf-node pf-node-input">
-                <div class="pf-node-label">Client Audio</div>
-                <div class="pf-node-detail">Microphone input</div>
-              </div>
-              <div class="pf-arrow">&#8594;</div>
-              <div class="pf-node pf-node-decision">
-                <div class="pf-node-label">VAD</div>
-                <div class="pf-node-detail">Voice activity detection</div>
-                <div class="pf-decision-fork">
-                  <span class="pf-fork-discard">silence &#8599; discarded</span>
+          <div class="pipeline-dual">
+
+            <!-- Left: NPC Context vertical flowchart -->
+            <div class="pd-panel">
+              <div class="pd-panel-header">NPC Context</div>
+
+              <div class="nc-node nc-node-identity">
+                <div class="nc-node-label">Identity</div>
+                <div class="nc-node-tags">
+                  <span class="nc-tag">name</span>
+                  <span class="nc-tag">description</span>
+                  <span class="nc-tag">avatar</span>
                 </div>
               </div>
-              <div class="pf-arrow">&#8594;</div>
-              <div class="pf-node pf-node-streaming">
-                <div class="pf-node-label">Speech-to-Text</div>
-                <div class="pf-node-detail">WebSocket stream</div>
-                <div class="pf-badge">streaming</div>
+              <div class="nc-connector"></div>
+
+              <div class="nc-node nc-node-anchor">
+                <div class="nc-node-label">Core Anchor</div>
+                <div class="nc-node-tags">
+                  <span class="nc-tag">backstory</span>
+                  <span class="nc-tag">principles</span>
+                  <span class="nc-tag">immutable</span>
+                </div>
               </div>
-              <div class="pf-arrow">&#8594;</div>
-              <div class="pf-node pf-node-security">
-                <div class="pf-node-label">Security Gate</div>
-                <div class="pf-node-detail">Sanitize + moderate</div>
-                <div class="pf-decision-fork">
-                  <span class="pf-fork-discard">blocked &#8599; dropped</span>
+              <div class="nc-connector"></div>
+
+              <div class="nc-node nc-node-personality">
+                <div class="nc-node-label">Personality</div>
+                <div class="nc-node-tags">
+                  <span class="nc-tag">Big Five traits</span>
+                  <span class="nc-tag">salience</span>
+                </div>
+              </div>
+              <div class="nc-connector"></div>
+
+              <div class="nc-node nc-node-knowledge">
+                <div class="nc-node-label">Knowledge &amp; Tools</div>
+                <div class="nc-node-tags">
+                  <span class="nc-tag">tiered access</span>
+                  <span class="nc-tag">MCP actions</span>
+                </div>
+              </div>
+              <div class="nc-connector"></div>
+
+              <div class="nc-node nc-node-network">
+                <div class="nc-node-label">Network</div>
+                <div class="nc-node-tags">
+                  <span class="nc-tag">NPC connections</span>
+                  <span class="nc-tag">player recognition</span>
+                </div>
+              </div>
+              <div class="nc-connector"></div>
+
+              <div class="nc-node nc-node-memory">
+                <div class="nc-node-label">Memory</div>
+                <div class="nc-node-tags">
+                  <span class="nc-tag">Daily Pulse</span>
+                  <span class="nc-tag">Weekly Whisper</span>
+                  <span class="nc-tag">Persona Shift</span>
                 </div>
               </div>
             </div>
 
-            <!-- Turn connector -->
-            <div class="pf-turn">
-              <div class="pf-turn-label">context injection</div>
-              <div class="pf-turn-arrow">&#8627;</div>
+            <!-- Center: feeds-into bridge -->
+            <div class="pd-bridge">
+              <div class="pd-bridge-line"></div>
+              <div class="pd-bridge-label">builds prompt</div>
+              <div class="pd-bridge-arrow">&#8594;</div>
+              <div class="pd-bridge-line"></div>
             </div>
 
-            <!-- Row 2: Output path (right to left) -->
-            <div class="pf-row pf-row-reverse">
-              <div class="pf-node pf-node-output">
-                <div class="pf-node-label">Audio Output</div>
-                <div class="pf-node-detail">Client speaker</div>
+            <!-- Right: Voice Pipeline vertical flowchart -->
+            <div class="pd-panel">
+              <div class="pd-panel-header">Voice Pipeline</div>
+
+              <div class="vp-node vp-node-input">
+                <div class="vp-node-label">Mic Input</div>
               </div>
-              <div class="pf-arrow pf-arrow-left">&#8592;</div>
-              <div class="pf-node pf-node-streaming">
-                <div class="pf-node-label">Speech Synthesis</div>
-                <div class="pf-node-detail">Starts on first token</div>
-                <div class="pf-badge">streaming</div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-decision">
+                <div class="vp-node-label">VAD</div>
+                <div class="vp-node-detail">silence discarded</div>
               </div>
-              <div class="pf-arrow pf-arrow-left">&#8592;</div>
-              <div class="pf-node pf-node-llm">
-                <div class="pf-node-label">Streaming LLM</div>
-                <div class="pf-node-detail">NPC persona + memory</div>
-                <div class="pf-badge pf-badge-accent">token stream</div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-streaming">
+                <div class="vp-node-label">Speech-to-Text</div>
+                <span class="vp-badge">streaming</span>
               </div>
-              <div class="pf-arrow pf-arrow-left">&#8592;</div>
-              <div class="pf-node">
-                <div class="pf-node-label">NPC Context</div>
-                <div class="pf-node-detail">Personality + knowledge</div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-security">
+                <div class="vp-node-label">Security Gate</div>
+                <div class="vp-node-detail">blocked input dropped</div>
+              </div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-context">
+                <div class="vp-node-label">Context Assembly</div>
+                <div class="vp-node-detail">NPC prompt built</div>
+              </div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-llm">
+                <div class="vp-node-label">Streaming LLM</div>
+                <span class="vp-badge vp-badge-accent">token stream</span>
+              </div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-streaming">
+                <div class="vp-node-label">Speech Synthesis</div>
+                <span class="vp-badge">streaming</span>
+              </div>
+              <div class="vp-step-arrow">&#8595;</div>
+
+              <div class="vp-node vp-node-output">
+                <div class="vp-node-label">Audio Output</div>
               </div>
             </div>
+
           </div>
         </div>
       </section>
