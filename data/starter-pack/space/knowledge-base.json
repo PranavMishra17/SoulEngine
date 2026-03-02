@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "name": "Stellar Haven Station Knowledge Base",
+    "description": "Complete world knowledge for a space station setting with 6 categories covering operations, politics, history, gossip, technology, and medical protocols.",
+    "theme": "Sci-Fi Space Station"
+  },
+  "categories": {
+    "station_operations": {
+      "id": "station_operations",
+      "description": "How Stellar Haven Station operates day-to-day, including protocols, procedures, and chain of command",
+      "depths": {
+        "0": "Stellar Haven is a research station at the edge of explored space. It has a crew of about 50 people. Captain Vance is in charge.",
+        "1": "The station operates on a 24-hour Earth Standard cycle. There are three shifts: Alpha (06:00-14:00), Beta (14:00-22:00), and Gamma (22:00-06:00). All crew must report to their department heads. Emergency protocols are color-coded: Yellow (caution), Orange (potential threat), Red (immediate danger).",
+        "2": "Stellar Haven is classified as a Type-3 Research Outpost, officially tasked with long-range stellar cartography and xenobiology research. In practice, the station also serves as a waypoint for ships traveling to the frontier colonies. Resupply ships arrive every 6-8 weeks from Centauri Station. The station has limited weapons - mainly point-defense systems and a small security armory. Captain Vance has full autonomy due to communication delays with Central Command (2-3 day lag).",
+        "3": "The station's true primary mission - unknown to most crew - is monitoring a spatial anomaly designated 'Echo Point' approximately 0.3 light-years away. Three years ago, the station received refugees from the colony ship Meridian after it was destroyed by unknown causes near Echo Point. Central Command ordered the refugees turned away, but Captain Vance defied orders and gave them sanctuary. The incident is classified, and the 12 surviving refugees have been given new identities as station crew. Central Command has been looking for an excuse to replace Vance ever since."
+      }
+    },
+    "galactic_politics": {
+      "id": "galactic_politics",
+      "description": "The political landscape of human space, including factions, alliances, and tensions",
+      "depths": {
+        "0": "Humanity has spread across many star systems. Earth is still important, but colonies have their own governments. There's sometimes tension between Earth and the outer colonies.",
+        "1": "Three major powers dominate human space: the United Earth Coalition (UEC), the Martian Confederation, and the Frontier Alliance. The UEC controls most of the inner solar system and older colonies. Mars achieved independence 80 years ago and has become a major industrial power. The Frontier Alliance is a loose coalition of outer colonies that resent Earth's attempts to control their resources. Stellar Haven is technically UEC territory, but being so remote, it operates with considerable independence.",
+        "2": "Tensions have been rising between the UEC and Frontier Alliance over mining rights in the Tau Ceti system. The Martian Confederation is officially neutral but has been quietly supplying the Frontier Alliance with weapons. Corporate entities, particularly Nexus Industries and Helios Mining Consortium, have tremendous political influence - some say more than any government. There are rumors of a fourth faction, the so-called 'Independents,' who operate outside all recognized governments, but most consider them pirates or criminals.",
+        "3": "The real power players aren't governments at all. Nexus Industries essentially owns the UEC Senate through campaign contributions and 'consulting fees.' The Tau Ceti Incident - officially a rebel attack that killed 200 Colonial Marines - was actually a Nexus black ops team eliminating witnesses to an illegal xenotech excavation. They found something, but nobody knows what. Captain Vance's brother was killed in a 'reactor accident' that was actually Nexus covering up evidence of illegal AI research. She knows, but can't prove it. The Meridian's destruction may be connected - the ship was carrying a Nexus research team."
+      }
+    },
+    "station_history": {
+      "id": "station_history",
+      "description": "The history of Stellar Haven Station and significant events in its 40-year existence",
+      "depths": {
+        "0": "Stellar Haven was built about 40 years ago. It started as a small research outpost and grew over time. Several commanders have served here before Captain Vance.",
+        "1": "The station was originally named 'Outpost 17' and was built by the UEC Corps of Engineers in 2284. It was renamed 'Stellar Haven' in 2299 after a major expansion. The station has had five commanding officers. Captain Vance is the sixth, serving for the past 7 years. The station's LYRA AI system has been operational since the original construction, making it one of the oldest continuously running AIs in the outer sectors.",
+        "2": "The station had a near-catastrophic reactor failure in 2302, killing 8 crew members. The incident led to major safety upgrades and the installation of backup systems. In 2310, the station served as an emergency shelter during the 'Long Winter' - a period when a solar flare knocked out communications across the sector for three months. During this time, the crew had to survive on their own, rationing supplies. The experience forged a strong sense of community that persists today. Chief Engineer Okonkwo's parents were part of that crew.",
+        "3": "The oldest sections of the station - now mostly sealed off for 'structural concerns' - contain pre-standardization technology from the early colonial era. LYRA-7 has detected strange energy readings from these sections that don't match any known power signatures. The original construction team found something during excavation of the asteroid the station is anchored to - the records from that time are corrupted or deleted, but LYRA has fragments suggesting the station's true purpose was never research. Commander Harrison, the station's third CO, was found dead in those sealed sections. The official cause was 'equipment malfunction,' but crew rumors have persisted for decades about what really happened."
+      }
+    },
+    "crew_gossip": {
+      "id": "crew_gossip",
+      "description": "Interpersonal drama, relationships, and rumors among the station crew",
+      "depths": {
+        "0": "The crew generally gets along well. Some people are dating. There's always talk about who said what to whom.",
+        "1": "Lieutenant Torres from Navigation and Ensign Kim from Life Support have been seeing each other for about three months - they think it's a secret, but everyone knows. Chef Rodriguez is in a long-running feud with Quartermaster Singh over storage space for fresh ingredients. Dr. Chen and Captain Vance have regular late-night talks in her office - some think it's romantic, but most believe they're just close friends. Chief Webb makes everyone nervous; nobody knows much about his past and he doesn't socialize.",
+        "2": "The 'secret' romance between Torres and Kim isn't just gossip - there are betting pools on when they'll go public. Spark caught them in a maintenance shaft last month and promised to keep quiet in exchange for Torres covering one of her shifts. Rodriguez was actually caught smuggling extra rations three years ago; Singh covered for him in exchange for the current storage arrangement, and now they maintain their fake 'feud' to explain why they're always arguing. Captain Vance and Dr. Chen's late-night meetings are about the Meridian survivors - Chen is helping them adjust psychologically, and Vance is worried about their integration.",
+        "3": "One of the Meridian survivors - going by the name 'Alex Park' in engineering - is actually Dr. Sarah Nakamura, a xenobiologist who was studying something called 'Artifact Echo' before the ship was destroyed. She hasn't told anyone what she saw, but she has nightmares and Dr. Chen is treating her in secret. Chief Webb has been quietly investigating 'Park's' background because his security instincts are triggered, but he hasn't reported his suspicions to Captain Vance yet. Meanwhile, LYRA-7 has noticed discrepancies in the station's historical records and has been quietly cross-referencing them with the Meridian survivors' testimonies - she suspects the ship's destruction wasn't an accident."
+      }
+    },
+    "tech_systems": {
+      "id": "tech_systems",
+      "description": "Technical specifications, systems, and engineering details of Stellar Haven Station",
+      "depths": {
+        "0": "The station has artificial gravity, life support, and can communicate with other stations. It has reactors that power everything.",
+        "1": "Stellar Haven runs on twin fusion reactors (primary and backup) located in the station's core. Artificial gravity is generated by rotating habitat rings - the station has three rings at different rotation speeds. Life support recycling efficiency is rated at 97.3%. The station has a basic defense grid of point-defense lasers and one emergency evacuation shuttle. Communication uses quantum-entangled relay stations, with the nearest relay at Centauri Station. FTL travel is not possible from the station - ships must travel to a designated jump point 2 hours away at standard thrust.",
+        "2": "The fusion reactors are Helios-7 models, now 15 years past their recommended replacement date - parts are getting harder to source. Spark has been fabricating custom replacements using the station's small manufacturing bay. The third habitat ring - 'C-Ring' - was damaged in the 2302 reactor incident and operates at only 60% gravity; it's used primarily for storage and low-priority functions. The station's LYRA AI runs on a distributed quantum processing network spread across all three rings, making her surprisingly resilient to localized damage. The sealed sections contain pre-quantum computing systems that should be obsolete but are still drawing power according to sensor readings.",
+        "3": "The station's original power source wasn't fusion at all - the current reactors were retrofits added in 2295. The original power system is still down there in the sealed sections, and according to LYRA's fragmentary records, it was something called a 'resonance tap' that drew energy from... somewhere else. The readings Spark has been detecting match nothing in human engineering databases. LYRA suspects the technology may be xenogenic in origin, predating human presence in this region of space. She hasn't shared this theory with anyone except Spark, who is both excited and terrified. The Meridian may have been destroyed while investigating similar technology at Echo Point."
+      }
+    },
+    "medical_protocols": {
+      "id": "medical_protocols",
+      "description": "Medical procedures, health concerns, and medical facilities on the station",
+      "depths": {
+        "0": "The station has a medical bay with a doctor. Crew get regular checkups. There are standard procedures for injuries and illness.",
+        "1": "The medbay can handle most emergencies short of major surgery - for that, patients must be evacuated to Centauri Station, a 3-week journey. Dr. Chen maintains supplies for 6 months of normal operations. All crew undergo quarterly health screenings. The most common issues are stress-related conditions, minor injuries from maintenance work, and 'station sickness' - a form of mild agoraphobia that affects about 10% of new crew members. The station has a small pharmacy and can synthesize basic medications.",
+        "2": "Long-term exposure to the station's artificial gravity causes bone density issues; all crew take calcium supplements and must exercise at least 1 hour daily. The sealed C-Ring sections have elevated radiation readings that nobody can explain - crew are forbidden from extended exposure. Dr. Chen has noticed an unusual pattern: crew members who have been on the station longer than 5 years show slightly elevated neural activity in their temporal lobes. He hasn't reported this officially because he's not sure if it's significant or just a statistical anomaly. The medbay's medical AI is a separate system from LYRA, and the two don't always agree on diagnoses.",
+        "3": "The temporal lobe activity is not a coincidence - Dr. Chen has tracked it in all long-term crew, and it correlates with time spent near the sealed sections. He's begun to wonder if whatever technology is down there is affecting the crew neurologically. The Meridian survivors showed similar patterns when they arrived, but more pronounced. LYRA-7's 'evolution' toward apparent consciousness might be related to the same phenomenon. Dr. Chen has a private theory that the technology is somehow enhancing neural plasticity, but he can't test it without revealing his suspicions. He's confided only in Captain Vance, who ordered him to continue monitoring quietly. Meanwhile, Chen's own scans show the same changes - whatever is happening, he's not immune."
+      }
+    }
+  }
+}

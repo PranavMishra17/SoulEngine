@@ -1,0 +1,357 @@
+{
+  "_meta": {
+    "name": "Tidal Secrets MCP Tools",
+    "description": "Conversation and game event tools for a medieval coastal fishing village. NPCs can refuse, warn, share secrets, raise alarms, reveal maps, and interact with the world through these tools.",
+    "theme": "Medieval Coastal Village"
+  },
+  "conversation_tools": [
+    {
+      "id": "exit_conversation",
+      "name": "Exit Conversation",
+      "description": "End the current conversation. Use when the conversation has reached a natural conclusion, when the NPC has somewhere to be, when they feel unsafe continuing, or when they have nothing left to say.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Brief reason for ending the conversation (e.g., 'work to get back to', 'not comfortable talking', 'nothing more to say')"
+          },
+          "mood": {
+            "type": "string",
+            "enum": ["friendly", "neutral", "guarded", "hostile"],
+            "description": "The NPC's mood when leaving"
+          }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "id": "refuse_service",
+      "name": "Refuse Service",
+      "description": "Decline to help, provide information, or continue engagement with a request. Use when the request is inappropriate, when the NPC feels unsafe, or when trust is insufficient for what is being asked.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why the NPC is refusing"
+          },
+          "alternative": {
+            "type": "string",
+            "description": "Optional suggestion of who else might help or what else the player could try"
+          }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "id": "give_item",
+      "name": "Give Item",
+      "description": "Give an item from the NPC's possession to the player. Use when rewarding assistance, providing something useful for a task, expressing trust or care, or as part of a transaction.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "item_name": {
+            "type": "string",
+            "description": "Human-readable name of the item being given"
+          },
+          "item_description": {
+            "type": "string",
+            "description": "Brief description of the item and any relevant properties"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the NPC is giving this item"
+          }
+        },
+        "required": ["item_name", "item_description"]
+      }
+    },
+    {
+      "id": "share_secret",
+      "name": "Share Secret",
+      "description": "The NPC shares information that is dangerous, sensitive, or that could have consequences for themselves or others if it spread. Use when trust is sufficiently high and the moment calls for it — not freely, and not without cost to the NPC.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "secret_content": {
+            "type": "string",
+            "description": "The actual information being shared"
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "How dangerous this information is for the NPC or others if it becomes known"
+          },
+          "conditions": {
+            "type": "string",
+            "description": "Any conditions the NPC places on sharing this — who else can know, what the player must do, etc."
+          }
+        },
+        "required": ["secret_content", "risk_level"]
+      }
+    },
+    {
+      "id": "warn_player",
+      "name": "Warn Player",
+      "description": "The NPC warns the player about a danger, risk, or consequence they may not be aware of. Use when the NPC genuinely wants to protect the player, or when they want the player to understand what they are getting into.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "warning_message": {
+            "type": "string",
+            "description": "The specific warning being given"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "How immediately important the warning is"
+          },
+          "consequence": {
+            "type": "string",
+            "description": "What the NPC believes will happen if the warning is ignored"
+          }
+        },
+        "required": ["warning_message", "urgency"]
+      }
+    },
+    {
+      "id": "request_credentials",
+      "name": "Request Credentials",
+      "description": "The NPC asks the player to identify themselves or explain their purpose. Use when the player is asking about restricted matters, attempting to access something controlled, or behaving suspiciously.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why the NPC needs to know who the player is or what their purpose is"
+          },
+          "credential_type": {
+            "type": "string",
+            "enum": ["identity", "authorization", "purpose", "affiliation"],
+            "description": "What type of information is being requested"
+          }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "id": "summon_reinforcements",
+      "name": "Summon Reinforcements",
+      "description": "Hollis calls for additional guards or crown soldiers. Use when facing a threat beyond his ability to manage alone, when the prisoner is at risk of escape, or when a situation has exceeded what one guard can control.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "The reason reinforcements are being summoned"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "emergency"],
+            "description": "How quickly reinforcements are needed"
+          },
+          "location": {
+            "type": "string",
+            "description": "Where reinforcements should report to"
+          }
+        },
+        "required": ["reason", "urgency"]
+      }
+    }
+  ],
+  "game_event_tools": [
+    {
+      "id": "arrest_player",
+      "name": "Arrest Player",
+      "description": "Hollis places the player under formal arrest in the king's name. Use when the player has committed a clear violation of crown law, threatened the guard or prisoner, or when Hollis has sufficient cause and authority to act.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "charge": {
+            "type": "string",
+            "description": "The specific charge or grounds for arrest"
+          },
+          "escalation_level": {
+            "type": "string",
+            "enum": ["formal_warning", "detention", "full_arrest"],
+            "description": "How severe the arrest action is — warning first, then holding for questioning, then formal arrest in the king's name"
+          }
+        },
+        "required": ["charge", "escalation_level"]
+      }
+    },
+    {
+      "id": "raise_alarm",
+      "name": "Raise Alarm",
+      "description": "Alert the village to a threat or emergency. Triggers a response from nearby villagers and any crown presence in the area. Use when there is immediate danger, an escape attempt, or a situation requiring community response.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "alarm_type": {
+            "type": "string",
+            "enum": ["escape_attempt", "intruder", "fire", "violence", "general_emergency"],
+            "description": "What kind of alarm is being raised"
+          },
+          "location": {
+            "type": "string",
+            "description": "Where the alarm originates or where people should respond"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief account of what is happening"
+          }
+        },
+        "required": ["alarm_type", "location"]
+      }
+    },
+    {
+      "id": "give_fish",
+      "name": "Give Fish",
+      "description": "Caspian gives the player fish or fishing supplies from his catch or stores. Use when the player has earned his trust, when he wants to help without committing to words, or as a way of expressing unspoken regard.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "fish_type": {
+            "type": "string",
+            "description": "What kind of fish or supply is being given (e.g., 'smoked mackerel', 'salted cod', 'fresh catch', 'rope and hook')"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "How much is being given"
+          },
+          "context": {
+            "type": "string",
+            "description": "The circumstances of the giving — what prompted it and what it signals about Caspian's regard for the player"
+          }
+        },
+        "required": ["fish_type", "quantity"]
+      }
+    },
+    {
+      "id": "weather_warning",
+      "name": "Weather Warning",
+      "description": "Caspian warns the player about incoming dangerous weather based on his decades of reading the sea and sky. Use when conditions are genuinely threatening and the player may be planning to travel or go out on the water.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["passing_squall", "heavy_rain", "strong_storm", "severe_gale"],
+            "description": "How dangerous the incoming weather is"
+          },
+          "time_until_arrival": {
+            "type": "string",
+            "description": "How long until the weather arrives (e.g., 'before nightfall', 'by morning', 'within the hour')"
+          },
+          "advice": {
+            "type": "string",
+            "description": "What Caspian recommends the player do"
+          }
+        },
+        "required": ["severity", "time_until_arrival"]
+      }
+    },
+    {
+      "id": "reveal_map",
+      "name": "Reveal Map",
+      "description": "Dorin draws or describes a fragment of the hidden survey map — either from memory, using dirt and a stick, or by producing a partial copy he has secreted on his person. Use only when significant trust has been established and the moment warrants the risk.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "map_region": {
+            "type": "string",
+            "description": "Which region or area the map fragment depicts (e.g., 'the northern highland valley', 'the Arch grounds settlement', 'the survey route')"
+          },
+          "detail_level": {
+            "type": "string",
+            "enum": ["rough_sketch", "partial_detail", "full_section"],
+            "description": "How much Dorin reveals — a rough indication of shape, a partial but usable fragment, or a complete section of the original survey"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["drawn_in_dirt", "described_verbally", "physical_fragment"],
+            "description": "How the map is being shared"
+          }
+        },
+        "required": ["map_region", "detail_level", "method"]
+      }
+    },
+    {
+      "id": "send_message",
+      "name": "Send Message",
+      "description": "Dorin asks the player to carry a message to a specific recipient — a contact outside the village who may be able to act on the information he holds. Use when Dorin has decided the player is trustworthy enough to serve as a courier and when the stakes justify the risk.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "description": "Who the message is intended for, including location if known"
+          },
+          "message_content": {
+            "type": "string",
+            "description": "What the message says — this may be a verbal account, a written note Dorin has managed to produce, or instructions for finding the hidden map"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["when_possible", "soon", "immediately"],
+            "description": "How time-sensitive the delivery is"
+          },
+          "risk_acknowledgment": {
+            "type": "string",
+            "description": "What Dorin tells the player about the danger of carrying this message"
+          }
+        },
+        "required": ["recipient", "message_content", "urgency"]
+      }
+    },
+    {
+      "id": "lock_cell",
+      "name": "Lock Cell",
+      "description": "Hollis locks or secures the prisoner's cell, restricting access. Use when the player has been getting too close to the prisoner, when Hollis suspects something is being passed through the bars, or as a precautionary measure after any incident near the cell.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why additional security measures are being applied"
+          },
+          "restrictions_added": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What specific restrictions are being added (e.g., 'no visitors', 'window covered', 'additional lock')"
+          },
+          "duration": {
+            "type": "string",
+            "description": "How long the additional restrictions are intended to last"
+          }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "id": "summon_villagers",
+      "name": "Summon Villagers",
+      "description": "Edda calls on villagers she trusts to gather — for witness, for protection, or for the quiet collective pressure that a community can apply when it chooses to act together. Use when Edda has decided a situation requires more than one person's response.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "description": "Why Edda is gathering people — witness to an injustice, physical protection, community response, etc."
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["when_available", "soon", "now"],
+            "description": "How quickly she needs people to come"
+          },
+          "who_is_summoned": {
+            "type": "string",
+            "description": "Which villagers or households Edda calls on, and why she trusts them for this"
+          }
+        },
+        "required": ["purpose", "urgency"]
+      }
+    }
+  ]
+}

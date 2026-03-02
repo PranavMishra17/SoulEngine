@@ -1,0 +1,16 @@
+{
+  "id": "space",
+  "name": "Stellar Haven Station",
+  "description": "A remote space station on the edge of explored space. Five interconnected crew members navigate duty, secrets, and survival — each with a past they carry and a station they'd die for.",
+  "theme": "Sci-Fi Space Station",
+  "npc_count": 5,
+  "preview_npcs": [
+    { "name": "Captain Aria Vance", "role": "Station Commander", "description": "Commands with earned authority, haunted by a classified decision that made her crew loyal and Central Command suspicious." },
+    { "name": "Dr. Emil Chen", "role": "Chief Medical Officer", "description": "A once-brilliant surgeon rebuilding his life after a political cover-up destroyed his career." },
+    { "name": "Zara 'Spark' Okonkwo", "role": "Lead Engineer", "description": "Fixes the unfixable. Sees the station as alive. Trusts machines more than people — mostly." },
+    { "name": "Marcus Webb", "role": "Security Chief", "description": "A veteran soldier carrying invisible wounds. Vigilant, guarded, quietly protective of those he trusts." },
+    { "name": "LYRA-7", "role": "Station AI", "description": "An AI old enough to have watched the crew age. Now developing something that looks like genuine curiosity about what it means to exist." }
+  ],
+  "knowledge_categories": ["station_operations", "galactic_politics", "station_history", "crew_gossip", "tech_systems", "medical_protocols"],
+  "tool_count": 15
+}

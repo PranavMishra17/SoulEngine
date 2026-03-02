@@ -2,10 +2,9 @@
  * Project Dashboard Page Handler
  */
 
-import { projects, mcpTools } from '../api.js';
+import { projects, mcpTools, starterPacks, ApiError } from '../api.js';
 import { toast, modal, renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
-import { getAccessToken } from '../auth.js';
 
 let currentProject = null;
 let currentProjectId = null;
@@ -65,11 +64,6 @@ export async function initDashboardPage(params) {
     } catch (err) {
       toast.error('Copy Failed', 'Could not copy to clipboard');
     }
-  });
-
-  // Bind starter pack button
-  document.getElementById('btn-load-starter-pack')?.addEventListener('click', async () => {
-    await loadStarterPack(projectId);
   });
 
   // Bind refresh button (if exists)
@@ -159,11 +153,15 @@ async function loadProjectData(projectId) {
     // Show/hide starter pack section based on content
     const starterSection = document.getElementById('starter-pack-section');
     if (starterSection) {
-      // Hide if project already has content (NPCs OR knowledge OR tools)
-      const hasContent = (stats.npcs?.total > 0) || 
-                         (stats.knowledge?.categories > 0) || 
+      const hasContent = (stats.npcs?.total > 0) ||
+                         (stats.knowledge?.categories > 0) ||
                          (stats.tools?.total > 0);
-      starterSection.style.display = hasContent ? 'none' : 'block';
+      if (hasContent) {
+        starterSection.style.display = 'none';
+      } else {
+        starterSection.style.display = 'block';
+        renderStarterPackCatalog(projectId);
+      }
     }
 
   } catch (error) {
@@ -380,95 +378,155 @@ function updateFlowchart(stats) {
 }
 
 /**
- * Load starter pack examples into the project
+ * Fetch and render all starter pack cards into #pack-grid.
+ * Called only when the starter-pack-section is visible (project is empty).
  */
-async function loadStarterPack(projectId) {
-  const btn = document.getElementById('btn-load-starter-pack');
-  if (!btn) return;
-  
-  // Show custom confirmation modal
-  const confirmContent = document.createElement('div');
-  confirmContent.innerHTML = `
-    <div class="starter-pack-confirm">
-      <p style="margin-bottom: var(--space-4);">Load the <strong>Stellar Haven Station</strong> example content into your project?</p>
-      <div class="starter-pack-confirm-details">
-        <div class="confirm-item">&#9671; <strong>5</strong> interconnected NPCs</div>
-        <div class="confirm-item">&#9672; <strong>6</strong> knowledge categories</div>
-        <div class="confirm-item">&#11043; <strong>15</strong> MCP tools</div>
+async function renderStarterPackCatalog(projectId) {
+  const grid = document.getElementById('pack-grid');
+  if (!grid) return;
+
+  // Only render once per page load
+  if (grid.dataset.rendered === projectId) return;
+  grid.dataset.rendered = projectId;
+
+  try {
+    const packs = await starterPacks.list();
+    if (!packs.length) {
+      grid.innerHTML = '<p class="text-secondary">No starter packs available.</p>';
+      return;
+    }
+
+    grid.innerHTML = packs.map((pack) => `
+      <div class="pack-card" data-pack-id="${escapeHtml(pack.id)}">
+        <div class="pack-card-body">
+          <div class="pack-card-theme">${escapeHtml(pack.theme)}</div>
+          <div class="pack-card-name">${escapeHtml(pack.name)}</div>
+          <div class="pack-card-desc">${escapeHtml(pack.description)}</div>
+          <div class="pack-card-stats">
+            <span>${pack.npc_count} NPCs</span>
+            <span>${pack.tool_count} tools</span>
+            <span>${pack.knowledge_categories.length} categories</span>
+          </div>
+        </div>
+        <div class="pack-card-actions">
+          <button class="btn btn-outline btn-sm" data-action="preview" data-pack-id="${escapeHtml(pack.id)}">Preview</button>
+          <button class="btn btn-primary btn-sm" data-action="load" data-pack-id="${escapeHtml(pack.id)}" data-pack-name="${escapeHtml(pack.name)}">Load</button>
+        </div>
       </div>
-      <p class="text-secondary" style="margin-top: var(--space-4); font-size: var(--text-sm);">Existing content will NOT be overwritten.</p>
+    `).join('');
+
+    // Attach click handlers
+    grid.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const packId = btn.dataset.packId;
+      const packName = btn.dataset.packName;
+      if (action === 'preview') {
+        const pack = packs.find((p) => p.id === packId);
+        if (pack) showPackPreview(pack);
+      } else if (action === 'load') {
+        doLoadPack(projectId, packId, packName);
+      }
+    });
+  } catch (error) {
+    grid.innerHTML = '<p class="text-secondary">Failed to load starter packs.</p>';
+  }
+}
+
+/**
+ * Show a preview modal for a starter pack (metadata only).
+ */
+function showPackPreview(pack) {
+  const previewContent = document.createElement('div');
+  const npcList = (pack.preview_npcs || []).map((npc) => `
+    <div class="pack-preview-npc">
+      <div class="pack-preview-npc-name">${escapeHtml(npc.name)}</div>
+      <div class="pack-preview-npc-role">${escapeHtml(npc.role)}</div>
+      <div class="pack-preview-npc-desc text-secondary">${escapeHtml(npc.description)}</div>
+    </div>
+  `).join('');
+
+  const categories = (pack.knowledge_categories || []).map((c) =>
+    `<span class="tag">${escapeHtml(c.replace(/_/g, ' '))}</span>`
+  ).join('');
+
+  previewContent.innerHTML = `
+    <div class="pack-preview">
+      <div class="pack-preview-meta">
+        <span class="pack-card-theme">${escapeHtml(pack.theme)}</span>
+        <span class="text-secondary">${pack.npc_count} NPCs &middot; ${pack.tool_count} tools</span>
+      </div>
+      <p class="pack-preview-desc">${escapeHtml(pack.description)}</p>
+      <h4>Characters</h4>
+      <div class="pack-preview-npcs">${npcList}</div>
+      <h4>Knowledge Categories</h4>
+      <div class="pack-preview-categories">${categories}</div>
     </div>
   `;
-  
+
+  const footer = document.createElement('div');
+  footer.innerHTML = '<button class="btn btn-outline" data-action="close">Close</button>';
+
+  const m = modal.open({ title: pack.name, content: previewContent, footer });
+  footer.querySelector('[data-action="close"]')?.addEventListener('click', () => m.close());
+}
+
+/**
+ * Load a starter pack into the project.
+ */
+async function doLoadPack(projectId, packId, packName) {
+  const loadBtn = document.querySelector(`.pack-card[data-pack-id="${packId}"] button[data-action="load"]`);
+
+  const confirmContent = document.createElement('div');
+  confirmContent.innerHTML = `
+    <p>Load <strong>${escapeHtml(packName)}</strong> into this project?</p>
+    <p class="text-secondary" style="margin-top: var(--space-3); font-size: var(--text-sm);">This will add NPCs, knowledge, and tools. Existing content is not overwritten.</p>
+  `;
+
   const confirmFooter = document.createElement('div');
   confirmFooter.innerHTML = `
     <button class="btn btn-outline" data-action="cancel">Cancel</button>
-    <button class="btn btn-primary" data-action="confirm">Load Examples</button>
+    <button class="btn btn-primary" data-action="confirm">Load Pack</button>
   `;
-  
+
   const confirmModal = modal.open({
     title: 'Load Starter Pack',
     content: confirmContent,
     footer: confirmFooter,
   });
-  
-  // Handle cancel
+
   confirmFooter.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
     confirmModal.close();
   });
-  
-  // Handle confirm
+
   confirmFooter.querySelector('[data-action="confirm"]')?.addEventListener('click', async () => {
     confirmModal.close();
-    
+    if (loadBtn) {
+      loadBtn.disabled = true;
+      loadBtn.textContent = 'Loading...';
+    }
     try {
-      btn.disabled = true;
-      btn.textContent = 'Loading...';
-      
-      const response = await fetch(`/api/projects/${projectId}/load-starter-pack`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to load starter pack');
-      }
-      
-      const result = await response.json();
-      
+      const result = await projects.loadStarterPack(projectId, packId);
       toast.success(
-        'Starter Pack Loaded!', 
+        'Starter Pack Loaded',
         `Added ${result.npcs_added} NPCs, ${result.knowledge_categories_added} categories, ${result.conversation_tools_added + result.game_event_tools_added} tools`
       );
-      
-      // Clear cache and reload dashboard
       sessionStorage.removeItem(`${STATS_CACHE_KEY}_${projectId}`);
       await loadProjectData(projectId);
-      
-      // Hide the starter pack section after loading
-      const starterSection = document.getElementById('starter-pack-section');
-      if (starterSection) {
-        starterSection.style.display = 'none';
-      }
-      
     } catch (error) {
-      toast.error('Failed to Load Starter Pack', error.message);
-      btn.disabled = false;
-      btn.textContent = 'Load Examples';
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 409) {
+        toast.error('Pack Already Loaded', 'This project already has content. Only one starter pack can be loaded per project.');
+      } else {
+        toast.error('Failed to Load Pack', error.message);
+      }
+      if (loadBtn) {
+        loadBtn.disabled = false;
+        loadBtn.textContent = 'Load';
+      }
     }
   });
-}
-
-/**
- * Get auth headers if logged in
- */
-function getAuthHeaders() {
-  const token = getAccessToken();
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
 /**

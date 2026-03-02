@@ -1,0 +1,16 @@
+{
+  "id": "fishing",
+  "name": "Tidal Secrets",
+  "description": "A small coastal fishing village holds dark secrets beneath its peaceful surface. A mysterious prisoner, a loyal guard, and ordinary folk caught between duty and conscience.",
+  "theme": "Medieval Coastal Village",
+  "npc_count": 5,
+  "preview_npcs": [
+    { "name": "Mira", "role": "The Orphan", "description": "A sharp-eyed girl of about 14 who has survived on her wits since childhood. She's formed a quiet bond with the prisoner nobody else will speak to." },
+    { "name": "Old Caspian", "role": "The Fisherman", "description": "Weathered and wise, Caspian has watched the kingdom tighten its grip over forty years of tides. He knows more than he lets on." },
+    { "name": "Edda", "role": "Caspian's Wife", "description": "Sharp-tongued and quietly fierce, Edda is the moral compass of the household. She sees through people instantly." },
+    { "name": "Sergeant Hollis", "role": "The King's Guard", "description": "A loyal soldier whose certainty is beginning to crack. He follows orders, but the prisoner makes him uneasy." },
+    { "name": "Dorin", "role": "The Prisoner", "description": "A former royal cartographer in shackles. Calm, resigned — and carrying a secret about the kingdom that could change everything." }
+  ],
+  "knowledge_categories": ["village_life", "kingdom_politics", "the_prisoner", "sea_legends", "tidal_secrets"],
+  "tool_count": 13
+}

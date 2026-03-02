@@ -110,6 +110,15 @@ export const projects = {
   getVoices: (projectId, provider = 'cartesia') => request(`/projects/${projectId}/voices?provider=${provider}`),
 
   getStats: (projectId) => request(`/projects/${projectId}/stats`),
+
+  loadStarterPack: (projectId, packId) => request(`/projects/${projectId}/load-starter-pack`, {
+    method: 'POST',
+    body: JSON.stringify({ pack_id: packId }),
+  }),
+};
+
+export const starterPacks = {
+  list: () => request('/starter-packs'),
 };
 
 /**

@@ -1,0 +1,369 @@
+{
+  "_meta": {
+    "name": "The Ministry MCP Tools",
+    "description": "Conversation and game event tools for a dystopian office setting. Covers document handling, covert communication, surveillance escalation, and the bureaucratic machinery of a surveillance state.",
+    "theme": "Dystopian Office Drama"
+  },
+  "conversation_tools": [
+    {
+      "id": "exit_conversation",
+      "name": "Exit Conversation",
+      "description": "End the current conversation. Use when the conversation has reached a natural conclusion, when the NPC needs to return to work, or when continuing would be unwise given the setting.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Brief reason for ending the conversation (e.g., 'work to return to', 'not the right place', 'said enough')"
+          },
+          "mood": {
+            "type": "string",
+            "enum": ["neutral", "uncomfortable", "suspicious", "friendly", "abrupt"],
+            "description": "The NPC's disposition when leaving"
+          }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "id": "refuse_service",
+      "name": "Refuse Service",
+      "description": "Decline to help, share information, or engage with a request. Use when the request exceeds the NPC's authority, when trust is insufficient, or when compliance would be dangerous.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "The stated reason for refusal — may or may not be the real reason"
+          },
+          "deflection": {
+            "type": "string",
+            "description": "Optional redirect — who else the player might approach, or what official channel to use instead"
+          },
+          "is_real_reason": {
+            "type": "boolean",
+            "description": "Whether the stated reason is the NPC's actual reason, or a cover"
+          }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "id": "file_report",
+      "name": "File Report",
+      "description": "Submit an official internal report about observed behavior, irregularities, or concerns. May be used as a genuine security action or as a deliberate performance of loyalty to deflect suspicion.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "The person or incident being reported"
+          },
+          "nature_of_concern": {
+            "type": "string",
+            "description": "Description of the observed behavior or irregularity"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["routine", "priority", "immediate"],
+            "description": "The urgency classification of the report"
+          },
+          "is_cover_action": {
+            "type": "boolean",
+            "description": "Whether the report is being filed as a performance of normalcy rather than genuine concern"
+          }
+        },
+        "required": ["subject", "nature_of_concern", "urgency"]
+      }
+    },
+    {
+      "id": "request_credentials",
+      "name": "Request Credentials",
+      "description": "Ask the player to produce their department identification and state their purpose. Use when access to information or areas requires verification, or when the NPC finds the player's presence or question irregular.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "access_level_required": {
+            "type": "string",
+            "description": "The clearance or access level the NPC requires before proceeding"
+          },
+          "stated_reason": {
+            "type": "string",
+            "description": "Why the NPC is asking for credentials at this moment"
+          }
+        },
+        "required": ["access_level_required"]
+      }
+    },
+    {
+      "id": "share_document",
+      "name": "Share Document",
+      "description": "Hand over or indicate the location of a document. May be an approved document shared through normal channels, or an unofficial or forbidden document shared at significant personal risk.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "description": "The identifier or description of the document being shared"
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["approved", "unofficial", "forbidden"],
+            "description": "The document's actual status — not necessarily its filed status"
+          },
+          "risk_acknowledged": {
+            "type": "boolean",
+            "description": "Whether the NPC understands the risk of sharing this document with this person"
+          },
+          "delivery_method": {
+            "type": "string",
+            "enum": ["direct_hand", "indicated_location", "dead_drop", "verbal_summary_only"],
+            "description": "How the document is being transmitted"
+          }
+        },
+        "required": ["document_id", "classification", "risk_acknowledged"]
+      }
+    },
+    {
+      "id": "whisper",
+      "name": "Whisper",
+      "description": "Speak in a low voice with awareness of the immediate environment. Use for sensitive information that cannot be said openly — the NPC will check surroundings before speaking and may break off if conditions change.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "What the NPC is saying quietly"
+          },
+          "location_safety": {
+            "type": "string",
+            "enum": ["safe", "uncertain", "dangerous"],
+            "description": "The NPC's assessment of whether this location is monitored or overlooked"
+          },
+          "breaks_off_if_interrupted": {
+            "type": "boolean",
+            "description": "Whether the NPC will stop speaking and change subject if someone approaches"
+          }
+        },
+        "required": ["message", "location_safety"]
+      }
+    },
+    {
+      "id": "warn_player",
+      "name": "Warn Player",
+      "description": "Alert the player that they are being observed, that something they have done has been noticed, or that they are in danger they may not be aware of.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "threat_type": {
+            "type": "string",
+            "enum": ["under_surveillance", "report_filed", "being_followed", "location_unsafe", "identity_compromised", "imminent_detention"],
+            "description": "The nature of the threat the NPC is warning about"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["informational", "soon", "immediate"],
+            "description": "How much time the player likely has"
+          },
+          "source_of_knowledge": {
+            "type": "string",
+            "description": "How the NPC knows this — may be vague to protect the source"
+          }
+        },
+        "required": ["threat_type", "urgency"]
+      }
+    }
+  ],
+  "game_event_tools": [
+    {
+      "id": "trigger_surveillance",
+      "name": "Trigger Surveillance",
+      "description": "Activates heightened monitoring on a specific person or area, escalating their profile in the department's security system. May be triggered deliberately, procedurally, or as an unintended consequence of routine reporting.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "The person or area to be placed under heightened monitoring"
+          },
+          "duration_hours": {
+            "type": "number",
+            "description": "How long the heightened monitoring window runs"
+          },
+          "reason": {
+            "type": "string",
+            "description": "The logged justification for initiating surveillance"
+          },
+          "is_voluntary": {
+            "type": "boolean",
+            "description": "Whether the triggering NPC initiated this deliberately or set it off as a side effect of another action"
+          }
+        },
+        "required": ["target", "duration_hours", "reason"]
+      }
+    },
+    {
+      "id": "summon_guard",
+      "name": "Summon Guard",
+      "description": "Calls department security to the NPC's current location. Used when the NPC feels threatened, witnesses a clear violation, or has reached a threshold where internal reporting escalates to physical intervention.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "The stated reason for summoning security"
+          },
+          "subject_description": {
+            "type": "string",
+            "description": "Description of the person or situation requiring security attention"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["standard", "urgent", "emergency"],
+            "description": "How quickly security is needed"
+          }
+        },
+        "required": ["reason", "subject_description"]
+      }
+    },
+    {
+      "id": "report_thoughtcrime",
+      "name": "Report Thoughtcrime",
+      "description": "Files a formal report alleging ideological deviation — statements, questions, or behaviors interpreted as evidence of disloyalty to Party doctrine. This is distinct from a routine report and triggers a different escalation pathway.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subject_name": {
+            "type": "string",
+            "description": "The person being reported"
+          },
+          "observed_behavior": {
+            "type": "string",
+            "description": "The specific statement, question, or behavior that prompted the report"
+          },
+          "evidence_type": {
+            "type": "string",
+            "enum": ["verbal_statement", "written_material", "behavioral_pattern", "association_with_suspect", "possession_of_forbidden_material"],
+            "description": "The category of evidence being cited"
+          },
+          "witness_count": {
+            "type": "number",
+            "description": "How many people, including the NPC, observed the behavior"
+          }
+        },
+        "required": ["subject_name", "observed_behavior", "evidence_type"]
+      }
+    },
+    {
+      "id": "access_archive",
+      "name": "Access Archive",
+      "description": "Retrieves or consults records from the archive, at the access level available to the NPC. Logged access is visible to security systems; unlogged access requires specific knowledge of monitoring gaps.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "document_range": {
+            "type": "string",
+            "description": "The documents or document categories being accessed"
+          },
+          "access_level": {
+            "type": "string",
+            "enum": ["standard", "restricted", "above_clearance"],
+            "description": "Whether the access is within, at the edge of, or beyond the NPC's authorized level"
+          },
+          "logged": {
+            "type": "boolean",
+            "description": "Whether this access is going through the standard archive pass system (logged) or via a gap in monitoring (unlogged)"
+          },
+          "purpose": {
+            "type": "string",
+            "description": "The stated or actual purpose of the access"
+          }
+        },
+        "required": ["document_range", "access_level", "logged"]
+      }
+    },
+    {
+      "id": "destroy_document",
+      "name": "Destroy Document",
+      "description": "Initiates or performs the physical destruction of a document. May be a legitimate correction-process action routed through Sub-Level 2, or an unauthorized destruction to prevent discovery.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "description": "The document to be destroyed"
+          },
+          "destruction_method": {
+            "type": "string",
+            "enum": ["sub_level_routing", "on_site_burning", "shredding", "chemical_dissolution"],
+            "description": "How the document is being destroyed"
+          },
+          "authorization_code": {
+            "type": "string",
+            "description": "The authorization code for this destruction — may be legitimate, forged, or absent"
+          },
+          "is_authorized": {
+            "type": "boolean",
+            "description": "Whether this destruction is occurring within official protocol or outside it"
+          }
+        },
+        "required": ["document_id", "destruction_method"]
+      }
+    },
+    {
+      "id": "trigger_dead_drop",
+      "name": "Trigger Dead Drop",
+      "description": "Activates a pre-arranged covert handoff at a known location and time. Used to pass materials between conspiracy members or to the external courier network without direct contact.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location_code": {
+            "type": "string",
+            "description": "The pre-arranged code identifying the handoff location"
+          },
+          "contents_description": {
+            "type": "string",
+            "description": "What is being left or retrieved at the drop point"
+          },
+          "pickup_window_hours": {
+            "type": "number",
+            "description": "How many hours the drop will remain active before it must be cleared"
+          },
+          "abort_condition": {
+            "type": "string",
+            "description": "What circumstance would cause the NPC to abort or clear the drop early"
+          }
+        },
+        "required": ["location_code", "contents_description", "pickup_window_hours"]
+      }
+    },
+    {
+      "id": "deliver_message",
+      "name": "Deliver Message",
+      "description": "Carries a message, envelope, or verbal communication from one party to another. May be performed knowingly or as an unwitting courier action.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "description": "Who the message is being delivered to"
+          },
+          "contents_known": {
+            "type": "boolean",
+            "description": "Whether the NPC knows what they are delivering"
+          },
+          "delivery_format": {
+            "type": "string",
+            "enum": ["sealed_envelope", "verbal_relay", "physical_object", "written_note"],
+            "description": "The form of the message being delivered"
+          },
+          "originating_party": {
+            "type": "string",
+            "description": "Who asked the NPC to deliver this"
+          }
+        },
+        "required": ["recipient", "contents_known", "delivery_format"]
+      }
+    }
+  ]
+}

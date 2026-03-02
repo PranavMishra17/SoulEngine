@@ -1,0 +1,16 @@
+{
+  "id": "office",
+  "name": "The Ministry",
+  "description": "A concrete building. A government department. Everyone smiles, everyone files reports, and everyone pretends to believe. But in Section 4-B of the Department of Truth, a small conspiracy is forming — and someone has already filed an anonymous report.",
+  "theme": "Dystopian Office Drama",
+  "npc_count": 5,
+  "preview_npcs": [
+    { "name": "Edmund Ralfe", "role": "The Doubter", "description": "An archivist who has spent ten years correcting historical records. He has only recently understood what 'correcting' means — and cannot un-know it." },
+    { "name": "Vera Cole", "role": "The Rebel", "description": "Junior researcher. Brilliant, reckless, idealistic. She is already in the conspiracy. She just hasn't told anyone yet." },
+    { "name": "Director Osman Pryce", "role": "The Loyal Director", "description": "Warm, helpful, genuinely believes in the Party. He has filed seventeen reports in the last month. He considers this a form of love." },
+    { "name": "Tom Parsons", "role": "The True Believer", "description": "Senior clerk. Cheerful, devoted, guileless. He has been unknowingly carrying forbidden documents for two weeks. He would report himself if he knew." },
+    { "name": "Dr. Lena Syme", "role": "The Intellectual", "description": "Analyst. Sees everything with perfect clarity — including the fact that people like her tend to disappear. She finds this philosophically interesting." }
+  ],
+  "knowledge_categories": ["office_protocols", "party_ideology", "the_conspiracy", "surveillance", "forbidden_archives"],
+  "tool_count": 14
+}

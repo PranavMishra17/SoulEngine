@@ -4,9 +4,7 @@
 
 ![SoulEngine Demo](img/demo.gif)
 
-### NPCs with memory, motive, and agency.
-
-[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.dev)
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.onrender.com)
 [![GitHub](https://img.shields.io/badge/GitHub-SoulEngine-181717?style=for-the-badge&logo=github)](https://github.com/PranavMishra17/SoulEngine)
 [![License](https://img.shields.io/badge/License-ISC-green?style=for-the-badge)](LICENSE)
 

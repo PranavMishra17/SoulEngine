@@ -19,6 +19,7 @@ import { createConversationRoutes } from './routes/conversation.js';
 import { createCycleRoutes } from './routes/cycles.js';
 import { historyRoutes } from './routes/history.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
+import { getStarterPackMetaList } from './data/starter-packs.js';
 
 // Providers
 import { createLlmProvider, getDefaultModel } from './providers/llm/factory.js';
@@ -96,6 +97,11 @@ if (isAuthEnabled()) {
 
 // API routes
 app.route('/api/projects', projectRoutes);
+
+// Starter pack catalog
+app.get('/api/starter-packs', (c) => {
+  return c.json(getStarterPackMetaList());
+});
 
 // Create a sub-app for project-scoped routes
 const projectScoped = new Hono();

@@ -1,11 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
-import {
-  STARTER_PACK_NPCS,
-  STARTER_PACK_KNOWLEDGE,
-  STARTER_PACK_TOOLS,
-} from '../data/starter-pack.js';
+import { getStarterPack } from '../data/starter-packs.js';
 import {
   StorageNotFoundError,
   StorageValidationError,
@@ -701,11 +697,11 @@ projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
 });
 
 /**
- * POST /api/projects/:projectId/load-starter-pack - Load starter pack examples into project
- * 
- * This loads the example NPCs, knowledge base, and MCP tools from embedded data
- * into the project. NPCs get new IDs to avoid collisions.
- * Works in both local development and production (Render/Supabase).
+ * POST /api/projects/:projectId/load-starter-pack
+ * Body: { pack_id: string }
+ *
+ * Loads the requested starter pack into an EMPTY project.
+ * Enforces one-pack-per-project: rejects if the project already has NPCs.
  */
 projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
   const startTime = Date.now();
@@ -716,123 +712,118 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
   }
 
   try {
+    let packId = 'space'; // default for backward compatibility
+    try {
+      const body = await c.req.json();
+      if (body?.pack_id) packId = String(body.pack_id);
+    } catch {
+      // Body parse failure — use default
+    }
+
+    const pack = getStarterPack(packId);
+    if (!pack) {
+      return c.json({ error: `Starter pack '${packId}' not found` }, 404);
+    }
+
     const userId = c.get('userId') ?? undefined;
     const storage = getStorageForUser(userId);
 
     // Verify project exists
     await storage.getProject(projectId);
 
+    // One-pack-per-project: reject if project already has NPCs
+    const existingNpcs = await storage.listDefinitions(projectId);
+    if (existingNpcs.length > 0) {
+      return c.json({
+        error: 'This project already has NPCs. A starter pack can only be loaded into an empty project.',
+        code: 'PROJECT_NOT_EMPTY',
+      }, 409);
+    }
+
     const results = {
+      pack_id: packId,
+      pack_name: pack.meta.name,
       npcs_added: 0,
       knowledge_categories_added: 0,
       conversation_tools_added: 0,
       game_event_tools_added: 0,
     };
 
-    // Map old NPC IDs to new ones for network connections
+    // Map old NPC IDs → new project-specific IDs (for network remapping)
     const npcIdMap: Record<string, string> = {};
+    const packNpcs = pack.npcs as Array<{ id: string; name: string; network?: Array<{ npc_id: string; familiarity_tier: number }> } & Record<string, unknown>>;
 
-    // Load NPCs from embedded data
-    for (const npc of STARTER_PACK_NPCS) {
+    // Pass 1: create all NPCs without network links
+    for (const npc of packNpcs) {
       try {
-        // Remove id - let storage generate new one
         const { id: oldId, ...npcData } = npc;
-
-        // Temporarily clear network (will update after all NPCs created)
-        const npcToCreate = {
-          ...npcData,
-          network: [],
-        };
-
-        const created = await storage.createDefinition(projectId, npcToCreate as Parameters<typeof storage.createDefinition>[1]);
-
+        const created = await storage.createDefinition(projectId, { ...npcData, network: [] } as unknown as Parameters<typeof storage.createDefinition>[1]);
         npcIdMap[oldId] = created.id;
         results.npcs_added++;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.warn({ npcName: npc.name, error: errorMessage }, 'Failed to create starter pack NPC');
+        logger.warn({ npcName: npc.name, error: String(error) }, 'Failed to create starter pack NPC');
       }
     }
 
-    // Now update networks with correct IDs
-    for (const npc of STARTER_PACK_NPCS) {
+    // Pass 2: update each NPC's network with remapped IDs
+    for (const npc of packNpcs) {
       const newId = npcIdMap[npc.id];
-
-      if (newId && npc.network && npc.network.length > 0) {
-        try {
-          // Map network IDs to new IDs - cast explicitly for type safety
-          const newNetwork = npc.network
-            .map(entry => ({
-              npc_id: npcIdMap[entry.npc_id] || entry.npc_id,
-              familiarity_tier: entry.familiarity_tier as 1 | 2 | 3,
-            }))
-            .filter(entry => npcIdMap[entry.npc_id]); // Only include mapped IDs
-
-          if (newNetwork.length > 0) {
-            await storage.updateDefinition(projectId, newId, { network: newNetwork });
-          }
-        } catch (error) {
-          logger.warn({ npcId: newId }, 'Failed to update NPC network');
+      if (!newId || !npc.network?.length) continue;
+      try {
+        const newNetwork = npc.network
+          .filter((e) => npcIdMap[e.npc_id])
+          .map((e) => ({ npc_id: npcIdMap[e.npc_id], familiarity_tier: e.familiarity_tier as 1 | 2 | 3 }));
+        if (newNetwork.length > 0) {
+          await storage.updateDefinition(projectId, newId, { network: newNetwork });
         }
+      } catch (error) {
+        logger.warn({ npcId: newId, error: String(error) }, 'Failed to update NPC network');
       }
     }
 
-    // Load knowledge base - merge with existing
+    // Load knowledge base — merge with existing
     try {
       const existing = await storage.getKnowledgeBase(projectId);
-      const mergedCategories = {
-        ...existing.categories,
-        ...STARTER_PACK_KNOWLEDGE,
-      };
-
-      await storage.updateKnowledgeBase(projectId, { categories: mergedCategories });
-      results.knowledge_categories_added = Object.keys(STARTER_PACK_KNOWLEDGE).length;
+      const packCategories = pack.knowledge.categories as Record<string, unknown>;
+      await storage.updateKnowledgeBase(projectId, {
+        categories: { ...existing.categories, ...(packCategories as typeof existing.categories) },
+      });
+      results.knowledge_categories_added = Object.keys(packCategories).length;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn({ error: errorMessage }, 'Failed to load starter pack knowledge base');
+      logger.warn({ error: String(error) }, 'Failed to load starter pack knowledge base');
     }
 
-    // Load MCP tools - merge with existing
+    // Load MCP tools — merge, deduplicate by id
     try {
       const existing = await storage.getMCPTools(projectId);
+      const existingConvIds = new Set(existing.conversation_tools.map((t) => t.id));
+      const existingGameIds = new Set(existing.game_event_tools.map((t) => t.id));
 
-      const existingConvIds = new Set(existing.conversation_tools.map(t => t.id));
-      const existingGameIds = new Set(existing.game_event_tools.map(t => t.id));
+      const newConvTools = (pack.tools.conversation_tools as typeof existing.conversation_tools)
+        .filter((t) => !existingConvIds.has(t.id));
+      const newGameTools = (pack.tools.game_event_tools as typeof existing.game_event_tools)
+        .filter((t) => !existingGameIds.has(t.id));
 
-      // Filter out duplicates - use unknown cast for flexibility
-      const newConvTools = (STARTER_PACK_TOOLS.conversation_tools as unknown as typeof existing.conversation_tools)
-        .filter(t => !existingConvIds.has(t.id));
-      const newGameTools = (STARTER_PACK_TOOLS.game_event_tools as unknown as typeof existing.game_event_tools)
-        .filter(t => !existingGameIds.has(t.id));
-
-      const merged = {
+      await storage.saveMCPTools(projectId, {
         conversation_tools: [...existing.conversation_tools, ...newConvTools],
         game_event_tools: [...existing.game_event_tools, ...newGameTools],
-      };
-
-      await storage.saveMCPTools(projectId, merged);
+      });
       results.conversation_tools_added = newConvTools.length;
       results.game_event_tools_added = newGameTools.length;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn({ error: errorMessage }, 'Failed to load starter pack MCP tools');
+      logger.warn({ error: String(error) }, 'Failed to load starter pack MCP tools');
     }
 
     const duration = Date.now() - startTime;
-    logger.info({ projectId, results, duration }, 'Starter pack loaded');
+    logger.info({ projectId, packId, results, duration }, 'Starter pack loaded');
 
-    return c.json({
-      message: 'Starter pack loaded successfully',
-      ...results,
-    });
+    return c.json({ message: 'Starter pack loaded successfully', ...results }, 201);
 
   } catch (error) {
     const duration = Date.now() - startTime;
-
     if (error instanceof StorageNotFoundError) {
       return c.json({ error: 'Project not found' }, 404);
     }
-
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, error: errorMessage, duration }, 'Failed to load starter pack');
     return c.json({ error: 'Failed to load starter pack', details: errorMessage }, 500);

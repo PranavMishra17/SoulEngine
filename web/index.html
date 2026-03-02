@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#0d0d0d">
   
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="/img/icon.png">
-  <link rel="apple-touch-icon" href="/img/icon.png">
+  <link rel="icon" type="image/jpeg" href="/img/icon.jpeg">
+  <link rel="apple-touch-icon" href="/img/icon.jpeg">
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,7 +36,7 @@
     <nav class="main-nav" id="main-nav">
       <div class="nav-brand">
         <a href="/" class="brand-link">
-          <img src="/img/icon.png" alt="SoulEngine" class="brand-icon-img">
+          <img src="/img/icon.jpeg" alt="SoulEngine" class="brand-icon-img">
           <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
         </a>
       </div>
@@ -318,7 +318,7 @@
           <div class="footer-grid">
             <div class="footer-brand">
               <div class="footer-brand-header">
-                <img src="/img/icon.png" alt="SoulEngine" class="brand-icon-img">
+                <img src="/img/icon.jpeg" alt="SoulEngine" class="brand-icon-img">
                 <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
               </div>
               <p>NPCs with memory, motive, and agency. Stateless intelligence with layered psychological cycles.</p>
@@ -485,16 +485,12 @@
       
       <!-- Starter Pack Section -->
       <div class="starter-pack-section" id="starter-pack-section">
-        <div class="starter-pack-card">
-          <div class="starter-pack-icon">&#127775;</div>
-          <div class="starter-pack-content">
-            <h3>Starter Pack Available</h3>
-            <p>Load example content to explore the system: 5 interconnected NPCs, 6 knowledge categories, and 15 MCP tools - all set in the "Stellar Haven" sci-fi space station.</p>
-            <button class="btn btn-primary" id="btn-load-starter-pack">
-              <span class="icon">&#10148;</span>
-              Load Examples
-            </button>
-          </div>
+        <div class="starter-pack-header">
+          <h3>Starter Packs</h3>
+          <p class="text-secondary">Load example content to explore the system. Each pack adds NPCs, a knowledge base, and MCP tools.</p>
+        </div>
+        <div class="pack-grid" id="pack-grid">
+          <div class="pack-grid-loading">Loading packs...</div>
         </div>
       </div>
       
