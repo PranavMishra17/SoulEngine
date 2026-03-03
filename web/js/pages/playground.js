@@ -26,6 +26,9 @@ let isPlayingAudio = false;
 let currentVoiceConfig = null; // Stores sample rate from server
 let currentAudioSource = null; // Track current playing source for interruption
 
+// Mind viewer modal state — tracked so cycles can auto-refresh it
+let mindModalInstance = null;
+
 // VAD state for UI updates
 const vadState = {
   isSpeaking: false,
@@ -401,6 +404,9 @@ async function handleEndSession(exitConvoUsed = false) {
 
     // Update cycles panel (enable after session ends)
     updateCyclesPanel();
+
+    // Refresh inline NPC mind panel to show updated state
+    await refreshMindPanel();
 
     toast.success('Session Ended', 'Conversation has been saved.');
   } catch (error) {
@@ -1272,6 +1278,12 @@ function updateCyclesPanel() {
       ? 'End session to run cycles'
       : 'Run between sessions only';
   }
+
+  // Hide mind panel when no NPC selected or session is starting
+  if (!hasNpc) {
+    const mindPanel = document.getElementById('npc-mind-panel');
+    if (mindPanel) mindPanel.style.display = 'none';
+  }
 }
 
 /**
@@ -1303,11 +1315,11 @@ async function handleCycle(cycleType) {
     switch (cycleType) {
       case 'daily-pulse':
         result = await cycles.dailyPulse(instance.id);
-        toast.success('Daily Pulse Complete', `Mood updated: ${getMoodLabel(result.new_mood?.valence, result.new_mood?.arousal, result.new_mood?.dominance)}`);
+        toast.success('Daily Pulse Complete', `Mood updated: ${getMoodLabel(result.newMood?.valence, result.newMood?.arousal, result.newMood?.dominance)}`);
         break;
       case 'weekly-whisper':
         result = await cycles.weeklyWhisper(instance.id);
-        toast.success('Weekly Whisper Complete', `Consolidated ${result.consolidated_count || 0} memories`);
+        toast.success('Weekly Whisper Complete', `Retained ${result.memoriesRetained || 0} memories, promoted ${result.memoriesPromoted || 0} to long-term`);
         break;
       case 'persona-shift':
         result = await cycles.personaShift(instance.id);
@@ -1316,6 +1328,14 @@ async function handleCycle(cycleType) {
     }
 
     console.log(`[Playground] ${cycleType} result:`, result);
+
+    // Refresh inline mind panel and modal if open
+    await refreshMindPanel();
+    if (mindModalInstance) {
+      const updatedInstance = await session.getInstance(currentProjectId, currentNpcId, 'test-player');
+      const bodyEl = mindModalInstance.el?.querySelector('.modal-body');
+      if (bodyEl) bodyEl.innerHTML = renderMindViewerContent(updatedInstance);
+    }
   } catch (error) {
     console.error(`[Playground] ${cycleType} error:`, error);
     toast.error('Cycle Failed', error.message);
@@ -1367,20 +1387,88 @@ function showCyclesInfoModal() {
 /**
  * Show NPC Mind Viewer modal
  */
+/**
+ * Refresh the inline NPC mind summary panel in the sidebar
+ */
+async function refreshMindPanel() {
+  if (!currentNpcId || !currentProjectId) return;
+
+  const panel = document.getElementById('npc-mind-panel');
+  const summaryEl = document.getElementById('mind-summary-content');
+  const viewBtn = document.getElementById('btn-view-mind');
+  if (!panel || !summaryEl) return;
+
+  try {
+    const instance = await session.getInstance(currentProjectId, currentNpcId, 'test-player');
+    currentInstanceId = instance.id;
+
+    const mood = instance.current_mood || { valence: 0.5, arousal: 0.5, dominance: 0.5 };
+    const stmCount = (instance.short_term_memory || []).length;
+    const ltmCount = (instance.long_term_memory || []).length;
+    const latestMem = (instance.short_term_memory || []).slice(-1)[0];
+    const takeaway = instance.daily_pulse?.takeaway;
+    const moodLabel = getMoodLabel(mood.valence, mood.arousal, mood.dominance);
+    const moodEmoji = getMoodEmoji(mood.valence, mood.arousal, mood.dominance);
+
+    summaryEl.innerHTML = `
+      <div class="mind-stat-row">
+        <span class="mind-stat-label">Mood</span>
+        <span class="mind-stat-value">${moodEmoji} ${moodLabel} <span class="mind-stat-sub">(${mood.valence.toFixed(2)})</span></span>
+      </div>
+      <div class="mind-stat-row">
+        <span class="mind-stat-label">Memory</span>
+        <span class="mind-stat-value">STM: ${stmCount} &nbsp;|&nbsp; LTM: ${ltmCount}</span>
+      </div>
+      ${latestMem ? `
+      <div class="mind-latest-memory">
+        <span class="mind-stat-label">Latest memory</span>
+        <p class="mind-memory-snippet">${escapeHtml(latestMem.content.slice(0, 90))}${latestMem.content.length > 90 ? '...' : ''}</p>
+      </div>` : ''}
+      ${takeaway ? `
+      <div class="mind-latest-memory">
+        <span class="mind-stat-label">Daily pulse</span>
+        <p class="mind-memory-snippet mind-takeaway">${escapeHtml(takeaway)}</p>
+      </div>` : ''}
+    `;
+
+    panel.style.display = 'block';
+    if (viewBtn) viewBtn.disabled = false;
+  } catch (error) {
+    console.warn('[Playground] Failed to refresh mind panel:', error);
+  }
+}
+
 async function showMindViewer() {
   if (!currentNpcId || !currentProjectId) {
     toast.warning('No NPC Selected', 'Please select an NPC first.');
     return;
   }
 
-  const playerId = 'test-player';
-
   try {
-    const instance = await session.getInstance(currentProjectId, currentNpcId, playerId);
+    const instance = await session.getInstance(currentProjectId, currentNpcId, 'test-player');
     currentInstanceId = instance.id;
 
     const content = renderMindViewerContent(instance);
-    modal.open({ title: 'NPC Mind Viewer', content, large: true });
+    const footer = document.createElement('div');
+    footer.innerHTML = `<button class="btn btn-ghost btn-sm" id="btn-mind-refresh">Refresh</button>`;
+
+    mindModalInstance = modal.open({
+      title: 'NPC Mind Viewer',
+      content,
+      footer,
+      size: 'large',
+      onClose: () => { mindModalInstance = null; },
+    });
+
+    footer.querySelector('#btn-mind-refresh')?.addEventListener('click', async () => {
+      try {
+        const fresh = await session.getInstance(currentProjectId, currentNpcId, 'test-player');
+        const bodyEl = mindModalInstance?.el?.querySelector('.modal-body');
+        if (bodyEl) bodyEl.innerHTML = renderMindViewerContent(fresh);
+      } catch (err) {
+        toast.error('Refresh Failed', err.message);
+      }
+    });
   } catch (error) {
     console.error('[Playground] Mind viewer error:', error);
     toast.error('Failed to Load', error.message);
@@ -1397,11 +1485,22 @@ function renderMindViewerContent(instance) {
   const longMem = instance.long_term_memory || [];
   const relationships = instance.relationships || {};
   const cycleMeta = instance.cycle_metadata || {};
+  const moodLabel = getMoodLabel(mood.valence, mood.arousal, mood.dominance);
+  const moodEmoji = getMoodEmoji(mood.valence, mood.arousal, mood.dominance);
+
+  // Daily pulse takeaway — shown prominently at the top if available
+  const takeawayHtml = instance.daily_pulse?.takeaway ? `
+    <div class="mind-takeaway-banner">
+      <span class="mind-takeaway-icon">◑</span>
+      <blockquote class="daily-pulse-quote">${escapeHtml(instance.daily_pulse.takeaway)}</blockquote>
+      <span class="mind-takeaway-meta">Daily Pulse — ${formatTimestamp(instance.daily_pulse.timestamp)}</span>
+    </div>
+  ` : '';
 
   // Mood section
   const moodHtml = `
     <div class="mind-section">
-      <h4><span class="icon">◐</span> Current Mood</h4>
+      <h4>Current Mood <span class="mind-section-badge">${moodEmoji} ${moodLabel}</span></h4>
       <div class="mood-bars">
         <div class="mood-bar">
           <span class="mood-bar-label">Valence</span>
@@ -1432,68 +1531,50 @@ function renderMindViewerContent(instance) {
   const traitModsEntries = Object.entries(traitMods);
   const traitModsHtml = `
     <div class="mind-section">
-      <h4><span class="icon">◈</span> Trait Modifiers</h4>
+      <h4>Trait Modifiers <span class="mind-section-badge">${traitModsEntries.length} active</span></h4>
       ${traitModsEntries.length > 0 ? `
         <div class="trait-modifiers-list">
           ${traitModsEntries.map(([trait, value]) => `
             <span class="trait-modifier ${value >= 0 ? 'positive' : 'negative'}">
-              ${trait}: ${value >= 0 ? '+' : ''}${value.toFixed(2)}
+              ${trait}: ${value >= 0 ? '+' : ''}${Number(value).toFixed(2)}
             </span>
           `).join('')}
         </div>
-      ` : '<p class="trait-modifier-empty">No active modifiers</p>'}
+      ` : '<p class="trait-modifier-empty">No active modifiers — run Persona Shift to develop traits</p>'}
     </div>
   `;
 
+  // Memory renderer (shared for STM and LTM)
+  const renderMemories = (mems) => mems.map(mem => `
+    <div class="memory-item">
+      <div class="memory-item-content">${escapeHtml(mem.content)}</div>
+      <div class="memory-item-meta">
+        <span>${formatTimestamp(mem.timestamp)}</span>
+        <span class="memory-item-salience">
+          <span class="salience-bar"><span class="salience-fill" style="width: ${(mem.salience || 0.5) * 100}%"></span></span>
+          <span class="salience-value">${((mem.salience || 0.5) * 100).toFixed(0)}%</span>
+        </span>
+      </div>
+    </div>
+  `).join('');
+
   // Short-term memory section
   const shortMemHtml = `
-    <div class="mind-section">
-      <h4><span class="icon">◔</span> Short-Term Memory (${shortMem.length})</h4>
-      ${shortMem.length > 0 ? `
-        <div class="memory-list">
-          ${shortMem.slice(0, 5).map(mem => `
-            <div class="memory-item">
-              <div class="memory-item-content">${escapeHtml(mem.content)}</div>
-              <div class="memory-item-meta">
-                <span>${formatTimestamp(mem.timestamp)}</span>
-                <span class="memory-item-salience">
-                  Salience:
-                  <span class="salience-bar">
-                    <span class="salience-fill" style="width: ${(mem.salience || 0.5) * 100}%"></span>
-                  </span>
-                </span>
-              </div>
-            </div>
-          `).join('')}
-          ${shortMem.length > 5 ? `<p class="memory-empty">+ ${shortMem.length - 5} more...</p>` : ''}
-        </div>
-      ` : '<p class="memory-empty">No short-term memories</p>'}
+    <div class="mind-section mind-section-memory">
+      <h4>Short-Term Memory <span class="mind-section-badge">${shortMem.length}</span></h4>
+      ${shortMem.length > 0
+        ? `<div class="memory-list">${renderMemories(shortMem)}</div>`
+        : '<p class="memory-empty">No short-term memories — end a session to create one</p>'}
     </div>
   `;
 
   // Long-term memory section
   const longMemHtml = `
-    <div class="mind-section">
-      <h4><span class="icon">◑</span> Long-Term Memory (${longMem.length})</h4>
-      ${longMem.length > 0 ? `
-        <div class="memory-list">
-          ${longMem.slice(0, 5).map(mem => `
-            <div class="memory-item">
-              <div class="memory-item-content">${escapeHtml(mem.content)}</div>
-              <div class="memory-item-meta">
-                <span>${formatTimestamp(mem.timestamp)}</span>
-                <span class="memory-item-salience">
-                  Salience:
-                  <span class="salience-bar">
-                    <span class="salience-fill" style="width: ${(mem.salience || 0.5) * 100}%"></span>
-                  </span>
-                </span>
-              </div>
-            </div>
-          `).join('')}
-          ${longMem.length > 5 ? `<p class="memory-empty">+ ${longMem.length - 5} more...</p>` : ''}
-        </div>
-      ` : '<p class="memory-empty">No long-term memories</p>'}
+    <div class="mind-section mind-section-memory">
+      <h4>Long-Term Memory <span class="mind-section-badge">${longMem.length}</span></h4>
+      ${longMem.length > 0
+        ? `<div class="memory-list">${renderMemories(longMem)}</div>`
+        : '<p class="memory-empty">No long-term memories — run Weekly Whisper to promote memories</p>'}
     </div>
   `;
 
@@ -1501,7 +1582,7 @@ function renderMindViewerContent(instance) {
   const relationshipEntries = Object.entries(relationships);
   const relationshipsHtml = `
     <div class="mind-section">
-      <h4><span class="icon">◇</span> Relationships (${relationshipEntries.length})</h4>
+      <h4>Relationships <span class="mind-section-badge">${relationshipEntries.length}</span></h4>
       ${relationshipEntries.length > 0 ? `
         <div class="relationships-list">
           ${relationshipEntries.map(([entityId, rel]) => `
@@ -1509,10 +1590,14 @@ function renderMindViewerContent(instance) {
               <span class="relationship-name">${escapeHtml(entityId)}</span>
               <div class="relationship-stats">
                 <span class="relationship-stat">
-                  <span class="relationship-stat-label">Trust:</span> ${(rel.trust || 0).toFixed(2)}
+                  <span class="relationship-stat-label">Trust</span>
+                  <span class="salience-bar"><span class="salience-fill trust" style="width: ${(rel.trust || 0) * 100}%"></span></span>
+                  ${(rel.trust || 0).toFixed(2)}
                 </span>
                 <span class="relationship-stat">
-                  <span class="relationship-stat-label">Familiarity:</span> ${(rel.familiarity || 0).toFixed(2)}
+                  <span class="relationship-stat-label">Familiarity</span>
+                  <span class="salience-bar"><span class="salience-fill familiarity" style="width: ${(rel.familiarity || 0) * 100}%"></span></span>
+                  ${(rel.familiarity || 0).toFixed(2)}
                 </span>
               </div>
             </div>
@@ -1525,24 +1610,24 @@ function renderMindViewerContent(instance) {
   // Cycle metadata section
   const cycleMetaHtml = `
     <div class="mind-section">
-      <h4><span class="icon">◐</span> Cycle History</h4>
+      <h4>Cycle History</h4>
       <div class="cycle-metadata-list">
         <div class="cycle-meta-item">
-          <span class="cycle-meta-label">Last Daily Pulse</span>
+          <span class="cycle-meta-label">Daily Pulse</span>
           <span class="cycle-meta-value ${!instance.daily_pulse ? 'never' : ''}">
-            ${instance.daily_pulse ? formatTimestamp(instance.daily_pulse.timestamp) : 'Never'}
+            ${instance.daily_pulse ? formatTimestamp(instance.daily_pulse.timestamp) : 'Never run'}
           </span>
         </div>
         <div class="cycle-meta-item">
-          <span class="cycle-meta-label">Last Weekly Whisper</span>
+          <span class="cycle-meta-label">Weekly Whisper</span>
           <span class="cycle-meta-value ${!cycleMeta.last_weekly ? 'never' : ''}">
-            ${cycleMeta.last_weekly ? formatTimestamp(cycleMeta.last_weekly) : 'Never'}
+            ${cycleMeta.last_weekly ? formatTimestamp(cycleMeta.last_weekly) : 'Never run'}
           </span>
         </div>
         <div class="cycle-meta-item">
-          <span class="cycle-meta-label">Last Persona Shift</span>
+          <span class="cycle-meta-label">Persona Shift</span>
           <span class="cycle-meta-value ${!cycleMeta.last_persona_shift ? 'never' : ''}">
-            ${cycleMeta.last_persona_shift ? formatTimestamp(cycleMeta.last_persona_shift) : 'Never'}
+            ${cycleMeta.last_persona_shift ? formatTimestamp(cycleMeta.last_persona_shift) : 'Never run'}
           </span>
         </div>
       </div>
@@ -1551,12 +1636,15 @@ function renderMindViewerContent(instance) {
 
   return `
     <div class="mind-viewer-content">
-      ${moodHtml}
-      ${traitModsHtml}
-      ${shortMemHtml}
-      ${longMemHtml}
-      ${relationshipsHtml}
-      ${cycleMetaHtml}
+      ${takeawayHtml}
+      <div class="mind-viewer-grid">
+        ${moodHtml}
+        ${traitModsHtml}
+        ${shortMemHtml}
+        ${longMemHtml}
+        ${relationshipsHtml}
+        ${cycleMetaHtml}
+      </div>
     </div>
   `;
 }

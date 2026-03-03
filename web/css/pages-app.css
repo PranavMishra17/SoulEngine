@@ -3410,3 +3410,370 @@
 .diff-value-new {
   border-color: rgba(52, 211, 153, 0.35);
 }
+
+/* ============================================================
+   NPC Mind Viewer — Modal + Inline Sidebar Panel
+   ============================================================ */
+
+/* Modal content wrapper */
+.mind-viewer-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mind-viewer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 680px) {
+  .mind-viewer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Daily pulse takeaway banner */
+.mind-takeaway-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-warning-muted);
+  border: 1px solid rgba(217, 166, 67, 0.3);
+  border-radius: var(--radius-md);
+}
+
+.mind-takeaway-icon {
+  font-size: var(--text-sm);
+  color: var(--color-warning);
+}
+
+.daily-pulse-quote {
+  margin: 0;
+  font-style: italic;
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.mind-takeaway-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+/* Section card */
+.mind-section {
+  background: var(--color-surface-secondary, rgba(255,255,255,0.03));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mind-section-memory {
+  grid-column: span 1;
+}
+
+.mind-section h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mind-section-badge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-border);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+/* Mood bars */
+.mood-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mood-bar {
+  display: grid;
+  grid-template-columns: 72px 1fr 36px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mood-bar-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.mood-bar-track {
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mood-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.mood-bar-fill.valence  { background: #5cb87a; }
+.mood-bar-fill.arousal  { background: #d9a643; }
+.mood-bar-fill.dominance { background: #a78bfa; }
+
+.mood-bar-value {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trait modifier pills */
+.trait-modifiers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.trait-modifier {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trait-modifier.positive {
+  background: var(--color-success-muted);
+  color: var(--color-success);
+  border: 1px solid rgba(92, 184, 122, 0.3);
+}
+
+.trait-modifier.negative {
+  background: rgba(251, 113, 73, 0.12);
+  color: #fb7149;
+  border: 1px solid rgba(251, 113, 73, 0.3);
+}
+
+.trait-modifier-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Memory list */
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.memory-item {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface, rgba(255,255,255,0.02));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.memory-item-content {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  line-height: 1.45;
+  margin-bottom: var(--space-1);
+}
+
+.memory-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.memory-item-salience {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.salience-bar {
+  display: inline-block;
+  width: 48px;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.salience-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent-primary);
+  border-radius: 999px;
+}
+
+.salience-fill.trust      { background: #5cb87a; }
+.salience-fill.familiarity { background: #a78bfa; }
+
+.salience-value {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Relationships */
+.relationships-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.relationship-item {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.relationship-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.relationship-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.relationship-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.relationship-stat-label {
+  width: 68px;
+  flex-shrink: 0;
+}
+
+/* Cycle metadata */
+.cycle-metadata-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cycle-meta-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.cycle-meta-item:last-child {
+  border-bottom: none;
+}
+
+.cycle-meta-label {
+  color: var(--color-text-secondary);
+}
+
+.cycle-meta-value {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cycle-meta-value.never {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* ============================================================
+   Inline NPC Mind Summary Panel (sidebar)
+   ============================================================ */
+
+.mind-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mind-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.mind-stat-label {
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+.mind-stat-value {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mind-stat-sub {
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.mind-latest-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mind-memory-snippet {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-secondary, rgba(255,255,255,0.03));
+  border-left: 2px solid var(--color-accent-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.mind-memory-snippet.mind-takeaway {
+  border-left-color: var(--color-warning);
+  font-style: italic;
+}
