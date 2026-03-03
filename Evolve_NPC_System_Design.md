@@ -403,6 +403,10 @@ Player Input
 - LLM summarizes from NPC perspective (2-3 sentences)
 - Injection attempts defanged through summarization
 
+**BYOK & Game Client Security:**
+- **Bring Your Own Key (BYOK):** Developers provide their own LLM API keys via the project settings.
+- **Game Client API Key:** To prevent abuse of the BYOK model (e.g. malicious users extracting API access through the endpoints), unity game instances are authenticated using a required `x-api-key` header when initiating a session, preventing unauthorized token utilization.
+
 ---
 
 ## Update Cycles

@@ -93,9 +93,14 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
 /**
  * Optional authentication middleware
  * 
- * Like authMiddleware, but doesn't require authentication.
- * If a valid token is provided, it attaches the user to context.
- * If no token or invalid token, sets user to null and continues.
+ * In production mode (with Supabase), this middleware:
+ * - Checks the JWT token from the Authorization header
+ * - Attaches user info to the context
+ * - Returns 401 if token is invalid or missing
+ * 
+ * In development mode:
+ * - Always allows access (no auth required)
+ * - Sets user to null
  */
 export async function optionalAuthMiddleware(c: Context, next: Next) {
   // In development/local mode, skip authentication
@@ -109,28 +114,22 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader?.startsWith('Bearer ')) {
-    c.set('user', null);
-    c.set('userId', null);
-    await next();
-    return;
+    logger.debug('Missing or invalid Authorization header in protected route');
+    return c.json({ error: 'Unauthorized - token required' }, 401);
   }
 
   const token = authHeader.substring(7);
 
   if (!verifyTokenFn) {
-    c.set('user', null);
-    c.set('userId', null);
-    await next();
-    return;
+    logger.error('Auth middleware enabled but verifyToken function not available');
+    return c.json({ error: 'Authentication service unavailable' }, 500);
   }
 
   const result = await verifyTokenFn(token);
 
   if (!result) {
-    c.set('user', null);
-    c.set('userId', null);
-    await next();
-    return;
+    logger.debug('Token verification failed');
+    return c.json({ error: 'Unauthorized - invalid token' }, 401);
   }
 
   // Attach user to context

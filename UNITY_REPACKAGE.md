@@ -945,6 +945,19 @@ public class GameToolHandler : MonoBehaviour
 
 ---
 
+## Security & Bring Your Own Key (BYOK)
+
+The Unity SDK utilizes a **Bring Your Own Key (BYOK)** model. The user configure their LLM provider API keys securely on the SoulEngine web dashboard, restricting them to project-specific operations.
+
+### API Protection
+- **Game Client API Key (`x-api-key`)**: To mitigate unauthorized exploitation of your endpoints and LLM credits, the Unity client must securely hold a Game Client API key.
+- Setup:
+  1. The API key corresponds uniquely to a `game_client_api_key`.
+  2. The Unity SDK injects this key into the headers for sensitive requests such as `/api/session/start`.
+  3. The backend validates the `x-api-key` header against the stored settings before allocating LLM tokens or initializing a session.
+
+---
+
 ## Notes
 
 ### WebSocket Libraries for Unity

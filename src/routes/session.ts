@@ -63,6 +63,18 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       const { project_id, npc_id, player_id, player_info, mode } = parsed.data;
       const userId = c.get('userId') ?? undefined;
 
+      // BYOK Security: Check Game Client API Key if configured
+      const storage = getStorageForUser(userId);
+      const project = await storage.getProject(project_id);
+
+      if (project.settings?.game_client_api_key) {
+        const clientApiKey = c.req.header('x-api-key');
+        if (clientApiKey !== project.settings.game_client_api_key) {
+          logger.warn({ projectId: project_id }, 'Invalid or missing Game Client API Key');
+          return c.json({ error: 'Unauthorized - invalid or missing Game Client API Key' }, 401);
+        }
+      }
+
       const result = await startSession(project_id, npc_id, player_id, player_info, mode, userId);
 
       const duration = Date.now() - startTime;

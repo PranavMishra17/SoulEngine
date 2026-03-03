@@ -41,11 +41,30 @@ const config = getConfig();
  */
 const app = new Hono();
 
+// Security Headers Middleware
+app.use('*', async (c, next) => {
+  c.header('Content-Security-Policy', "default-src 'self'; connect-src 'self' wss: https:; img-src 'self' data: https: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob: data:;");
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('X-XSS-Protection', '1; mode=block');
+  await next();
+});
+
 // CORS middleware
 app.use('*', cors({
-  origin: '*',
+  origin: (origin) => {
+    if (!origin) return '*'; // Allow non-browser clients (Unity Standalone/Mobile)
+    const allowedStr = process.env.ALLOWED_ORIGINS || 'http://localhost:3000';
+    const allowedOrigins = allowedStr.split(',').map(s => s.trim());
+
+    // Check if wildcard is explicitly set by user, or if origin matches
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return origin;
+    }
+    return null;
+  },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 }));
 
 // Health check endpoint
@@ -137,10 +156,10 @@ const defaultLlmType = config.defaultLlmProvider;
 const llmApiKey = getLlmApiKey(defaultLlmType);
 const llmProvider = llmApiKey
   ? createLlmProvider({
-      provider: defaultLlmType,
-      apiKey: llmApiKey,
-      model: getDefaultModel(defaultLlmType),
-    })
+    provider: defaultLlmType,
+    apiKey: llmApiKey,
+    model: getDefaultModel(defaultLlmType),
+  })
   : null;
 
 if (!llmProvider) {

@@ -99,7 +99,7 @@ export async function initNpcListPage(params) {
 
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
-  
+
   // Fetch project name for breadcrumb
   try {
     const project = await projects.get(projectId);
@@ -153,14 +153,13 @@ async function loadNpcList(projectId) {
               avatarSrc = `/api/projects/${projectId}/npcs/${npc.id}/avatar`;
             }
           }
-          
+
           return `
           <div class="npc-card" data-id="${npc.id}">
             ${npc.status === 'draft' ? '<span class="npc-status-badge draft">Draft</span>' : ''}
-            <div class="npc-card-avatar">${
-              avatarSrc
-                ? `<img src="${avatarSrc}" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='◇'">`
-                : '◇'
+            <div class="npc-card-avatar">${avatarSrc
+              ? `<img src="${avatarSrc}" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='◇'">`
+              : '◇'
             }</div>
             <h3>${escapeHtml(npc.name)}</h3>
             <p>${escapeHtml(npc.description || 'No description')}</p>
@@ -206,7 +205,7 @@ export async function initNpcEditorPage(params) {
   // Update breadcrumbs
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
   document.getElementById('breadcrumb-npcs')?.setAttribute('href', `/projects/${projectId}/npcs`);
-  
+
   // Fetch project name for breadcrumb
   try {
     const project = await projects.get(projectId);
@@ -237,7 +236,7 @@ export async function initNpcEditorPage(params) {
   document.getElementById('btn-export-npc')?.addEventListener('click', handleExportNpc);
   document.getElementById('btn-download-template')?.addEventListener('click', handleDownloadTemplate);
   document.getElementById('btn-edit-npc-json')?.addEventListener('click', handleEditNpcJson);
-  
+
   // LLM Generation buttons
   document.getElementById('btn-generate-backstory')?.addEventListener('click', () => openLlmGenerationModal('backstory'));
   document.getElementById('btn-generate-principles')?.addEventListener('click', () => openLlmGenerationModal('principles'));
@@ -382,7 +381,7 @@ function populateForm(definition) {
   const threshold = definition.salience_threshold ?? 0.7;
   const retentionPercent = Math.round(((0.95 - threshold) / 0.6) * 100);
   const clampedRetention = Math.max(0, Math.min(100, retentionPercent));
-  
+
   const memorySlider = document.getElementById('memory-retention');
   if (memorySlider) {
     memorySlider.value = clampedRetention;
@@ -457,12 +456,12 @@ function toggleInteractivePreview(interactive) {
  */
 function syncPreviewSliders() {
   const traits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
-  
+
   traits.forEach(trait => {
     const slider = document.getElementById(`preview-${trait}`);
     const valEl = document.getElementById(`pval-${trait}`);
     const value = currentDefinition.personality_baseline?.[trait] ?? 0.5;
-    
+
     if (slider) {
       slider.value = value;
     }
@@ -470,7 +469,7 @@ function syncPreviewSliders() {
       valEl.textContent = value.toFixed(1);
     }
   });
-  
+
   // Sync mood dropdown
   const moodSelect = document.getElementById('preview-default-mood');
   if (moodSelect) {
@@ -526,25 +525,25 @@ function bindFormHandlers() {
       try {
         const formData = new FormData();
         formData.append('avatar', file);
-        
+
         // Get auth headers
         const headers = {};
         const token = getAccessToken();
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        
+
         const response = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
           method: 'POST',
           headers,
           body: formData,
         });
-        
+
         if (!response.ok) {
           const error = await response.json();
           throw new Error(error.error || error.details || 'Upload failed');
         }
-        
+
         const result = await response.json();
         // Store the URL (full URL in production, filename in local)
         currentDefinition.profile_image = result.url;
@@ -570,23 +569,23 @@ function bindFormHandlers() {
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        
+
         const response = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
           method: 'DELETE',
           headers,
         });
-        
+
         if (!response.ok) {
           const error = await response.json();
           throw new Error(error.error || 'Delete failed');
         }
-        
+
         toast.success('Avatar Removed', 'Profile picture deleted.');
       } catch (error) {
         toast.error('Delete Failed', error.message);
       }
     }
-    
+
     currentDefinition.profile_image = undefined;
     pendingProfileImage = null;
     updateProfilePreview(null);
@@ -629,7 +628,7 @@ function bindFormHandlers() {
     // 100% retention = 0.35 threshold (excellent memory)
     const threshold = 0.95 - (retentionPercent / 100) * 0.6;
     currentDefinition.salience_threshold = Math.round(threshold * 100) / 100;
-    
+
     document.getElementById('val-memory-retention').textContent = `${retentionPercent}%`;
     updateMemoryHint(retentionPercent);
   });
@@ -665,11 +664,11 @@ function bindFormHandlers() {
   // Schedule & State
   document.getElementById('default-mood')?.addEventListener('change', (e) => {
     currentDefinition.default_mood = e.target.value;
-    
+
     // Sync preview mood dropdown
     const previewMood = document.getElementById('preview-default-mood');
     if (previewMood) previewMood.value = e.target.value;
-    
+
     updateMoodPreview();
   });
 
@@ -694,16 +693,16 @@ function bindFormHandlers() {
     previewSlider?.addEventListener('input', (e) => {
       const value = parseFloat(e.target.value);
       currentDefinition.personality_baseline[trait] = value;
-      
+
       // Update preview value display
       const pvalEl = document.getElementById(`pval-${trait}`);
       if (pvalEl) pvalEl.textContent = value.toFixed(1);
-      
+
       // Sync main slider
       const mainSlider = document.getElementById(`trait-${trait}`);
       if (mainSlider) mainSlider.value = value;
       document.getElementById(`val-${trait}`).textContent = value.toFixed(2);
-      
+
       // Reset preset to custom
       document.getElementById('personality-preset').value = '';
       updatePreview();
@@ -714,11 +713,11 @@ function bindFormHandlers() {
   // Preview mood dropdown
   document.getElementById('preview-default-mood')?.addEventListener('change', (e) => {
     currentDefinition.default_mood = e.target.value;
-    
+
     // Sync main mood dropdown
     const mainMood = document.getElementById('default-mood');
     if (mainMood) mainMood.value = e.target.value;
-    
+
     updateMoodPreview();
   });
 
@@ -766,7 +765,7 @@ async function loadKnowledgeCategories(projectId) {
 function renderKnowledgeCards() {
   const cardsContainer = document.getElementById('knowledge-cards');
   const emptyEl = document.getElementById('knowledge-empty');
-  
+
   if (!cardsContainer) return;
 
   const addedCategories = Object.entries(currentDefinition.knowledge_access || {});
@@ -784,7 +783,7 @@ function renderKnowledgeCards() {
       const category = availableKnowledgeCategories[catId] || {};
       const maxDepth = Object.keys(category.depths || {}).length || 3;
       const isActive = depth > 0;
-      
+
       return `
         <div class="knowledge-card ${isActive ? '' : 'inactive'}" data-cat-id="${catId}">
           <div class="knowledge-card-header">
@@ -822,10 +821,10 @@ function renderKnowledgeCards() {
       const catId = e.target.dataset.catDepth;
       const value = parseInt(e.target.value);
       currentDefinition.knowledge_access[catId] = value;
-      
+
       const valEl = document.getElementById(`depth-val-${catId}`);
       if (valEl) valEl.textContent = value;
-      
+
       // Toggle inactive class
       const card = e.target.closest('.knowledge-card');
       if (card) {
@@ -865,7 +864,7 @@ function renderKnowledgeDropdown() {
         currentDefinition.knowledge_access = {};
       }
       currentDefinition.knowledge_access[catId] = 1; // Default depth 1
-      
+
       document.getElementById('knowledge-add-dropdown').style.display = 'none';
       renderKnowledgeCards();
     });
@@ -1028,14 +1027,14 @@ function renderToolDropdown(prefix, allTools, permissionKey) {
     btn.addEventListener('click', (e) => {
       const toolId = e.currentTarget.dataset.addTool;
       const type = e.currentTarget.dataset.toolType;
-      
+
       if (!currentDefinition.mcp_permissions[type]) {
         currentDefinition.mcp_permissions[type] = [];
       }
       if (!currentDefinition.mcp_permissions[type].includes(toolId)) {
         currentDefinition.mcp_permissions[type].push(toolId);
       }
-      
+
       document.getElementById(`${prefix}-tool-dropdown`).style.display = 'none';
       renderToolPills();
     });
@@ -1055,7 +1054,7 @@ async function loadNetworkTab(projectId) {
 
   try {
     const allNpcs = await npcs.list(projectId);
-    
+
     // Filter out current NPC
     availableNetworkNpcs = (allNpcs.npcs || []).filter(npc => npc.id !== currentNpcId);
 
@@ -1082,7 +1081,7 @@ async function loadNetworkTab(projectId) {
 function renderNetworkConnections() {
   const container = document.getElementById('network-connections');
   const emptyMsg = document.getElementById('network-empty');
-  
+
   if (!container) return;
 
   const connections = currentDefinition.network || [];
@@ -1099,7 +1098,7 @@ function renderNetworkConnections() {
   container.innerHTML = connections.map(conn => {
     const npc = availableNetworkNpcs.find(n => n.id === conn.npc_id) || { id: conn.npc_id, name: conn.npc_id };
     const tier = conn.familiarity_tier || 1;
-    
+
     return `
       <div class="network-card" data-npc-id="${conn.npc_id}">
         <div class="network-card-header">
@@ -1179,18 +1178,18 @@ function renderNetworkDropdown() {
   list.querySelectorAll('[data-add-npc]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const npcId = e.currentTarget.dataset.addNpc;
-      
+
       if (!currentDefinition.network) {
         currentDefinition.network = [];
       }
-      
+
       if (currentDefinition.network.length >= 20) {
         toast.warning('Limit Reached', 'NPCs can only know up to 20 other NPCs');
         return;
       }
-      
+
       currentDefinition.network.push({ npc_id: npcId, familiarity_tier: 1 });
-      
+
       document.getElementById('network-add-dropdown').style.display = 'none';
       renderNetworkConnections();
     });
@@ -1237,7 +1236,7 @@ function updatePreview() {
 function updateMoodPreview() {
   const moodValue = currentDefinition.default_mood || 'neutral';
   const moodDisplay = document.getElementById('preview-mood');
-  
+
   if (moodDisplay) {
     const moodLabels = {
       '': 'Neutral',
@@ -1250,7 +1249,7 @@ function updateMoodPreview() {
       'tired': 'Tired 😴',
       'content': 'Content 😌',
     };
-    
+
     moodDisplay.innerHTML = `<span class="mood-valence">${moodLabels[moodValue] || 'Neutral'}</span>`;
   }
 }
@@ -1262,11 +1261,12 @@ function updateProfilePreview(imageSrc) {
   const preview = document.getElementById('profile-preview');
   const removeBtn = document.getElementById('btn-remove-profile');
   const previewAvatar = document.querySelector('.preview-avatar');
-  
+
   if (imageSrc) {
-    preview.innerHTML = `<img src="${imageSrc}" alt="Profile" class="profile-img">`;
+    const safeImageSrc = escapeHtmlAttr(imageSrc);
+    preview.innerHTML = `<img src="${safeImageSrc}" alt="Profile" class="profile-img">`;
     if (removeBtn) removeBtn.style.display = 'block';
-    if (previewAvatar) previewAvatar.innerHTML = `<img src="${imageSrc}" alt="Avatar" class="avatar-img">`;
+    if (previewAvatar) previewAvatar.innerHTML = `<img src="${safeImageSrc}" alt="Avatar" class="avatar-img">`;
   } else {
     preview.innerHTML = '<span class="placeholder-icon">&#128100;</span>';
     if (removeBtn) removeBtn.style.display = 'none';
@@ -1288,7 +1288,7 @@ function updatePersonalitySummary() {
 function updateMemoryHint(retentionPercent) {
   const hint = document.getElementById('memory-hint');
   if (!hint) return;
-  
+
   let text;
   if (retentionPercent >= 80) {
     text = '🧠 Exceptional memory - remembers small details, longer conversation summaries';
@@ -1301,7 +1301,7 @@ function updateMemoryHint(retentionPercent) {
   } else {
     text = '🧠 Very forgetful - struggles to recall past conversations';
   }
-  
+
   hint.textContent = text;
 }
 
@@ -1345,7 +1345,7 @@ async function handleSaveNpc() {
 
   // Check for draft status - validate but don't block save
   const draftWarnings = [];
-  
+
   if (!currentDefinition.description?.trim()) {
     draftWarnings.push('Description is missing');
   }
@@ -1389,20 +1389,20 @@ async function handleSaveNpc() {
       // Create new
       const created = await npcs.create(currentProjectId, currentDefinition);
       currentNpcId = created.id;
-      
+
       // Upload pending profile image if any
       if (pendingProfileImage) {
         try {
           const formData = new FormData();
           formData.append('avatar', pendingProfileImage);
-          
+
           // Get auth headers
           const avatarHeaders = {};
           const token = getAccessToken();
           if (token) {
             avatarHeaders['Authorization'] = `Bearer ${token}`;
           }
-          
+
           await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
             method: 'POST',
             headers: avatarHeaders,
@@ -1413,7 +1413,7 @@ async function handleSaveNpc() {
         }
         pendingProfileImage = null;
       }
-      
+
       toast.success('NPC Created', `"${currentDefinition.name}" has been created.`);
     }
 
@@ -1843,7 +1843,7 @@ function handleEditNpcJson() {
         toast.error('Invalid NPC', 'NPC must have a name');
         return;
       }
-      
+
       // Merge with defaults to ensure all fields exist
       currentDefinition = {
         ...getDefaultDefinition(),
@@ -1865,10 +1865,10 @@ function handleEditNpcJson() {
           ...(parsedJson.mcp_permissions || {}),
         },
       };
-      
+
       // Re-populate form
       populateForm(currentDefinition);
-      
+
       // Re-init tag inputs
       principlesInput = createTagInput(
         document.getElementById('principles-tags').parentElement,
@@ -1891,7 +1891,7 @@ function handleEditNpcJson() {
           },
         }
       );
-      
+
       updatePreview();
       updatePersonalitySummary();
       toast.success('JSON Applied', 'NPC definition updated from JSON.');
@@ -1913,14 +1913,14 @@ async function openLlmGenerationModal(field) {
     principles: 'Principles',
     trauma_flags: 'Trauma Flags',
   };
-  
+
   const fieldHints = {
     backstory: 'Describe the character briefly: their role, setting, and key personality traits.',
     principles: 'Describe the character\'s role and values to generate core beliefs.',
     trauma_flags: 'Describe any difficult experiences or emotional triggers for this character.',
   };
-  
-  const currentValue = field === 'backstory' 
+
+  const currentValue = field === 'backstory'
     ? currentDefinition.core_anchor?.backstory || ''
     : (currentDefinition.core_anchor?.[field] || []).join(', ');
 
@@ -1977,7 +1977,7 @@ async function openLlmGenerationModal(field) {
     const loadingEl = content.querySelector('#llm-gen-loading');
     const resultsEl = content.querySelector('#llm-gen-results');
     const generateBtn = footer.querySelector('#btn-llm-generate');
-    
+
     loadingEl.style.display = 'flex';
     resultsEl.style.display = 'none';
     generateBtn.disabled = true;

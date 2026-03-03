@@ -25,6 +25,7 @@ const UpdateProjectSchema = z.object({
       stt_provider: z.string().optional(),
       tts_provider: z.string().optional(),
       default_voice_id: z.string().optional(),
+      game_client_api_key: z.string().optional(),
       timeouts: z
         .object({
           session: z.number().positive().optional(),

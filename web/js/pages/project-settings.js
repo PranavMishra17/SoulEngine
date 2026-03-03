@@ -95,7 +95,7 @@ async function loadSettings(projectId) {
 async function loadKeyStatus(projectId) {
   try {
     const keyStatus = await projects.getKeyStatus(projectId);
-    
+
     // Update all key status indicators
     const keys = ['gemini', 'openai', 'anthropic', 'grok', 'deepgram', 'cartesia', 'elevenlabs'];
     keys.forEach(key => {
@@ -109,7 +109,7 @@ async function loadKeyStatus(projectId) {
           statusEl.className = 'key-status not-configured';
         }
       }
-      
+
       // Update placeholder
       const inputEl = document.getElementById(`settings-key-${key}`);
       if (inputEl) {
@@ -124,8 +124,8 @@ async function loadKeyStatus(projectId) {
 function updateModelOptions(provider, selectedModel) {
   const modelSelect = document.getElementById('settings-llm-model');
   const models = LLM_MODELS[provider] || [];
-  
-  modelSelect.innerHTML = models.map(m => 
+
+  modelSelect.innerHTML = models.map(m =>
     `<option value="${m.id}" ${m.id === selectedModel ? 'selected' : ''}>${m.name}</option>`
   ).join('');
 }
@@ -216,7 +216,7 @@ async function saveSettings() {
     }
 
     toast.success('Settings Saved', 'Project settings have been updated.');
-    
+
     // Refresh key status
     await loadKeyStatus(currentProjectId);
 
@@ -236,6 +236,7 @@ async function saveSettings() {
 
 function confirmDeleteProject(projectId) {
   const content = document.createElement('div');
+  const safeName = escapeHtmlAttr(currentProject?.name || projectId);
   content.innerHTML = `
     <p>This action <strong>cannot be undone</strong>. This will permanently delete:</p>
     <ul style="margin: 1rem 0; padding-left: 1.5rem;">
@@ -244,7 +245,7 @@ function confirmDeleteProject(projectId) {
       <li>All saved states and memories</li>
       <li>All configuration and settings</li>
     </ul>
-    <p>Please type <strong>${currentProject?.name || projectId}</strong> to confirm:</p>
+    <p>Please type <strong>${safeName}</strong> to confirm:</p>
     <input type="text" id="confirm-delete-input" class="input" placeholder="Type project name to confirm" style="margin-top: 0.5rem;">
   `;
 
@@ -264,7 +265,7 @@ function confirmDeleteProject(projectId) {
   // Enable delete button only when name matches
   const confirmInput = content.querySelector('#confirm-delete-input');
   const deleteBtn = footer.querySelector('[data-action="delete"]');
-  
+
   confirmInput.addEventListener('input', () => {
     const matches = confirmInput.value === (currentProject?.name || projectId);
     deleteBtn.disabled = !matches;
