@@ -67,11 +67,17 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       const storage = getStorageForUser(userId);
       const project = await storage.getProject(project_id);
 
-      if (project.settings?.game_client_api_key) {
+      if (project.settings?.game_client_api_key_hash) {
         const clientApiKey = c.req.header('x-api-key');
-        if (clientApiKey !== project.settings.game_client_api_key) {
-          logger.warn({ projectId: project_id }, 'Invalid or missing Game Client API Key');
-          return c.json({ error: 'Unauthorized - invalid or missing Game Client API Key' }, 401);
+        if (!clientApiKey) {
+          logger.warn({ projectId: project_id }, 'Missing Game Client API Key');
+          return c.json({ error: 'Unauthorized - Game Client API Key required' }, 401);
+        }
+        const { createHash } = await import('crypto');
+        const incomingHash = createHash('sha256').update(clientApiKey).digest('hex');
+        if (incomingHash !== project.settings.game_client_api_key_hash) {
+          logger.warn({ projectId: project_id }, 'Invalid Game Client API Key');
+          return c.json({ error: 'Unauthorized - invalid Game Client API Key' }, 401);
         }
       }
 

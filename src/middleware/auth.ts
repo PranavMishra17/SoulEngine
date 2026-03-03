@@ -92,17 +92,17 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
 
 /**
  * Optional authentication middleware
- * 
+ *
  * In production mode (with Supabase), this middleware:
- * - Checks the JWT token from the Authorization header
- * - Attaches user info to the context
- * - Returns 401 if token is invalid or missing
- * 
+ * - If no Authorization header: allows through with user=null (game clients use x-api-key instead)
+ * - If Authorization header present but invalid: returns 401
+ * - If Authorization header valid: attaches user info to context
+ *
  * In development mode:
  * - Always allows access (no auth required)
  * - Sets user to null
  */
-export async function optionalAuthMiddleware(c: Context, next: Next) {
+export async function optionalAuthMiddleware(c: Context, next: Next): Promise<Response | void> {
   // In development/local mode, skip authentication
   if (!useAuth) {
     c.set('user', null);
@@ -113,9 +113,12 @@ export async function optionalAuthMiddleware(c: Context, next: Next) {
 
   const authHeader = c.req.header('Authorization');
 
+  // No token provided — allow through (game clients authenticate via x-api-key header)
   if (!authHeader?.startsWith('Bearer ')) {
-    logger.debug('Missing or invalid Authorization header in protected route');
-    return c.json({ error: 'Unauthorized - token required' }, 401);
+    c.set('user', null);
+    c.set('userId', null);
+    await next();
+    return;
   }
 
   const token = authHeader.substring(7);

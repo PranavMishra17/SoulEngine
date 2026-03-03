@@ -6,7 +6,7 @@ export interface ProjectSettings {
   stt_provider: string;
   tts_provider: string;
   default_voice_id: string;
-  game_client_api_key?: string;
+  game_client_api_key_hash?: string;
   timeouts: {
     session?: number;
     llm?: number;

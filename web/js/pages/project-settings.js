@@ -86,6 +86,9 @@ async function loadSettings(projectId) {
     // Fetch and display API key status
     await loadKeyStatus(projectId);
 
+    // Fetch and display Game Client API Key status
+    await loadGameClientApiKeyStatus(projectId);
+
   } catch (error) {
     toast.error('Failed to Load Settings', error.message);
     router.navigate('/projects');
@@ -118,6 +121,35 @@ async function loadKeyStatus(projectId) {
     });
   } catch (error) {
     console.warn('Failed to fetch key status:', error);
+  }
+}
+
+async function loadGameClientApiKeyStatus(projectId) {
+  const statusEl = document.getElementById('status-game-client-api-key');
+  const generateBtn = document.getElementById('btn-generate-api-key');
+  const revokeBtn = document.getElementById('btn-revoke-api-key');
+
+  if (!statusEl) return;
+
+  try {
+    const result = await projects.getApiKeyStatus(projectId);
+    if (result.configured) {
+      statusEl.textContent = 'Configured';
+      statusEl.className = 'key-status configured';
+      if (generateBtn) generateBtn.style.display = 'none';
+      if (revokeBtn) revokeBtn.style.display = '';
+    } else {
+      statusEl.textContent = 'Not configured';
+      statusEl.className = 'key-status not-configured';
+      if (generateBtn) generateBtn.style.display = '';
+      if (revokeBtn) revokeBtn.style.display = 'none';
+    }
+  } catch (error) {
+    statusEl.textContent = 'Unknown';
+    statusEl.className = 'key-status not-configured';
+    if (generateBtn) generateBtn.style.display = '';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    console.warn('Failed to fetch Game Client API Key status:', error);
   }
 }
 
@@ -164,6 +196,16 @@ function bindEventHandlers(projectId) {
   // Import API keys from another project
   document.getElementById('btn-import-keys')?.addEventListener('click', () => {
     showImportKeysModal(projectId);
+  });
+
+  // Generate Game Client API Key
+  document.getElementById('btn-generate-api-key')?.addEventListener('click', () => {
+    generateGameClientApiKey(projectId);
+  });
+
+  // Revoke Game Client API Key
+  document.getElementById('btn-revoke-api-key')?.addEventListener('click', () => {
+    confirmRevokeApiKey(projectId);
   });
 
   // Save settings
@@ -335,6 +377,88 @@ async function showImportKeysModal(projectId) {
       await loadKeyStatus(projectId);
     } catch (error) {
       toast.error('Import Failed', error.message);
+    }
+  });
+}
+
+async function generateGameClientApiKey(projectId) {
+  const btn = document.getElementById('btn-generate-api-key');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
+
+  try {
+    const result = await projects.generateApiKey(projectId);
+    const rawKey = result.api_key;
+
+    const content = document.createElement('div');
+    content.innerHTML = `
+      <p style="margin-bottom: var(--space-3); color: var(--color-warning, #f59e0b); font-weight: 500;">
+        Save this key now — it will not be shown again.
+      </p>
+      <div class="input-with-button" style="margin-bottom: var(--space-3);">
+        <input type="text" id="generated-api-key-display" class="input" readonly
+          value="${escapeHtmlAttr(rawKey)}"
+          style="font-family: monospace; font-size: var(--text-sm);">
+        <button type="button" class="btn btn-sm btn-outline" id="btn-copy-generated-key">Copy</button>
+      </div>
+      <p style="font-size: var(--text-sm); color: var(--color-text-secondary);">
+        Add this key to your Unity project and send it in the <code>x-api-key</code> header when calling <code>/api/session/start</code>.
+      </p>
+    `;
+
+    const footer = document.createElement('div');
+    footer.innerHTML = `<button class="btn btn-primary" data-action="done">Done</button>`;
+
+    const m = modal.open({ title: 'Game Client API Key Generated', content, footer, size: 'medium' });
+
+    content.querySelector('#btn-copy-generated-key')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(rawKey);
+        toast.success('Copied', 'API key copied to clipboard.');
+      } catch {
+        const input = content.querySelector('#generated-api-key-display');
+        input.select();
+        document.execCommand('copy');
+        toast.success('Copied', 'API key copied to clipboard.');
+      }
+    });
+
+    footer.querySelector('[data-action="done"]').addEventListener('click', () => m.close());
+
+    await loadGameClientApiKeyStatus(projectId);
+  } catch (error) {
+    toast.error('Failed to Generate Key', error.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Key'; }
+  }
+}
+
+function confirmRevokeApiKey(projectId) {
+  const content = document.createElement('div');
+  content.innerHTML = `
+    <p>This will permanently revoke the current Game Client API Key.</p>
+    <p style="margin-top: var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm);">
+      Any Unity clients using the old key will immediately receive 401 errors when starting sessions.
+      You will need to generate a new key and update your Unity project.
+    </p>
+  `;
+
+  const footer = document.createElement('div');
+  footer.innerHTML = `
+    <button class="btn btn-outline" data-action="cancel">Cancel</button>
+    <button class="btn btn-danger" data-action="revoke">Revoke Key</button>
+  `;
+
+  const m = modal.open({ title: 'Revoke Game Client API Key', content, footer });
+
+  footer.querySelector('[data-action="cancel"]').addEventListener('click', () => m.close());
+  footer.querySelector('[data-action="revoke"]').addEventListener('click', async () => {
+    m.close();
+    try {
+      await projects.revokeApiKey(projectId);
+      toast.success('Key Revoked', 'Game Client API Key has been revoked.');
+      await loadGameClientApiKeyStatus(projectId);
+    } catch (error) {
+      toast.error('Failed to Revoke Key', error.message);
     }
   });
 }

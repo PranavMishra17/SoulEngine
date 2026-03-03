@@ -25,7 +25,7 @@ const UpdateProjectSchema = z.object({
       stt_provider: z.string().optional(),
       tts_provider: z.string().optional(),
       default_voice_id: z.string().optional(),
-      game_client_api_key: z.string().optional(),
+      // game_client_api_key_hash is managed via POST/DELETE /:projectId/api-key endpoints
       timeouts: z
         .object({
           session: z.number().positive().optional(),
@@ -888,5 +888,104 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, error: errorMessage, duration }, 'Failed to load starter pack');
     return c.json({ error: 'Failed to load starter pack', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/api-key - Generate a new Game Client API Key
+ * Returns the raw key exactly once. Only the SHA-256 hash is stored.
+ */
+projectRoutes.post('/:projectId/api-key', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    // Verify project exists and belongs to this user
+    await storage.getProject(projectId);
+
+    const { randomBytes, createHash } = await import('crypto');
+    const rawKey = 'gcak_' + randomBytes(32).toString('hex');
+    const keyHash = createHash('sha256').update(rawKey).digest('hex');
+
+    await storage.updateProject(projectId, {
+      settings: { game_client_api_key_hash: keyHash } as Parameters<typeof storage.updateProject>[1]['settings'],
+    });
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, duration }, 'Game Client API Key generated');
+
+    return c.json({ api_key: rawKey }, 201);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to generate Game Client API Key');
+    return c.json({ error: 'Failed to generate Game Client API Key', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * DELETE /api/projects/:projectId/api-key - Revoke the Game Client API Key
+ */
+projectRoutes.delete('/:projectId/api-key', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    // Verify project exists and belongs to this user
+    const project = await storage.getProject(projectId);
+
+    if (!project.settings?.game_client_api_key_hash) {
+      return c.json({ error: 'No Game Client API Key configured' }, 404);
+    }
+
+    // Clear the hash by setting it to undefined
+    const updatedSettings = { ...project.settings };
+    delete updatedSettings.game_client_api_key_hash;
+
+    await storage.updateProject(projectId, { settings: updatedSettings });
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, duration }, 'Game Client API Key revoked');
+
+    return c.json({ success: true });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to revoke Game Client API Key');
+    return c.json({ error: 'Failed to revoke Game Client API Key', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/api-key/status - Check if a Game Client API Key is configured
+ */
+projectRoutes.get('/:projectId/api-key/status', async (c) => {
+  const projectId = c.req.param('projectId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+    const project = await storage.getProject(projectId);
+
+    return c.json({ configured: !!project.settings?.game_client_api_key_hash });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage }, 'Failed to get API key status');
+    return c.json({ error: 'Failed to get API key status', details: errorMessage }, 500);
   }
 });

@@ -120,6 +120,16 @@ export const projects = {
     method: 'POST',
     body: JSON.stringify({ from_project_id: fromProjectId }),
   }),
+
+  generateApiKey: (projectId) => request(`/projects/${projectId}/api-key`, {
+    method: 'POST',
+  }),
+
+  revokeApiKey: (projectId) => request(`/projects/${projectId}/api-key`, {
+    method: 'DELETE',
+  }),
+
+  getApiKeyStatus: (projectId) => request(`/projects/${projectId}/api-key/status`),
 };
 
 export const starterPacks = {

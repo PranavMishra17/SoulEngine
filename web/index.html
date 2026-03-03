@@ -1602,6 +1602,27 @@
           </div>
         </section>
 
+        <!-- Game Client Security -->
+        <section class="settings-card">
+          <div class="settings-card-header">
+            <h2>Game Client Security</h2>
+            <p class="settings-card-desc">Protect your BYOK API keys from unauthorized session starts</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label>Game Client API Key</label>
+              <div class="api-key-status-row">
+                <span class="key-status" id="status-game-client-api-key">Checking...</span>
+                <div class="api-key-actions">
+                  <button class="btn btn-sm btn-primary" id="btn-generate-api-key" style="display:none;">Generate Key</button>
+                  <button class="btn btn-sm btn-outline btn-danger-outline" id="btn-revoke-api-key" style="display:none;">Revoke Key</button>
+                </div>
+              </div>
+              <span class="input-hint">When configured, your Unity SDK must send this key in the <code>x-api-key</code> header to start sessions. Prevents unauthorized use of your LLM credits.</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Danger Zone -->
         <section class="settings-card settings-card-danger">
           <div class="settings-card-header">
