@@ -165,7 +165,28 @@ function mapRowToDefinition(row: Record<string, unknown>): NPCDefinition {
     },
     salience_threshold: (row.salience_threshold as number) ?? 0.7,
     profile_image: row.profile_image as string | undefined,
+    version: (row.version as number) ?? 1,
   };
+}
+
+/**
+ * Return field names that changed between an existing definition and a set of updates
+ */
+function computeChangedFields(
+  existing: NPCDefinition,
+  updates: Partial<Omit<NPCDefinition, 'id' | 'project_id'>>
+): string[] {
+  const trackedFields = [
+    'name', 'description', 'core_anchor', 'personality_baseline',
+    'voice', 'schedule', 'mcp_permissions', 'knowledge_access',
+    'network', 'player_recognition', 'salience_threshold', 'profile_image',
+  ] as const;
+
+  return trackedFields.filter(f => {
+    if (!(f in updates)) return false;
+    return JSON.stringify(existing[f as keyof NPCDefinition]) !==
+           JSON.stringify(updates[f as keyof typeof updates]);
+  });
 }
 
 /**
@@ -222,7 +243,7 @@ export async function updateDefinition(
     const existing = await getDefinition(projectId, npcId);
 
     const updateData: Record<string, unknown> = {};
-    
+
     if (updates.name !== undefined) updateData.name = updates.name;
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.core_anchor) updateData.core_anchor = { ...existing.core_anchor, ...updates.core_anchor };
@@ -235,6 +256,23 @@ export async function updateDefinition(
     if (updates.player_recognition !== undefined) updateData.player_recognition = updates.player_recognition;
     if (updates.salience_threshold !== undefined) updateData.salience_threshold = updates.salience_threshold;
     if (updates.profile_image !== undefined) updateData.profile_image = updates.profile_image;
+
+    // Archive current state before overwriting (only if something actually changed)
+    const changedFields = computeChangedFields(existing, updates);
+    if (changedFields.length > 0) {
+      const { error: archiveError } = await supabase
+        .from('npc_definition_history')
+        .insert({
+          definition_id: npcId,
+          version: existing.version ?? 1,
+          snapshot: existing,
+          changed_fields: changedFields,
+        });
+      if (archiveError) {
+        logger.warn({ projectId, npcId, error: archiveError.message }, 'Failed to archive definition history — proceeding with update');
+      }
+      updateData.version = (existing.version ?? 1) + 1;
+    }
 
     const { data, error } = await supabase
       .from('npc_definitions')
@@ -356,4 +394,180 @@ export async function definitionExists(projectId: string, npcId: string): Promis
  */
 export function isValidNpcId(npcId: string): boolean {
   return /^npc_[a-z0-9]+/.test(npcId);
+}
+
+// ============================================================
+// DEFINITION HISTORY
+// ============================================================
+
+export interface DefinitionHistoryEntry {
+  version: number;
+  changed_fields: string[];
+  created_at: string;
+}
+
+export interface DefinitionHistorySnapshot extends DefinitionHistoryEntry {
+  snapshot: NPCDefinition;
+}
+
+/**
+ * Get version history metadata for an NPC definition (no snapshots — lightweight)
+ */
+export async function getDefinitionHistory(
+  projectId: string,
+  npcId: string
+): Promise<DefinitionHistoryEntry[]> {
+  const startTime = Date.now();
+  const supabase = getSupabaseAdmin();
+
+  try {
+    // Ownership check
+    await getDefinition(projectId, npcId);
+
+    const { data, error } = await supabase
+      .from('npc_definition_history')
+      .select('version, changed_fields, created_at')
+      .eq('definition_id', npcId)
+      .order('version', { ascending: false });
+
+    if (error) {
+      throw new StorageError(`Database error: ${error.message}`);
+    }
+
+    const duration = Date.now() - startTime;
+    logger.debug({ projectId, npcId, count: data?.length ?? 0, duration }, 'Definition history loaded');
+
+    return (data || []) as DefinitionHistoryEntry[];
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError || error instanceof StorageError) throw error;
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage, duration }, 'Failed to load definition history');
+    throw new StorageError(`Failed to load definition history: ${errorMessage}`);
+  }
+}
+
+/**
+ * Get a single version snapshot for an NPC definition
+ */
+export async function getDefinitionSnapshot(
+  projectId: string,
+  npcId: string,
+  version: number
+): Promise<DefinitionHistorySnapshot> {
+  const startTime = Date.now();
+  const supabase = getSupabaseAdmin();
+
+  try {
+    // Ownership check
+    await getDefinition(projectId, npcId);
+
+    const { data, error } = await supabase
+      .from('npc_definition_history')
+      .select('version, changed_fields, created_at, snapshot')
+      .eq('definition_id', npcId)
+      .eq('version', version)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw new StorageNotFoundError('Definition snapshot', `v${version}`);
+      }
+      throw new StorageError(`Database error: ${error.message}`);
+    }
+
+    const duration = Date.now() - startTime;
+    logger.debug({ projectId, npcId, version, duration }, 'Definition snapshot loaded');
+
+    return data as unknown as DefinitionHistorySnapshot;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError || error instanceof StorageError) throw error;
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, version, error: errorMessage, duration }, 'Failed to load definition snapshot');
+    throw new StorageError(`Failed to load definition snapshot: ${errorMessage}`);
+  }
+}
+
+/**
+ * Revert an NPC definition to a prior version.
+ * The snapshot becomes the new current state — a new history entry is created so
+ * the revert itself is reversible. Returns the updated definition.
+ */
+export async function rollbackDefinition(
+  projectId: string,
+  npcId: string,
+  targetVersion: number
+): Promise<NPCDefinition> {
+  const startTime = Date.now();
+  const supabase = getSupabaseAdmin();
+
+  try {
+    // 1. Fetch the target snapshot (also verifies ownership via inner getDefinition call)
+    const historyEntry = await getDefinitionSnapshot(projectId, npcId, targetVersion);
+    const snap = historyEntry.snapshot;
+
+    // 2. Fetch current definition to archive it
+    const current = await getDefinition(projectId, npcId);
+    const currentVersion = current.version ?? 1;
+
+    // 3. Archive the current state before overwriting
+    const { error: archiveError } = await supabase
+      .from('npc_definition_history')
+      .insert({
+        definition_id: npcId,
+        version: currentVersion,
+        snapshot: current,
+        changed_fields: [`reverted_to_v${targetVersion}`],
+      });
+
+    if (archiveError) {
+      logger.warn({ projectId, npcId, error: archiveError.message }, 'Failed to archive current state before rollback');
+    }
+
+    // 4. Apply the snapshot, incrementing version
+    const newVersion = currentVersion + 1;
+    const restoreData: Record<string, unknown> = {
+      name: snap.name,
+      description: snap.description,
+      core_anchor: snap.core_anchor,
+      personality_baseline: snap.personality_baseline,
+      voice: snap.voice,
+      schedule: snap.schedule,
+      mcp_permissions: snap.mcp_permissions,
+      knowledge_access: snap.knowledge_access,
+      network: snap.network,
+      player_recognition: snap.player_recognition,
+      salience_threshold: snap.salience_threshold,
+      version: newVersion,
+    };
+
+    const { data, error } = await supabase
+      .from('npc_definitions')
+      .update(restoreData)
+      .eq('id', npcId)
+      .eq('project_id', projectId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new StorageError(`Database error: ${error.message}`);
+    }
+
+    const definition = mapRowToDefinition(data);
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, npcId, targetVersion, newVersion, duration }, 'Definition rolled back');
+
+    return definition;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError || error instanceof StorageError) throw error;
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, targetVersion, error: errorMessage, duration }, 'Failed to rollback definition');
+    throw new StorageError(`Failed to rollback definition: ${errorMessage}`);
+  }
 }

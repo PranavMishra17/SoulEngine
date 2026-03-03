@@ -674,3 +674,111 @@ npcRoutes.delete('/:npcId/avatar', async (c) => {
     return c.json({ error: 'Failed to delete avatar' }, 500);
   }
 });
+
+/**
+ * GET /api/projects/:projectId/npcs/:npcId/history - List version history metadata
+ */
+npcRoutes.get('/:npcId/history', async (c) => {
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+
+  if (!projectId || !npcId) {
+    return c.json({ error: 'Project ID and NPC ID are required' }, 400);
+  }
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const versions = await storage.getDefinitionHistory(projectId, npcId);
+
+    return c.json({ npc_id: npcId, versions, count: versions.length });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'NPC not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage }, 'Failed to get definition history');
+    return c.json({ error: 'Failed to get history' }, 500);
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/npcs/:npcId/history/:version - Get full snapshot for a version
+ */
+npcRoutes.get('/:npcId/history/:version', async (c) => {
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+  const versionParam = c.req.param('version');
+
+  if (!projectId || !npcId || !versionParam) {
+    return c.json({ error: 'Project ID, NPC ID, and version are required' }, 400);
+  }
+
+  const version = parseInt(versionParam, 10);
+  if (isNaN(version) || version < 1) {
+    return c.json({ error: 'Version must be a positive integer' }, 400);
+  }
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const entry = await storage.getDefinitionSnapshot(projectId, npcId, version);
+
+    return c.json(entry);
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Version not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, version, error: errorMessage }, 'Failed to get definition snapshot');
+    return c.json({ error: 'Failed to get snapshot' }, 500);
+  }
+});
+
+const RollbackSchema = z.object({
+  version: z.number().int().positive(),
+});
+
+/**
+ * POST /api/projects/:projectId/npcs/:npcId/rollback - Revert to a prior version
+ */
+npcRoutes.post('/:npcId/rollback', async (c) => {
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+
+  if (!projectId || !npcId) {
+    return c.json({ error: 'Project ID and NPC ID are required' }, 400);
+  }
+
+  let body: { version: number };
+  try {
+    const raw = await c.req.json();
+    body = RollbackSchema.parse(raw);
+  } catch {
+    return c.json({ error: 'Request body must include version (positive integer)' }, 400);
+  }
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    const definition = await storage.rollbackDefinition(projectId, npcId, body.version);
+
+    logger.info({ projectId, npcId, targetVersion: body.version, newVersion: definition.version }, 'Definition rolled back');
+
+    return c.json({
+      message: `Reverted to v${body.version}`,
+      version: definition.version,
+      definition: { id: definition.id, name: definition.name, version: definition.version },
+    });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'NPC or version not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, targetVersion: body.version, error: errorMessage }, 'Failed to rollback definition');
+    return c.json({ error: 'Failed to rollback' }, 500);
+  }
+});

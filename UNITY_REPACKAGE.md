@@ -659,10 +659,10 @@ namespace SoulEngine.Sync
         private static async Task ProcessQueueAsync()
         {
             if (isSyncing || pendingOperations.Count == 0) return;
-            
+
             isSyncing = true;
             var client = new CloudClient();
-            
+
             try
             {
                 while (pendingOperations.TryDequeue(out var op))
@@ -685,8 +685,83 @@ namespace SoulEngine.Sync
                 isSyncing = false;
             }
         }
+
+        // ============================================================
+        // NPC DEFINITION VERSION HISTORY
+        // ============================================================
+
+        /// <summary>
+        /// Get version history metadata for an NPC definition.
+        /// Returns a list of archived versions (version number, changed fields, timestamp).
+        /// Does not include full snapshots — call GetDefinitionSnapshotAsync for those.
+        /// </summary>
+        public static async Task<List<DefinitionHistoryEntry>> GetDefinitionHistoryAsync(
+            string projectId, string npcId)
+        {
+            var client = new CloudClient();
+            return await client.GetDefinitionHistory(projectId, npcId);
+        }
+
+        /// <summary>
+        /// Get the full snapshot for a specific NPC definition version.
+        /// </summary>
+        public static async Task<DefinitionHistorySnapshot> GetDefinitionSnapshotAsync(
+            string projectId, string npcId, int version)
+        {
+            var client = new CloudClient();
+            return await client.GetDefinitionSnapshot(projectId, npcId, version);
+        }
+
+        /// <summary>
+        /// Revert an NPC definition to a prior version.
+        /// The current state is archived before reverting, so this action is itself reversible.
+        /// After rollback, reload the definition from local storage via ProjectLoader.
+        /// </summary>
+        public static async Task<NPCDefinition> RollbackDefinitionAsync(
+            string projectId, string npcId, int targetVersion)
+        {
+            var client = new CloudClient();
+            var definition = await client.RollbackDefinition(projectId, npcId, targetVersion);
+
+            // Persist the rolled-back definition locally so the next session uses it
+            LocalStorage.SaveDefinition(definition);
+
+            return definition;
+        }
     }
 }
+```
+
+### DefinitionHistoryEntry (Type)
+
+```csharp
+namespace SoulEngine.Sync
+{
+    public class DefinitionHistoryEntry
+    {
+        public int Version { get; set; }
+        public string[] ChangedFields { get; set; }
+        public string CreatedAt { get; set; }
+    }
+
+    public class DefinitionHistorySnapshot : DefinitionHistoryEntry
+    {
+        public NPCDefinition Snapshot { get; set; }
+    }
+}
+```
+
+### CloudClient — History Methods
+
+```csharp
+// GET /api/projects/{projectId}/npcs/{npcId}/history
+public async Task<List<DefinitionHistoryEntry>> GetDefinitionHistory(string projectId, string npcId)
+
+// GET /api/projects/{projectId}/npcs/{npcId}/history/{version}
+public async Task<DefinitionHistorySnapshot> GetDefinitionSnapshot(string projectId, string npcId, int version)
+
+// POST /api/projects/{projectId}/npcs/{npcId}/rollback  { version }
+public async Task<NPCDefinition> RollbackDefinition(string projectId, string npcId, int version)
 ```
 
 ---

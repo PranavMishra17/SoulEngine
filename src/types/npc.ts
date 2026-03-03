@@ -101,6 +101,11 @@ export interface NPCDefinition {
    * Default: undefined (treated as complete for backward compatibility)
    */
   status?: 'draft' | 'complete';
+  /**
+   * Version counter — incremented on every save that changes at least one field.
+   * Starts at 1 on creation. Used to track history and prevent silent overwrites.
+   */
+  version?: number;
 }
 
 export interface Memory {

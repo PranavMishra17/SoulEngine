@@ -171,6 +171,18 @@ export const npcs = {
   delete: (projectId, npcId) => request(`/projects/${projectId}/npcs/${npcId}`, {
     method: 'DELETE',
   }),
+
+  getHistory: (projectId, npcId) =>
+    request(`/projects/${projectId}/npcs/${npcId}/history`),
+
+  getSnapshot: (projectId, npcId, version) =>
+    request(`/projects/${projectId}/npcs/${npcId}/history/${version}`),
+
+  rollback: (projectId, npcId, version) =>
+    request(`/projects/${projectId}/npcs/${npcId}/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ version }),
+    }),
 };
 
 /**

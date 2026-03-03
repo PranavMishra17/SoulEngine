@@ -404,3 +404,34 @@ export async function definitionExists(projectId: string, npcId: string): Promis
 export function isValidNpcId(npcId: string): boolean {
   return /^npc_[a-z0-9]+_[a-z0-9]+$/.test(npcId);
 }
+
+// ============================================================
+// DEFINITION HISTORY — stubs for local mode (no history in local dev)
+// ============================================================
+
+import type { DefinitionHistoryEntry, DefinitionHistorySnapshot } from '../supabase/definitions.js';
+export type { DefinitionHistoryEntry, DefinitionHistorySnapshot };
+
+export async function getDefinitionHistory(
+  _projectId: string,
+  _npcId: string
+): Promise<DefinitionHistoryEntry[]> {
+  return [];
+}
+
+export async function getDefinitionSnapshot(
+  _projectId: string,
+  _npcId: string,
+  _version: number
+): Promise<DefinitionHistorySnapshot> {
+  throw new StorageNotFoundError('Definition snapshot', `v${_version}`);
+}
+
+export async function rollbackDefinition(
+  projectId: string,
+  npcId: string,
+  _targetVersion: number
+): Promise<NPCDefinition> {
+  // In local mode there is no history — just return current definition unchanged
+  return getDefinition(projectId, npcId);
+}

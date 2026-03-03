@@ -531,6 +531,70 @@ Client-side (Web):
 
 ---
 
+## NPC Definition Version History
+
+Every time an NPC definition is saved with at least one changed field, the previous state is archived. This gives developers a full audit trail and the ability to revert any NPC blueprint to any prior state.
+
+### How It Works
+
+1. On every `updateDefinition()` call, `computeChangedFields()` diffs the incoming update against the current definition.
+2. If any fields changed, the **current** definition is inserted into `npc_definition_history` before the update is applied.
+3. The `npc_definitions.version` counter increments with each archived save.
+4. **Rollback** fetches a snapshot from history, archives the current state as a new version, and writes the snapshot back as the new current — making every revert itself reversible.
+5. No pruning by default (definitions change infrequently). Full snapshots are stored (~3KB each).
+
+### Database Tables
+
+```sql
+-- Version column added to npc_definitions
+npc_definitions.version  INTEGER DEFAULT 1
+
+-- Full snapshot archive
+npc_definition_history (
+  id            UUID,
+  definition_id TEXT FK → npc_definitions,
+  version       INTEGER,      -- version number at time of archival
+  snapshot      JSONB,        -- full NPCDefinition at that version
+  changed_fields TEXT[],      -- field names that changed (e.g. ["personality_baseline"])
+  created_at    TIMESTAMPTZ
+)
+```
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/projects/:projectId/npcs/:npcId/history` | List version metadata (no snapshots) |
+| `GET` | `/api/projects/:projectId/npcs/:npcId/history/:version` | Fetch full snapshot for a version |
+| `POST` | `/api/projects/:projectId/npcs/:npcId/rollback` | Body: `{ version }` — revert to that version |
+
+### Web UI (History Tab)
+
+The NPC editor sidebar has a **History** tab that shows a vertical timeline of versions. Each entry displays:
+- Version number + timestamp
+- Pill tags for changed fields (e.g. `personality_baseline`, `core_anchor`)
+- "View" button: opens a two-column diff modal comparing the snapshot to the current state
+- "Revert to vN" button: prompts for confirmation, then calls the rollback API and reloads
+
+### Unity SDK
+
+The `SyncManager` exposes three methods for working with history from the Unity client:
+
+```csharp
+// List all archived versions (metadata only)
+List<DefinitionHistoryEntry> history = await SyncManager.GetDefinitionHistoryAsync(projectId, npcId);
+
+// Fetch full snapshot for a specific version
+DefinitionHistorySnapshot snap = await SyncManager.GetDefinitionSnapshotAsync(projectId, npcId, version);
+
+// Revert to a prior version (archives current first, saves locally after)
+NPCDefinition restored = await SyncManager.RollbackDefinitionAsync(projectId, npcId, targetVersion);
+```
+
+After `RollbackDefinitionAsync`, the SDK calls `LocalStorage.SaveDefinition(restored)` so the next session starts from the rolled-back state without requiring another cloud pull.
+
+---
+
 ## Unity Integration (Future)
 
 The TypeScript backend and web testing UI are stepping stones to the primary goal: a Unity SDK that game developers can drop into their projects.

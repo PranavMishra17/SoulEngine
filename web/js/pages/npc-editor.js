@@ -423,6 +423,11 @@ function bindEditorNavigation() {
 
       // Toggle interactive preview for personality section
       toggleInteractivePreview(section === 'personality');
+
+      // Lazy-load history when navigating to the History section
+      if (section === 'history') {
+        loadHistorySection(currentProjectId, currentNpcId);
+      }
     });
   });
 }
@@ -2045,6 +2050,208 @@ async function openLlmGenerationModal(field) {
     toast.success('Applied', `${fieldLabels[field]} updated from AI generation.`);
     modalInstance.close();
   });
+}
+
+// ============================================================
+// VERSION HISTORY
+// ============================================================
+
+let historyLoaded = false;
+let pendingRevertVersion = null;
+
+/**
+ * Load and render the version history section (lazy — called on first tab visit)
+ */
+async function loadHistorySection(projectId, npcId) {
+  if (!projectId || !npcId) return;
+
+  const list = document.getElementById('history-list');
+  if (!list) return;
+
+  // Reload every time the tab is opened so it stays fresh after saves
+  list.innerHTML = '<div class="history-empty">Loading history...</div>';
+
+  try {
+    const { versions, count } = await npcs.getHistory(projectId, npcId);
+
+    if (!count || count === 0) {
+      list.innerHTML = '<div class="history-empty">No history yet. Save this NPC to create the first version.</div>';
+      return;
+    }
+
+    const currentVersion = currentDefinition?.version ?? null;
+
+    list.innerHTML = versions.map((entry, i) => {
+      const isCurrent = entry.version === currentVersion;
+      const isCreateEntry = entry.changed_fields?.length === 0;
+      const fields = entry.changed_fields || [];
+      const ts = formatHistoryDate(entry.created_at);
+
+      // Detect revert markers stored as changed_fields
+      const revertMatch = fields.length === 1 && fields[0]?.startsWith('reverted_to_v');
+      const fieldDisplay = revertMatch
+        ? `<span class="history-field-tag" style="color:var(--color-accent-primary);">${fields[0].replace(/_/g, ' ')}</span>`
+        : fields.map(f => `<span class="history-field-tag">${formatFieldName(f)}</span>`).join('');
+
+      return `
+        <div class="history-entry${isCurrent ? ' history-current' : ''}">
+          <div class="history-timeline">
+            <div class="history-dot"></div>
+            ${i < versions.length - 1 ? '<div class="history-line"></div>' : ''}
+          </div>
+          <div class="history-body">
+            <div class="history-meta">
+              <span class="history-version">v${entry.version}</span>
+              <span class="history-ts">${ts}</span>
+              ${isCurrent ? '<span class="history-badge-current">current</span>' : ''}
+            </div>
+            ${fields.length > 0 ? `<div class="history-fields">${fieldDisplay}</div>` : '<div class="history-fields"><span class="history-field-tag">created</span></div>'}
+            <div class="history-actions">
+              <button class="btn btn-outline btn-xs history-view-btn" data-version="${entry.version}">View</button>
+              ${!isCurrent ? `<button class="btn btn-ghost btn-xs history-revert-btn" data-version="${entry.version}">Revert to v${entry.version}</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire up buttons
+    list.querySelectorAll('.history-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => openDiffModal(projectId, npcId, parseInt(btn.dataset.version, 10)));
+    });
+    list.querySelectorAll('.history-revert-btn').forEach(btn => {
+      btn.addEventListener('click', () => confirmRevert(projectId, npcId, parseInt(btn.dataset.version, 10)));
+    });
+
+  } catch (err) {
+    list.innerHTML = '<div class="history-empty">Failed to load history.</div>';
+    console.error('[history] load failed', err);
+  }
+}
+
+/**
+ * Open the diff modal for a specific version
+ */
+async function openDiffModal(projectId, npcId, version) {
+  const overlay = document.getElementById('history-diff-overlay');
+  const title = document.getElementById('history-diff-title');
+  const body = document.getElementById('history-diff-body');
+  const revertBtn = document.getElementById('history-diff-revert');
+  if (!overlay || !body) return;
+
+  title.textContent = `Version v${version}`;
+  body.innerHTML = '<div class="history-empty">Loading snapshot...</div>';
+  overlay.style.display = 'flex';
+  pendingRevertVersion = version;
+
+  // Show/hide revert button based on whether this is already current
+  const isCurrent = currentDefinition?.version === version;
+  revertBtn.style.display = isCurrent ? 'none' : '';
+
+  try {
+    const entry = await npcs.getSnapshot(projectId, npcId, version);
+    const snap = entry.snapshot;
+
+    const changed = entry.changed_fields || [];
+    const fieldsToShow = changed.filter(f => !f.startsWith('reverted_to_v'));
+
+    if (fieldsToShow.length === 0) {
+      body.innerHTML = '<p style="color:var(--color-text-tertiary);font-size:var(--text-sm);">No field-level changes recorded for this entry.</p>';
+      return;
+    }
+
+    body.innerHTML = fieldsToShow.map(field => {
+      const oldVal = snap[field];
+      const curVal = currentDefinition?.[field];
+      return `
+        <div class="diff-section">
+          <div class="diff-section-title">${formatFieldName(field)}</div>
+          <div class="diff-row">
+            <div>
+              <div class="diff-col-label">v${version} (this snapshot)</div>
+              <div class="diff-value diff-value-new">${renderDiffValue(oldVal)}</div>
+            </div>
+            <div>
+              <div class="diff-col-label">Current (v${currentDefinition?.version ?? '?'})</div>
+              <div class="diff-value diff-value-old">${renderDiffValue(curVal)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  } catch (err) {
+    body.innerHTML = '<div class="history-empty">Failed to load snapshot.</div>';
+    console.error('[history] snapshot load failed', err);
+  }
+}
+
+/**
+ * Confirm and execute a revert
+ */
+async function confirmRevert(projectId, npcId, version) {
+  const confirmed = window.confirm(
+    `Revert this NPC to v${version}?\n\nThe current state will be archived first (as the next version), so this action is reversible.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const result = await npcs.rollback(projectId, npcId, version);
+    toast.success('Reverted', `NPC restored to v${version}. New version is v${result.version}.`);
+    // Reload the page to reflect the restored definition
+    window.location.reload();
+  } catch (err) {
+    toast.error('Revert failed', err.message || 'Could not revert to that version.');
+    console.error('[history] revert failed', err);
+  }
+}
+
+// Wire up diff modal buttons (once, on page load)
+document.addEventListener('DOMContentLoaded', () => {
+  const closeBtn = document.getElementById('history-diff-close');
+  const cancelBtn = document.getElementById('history-diff-cancel');
+  const revertBtn = document.getElementById('history-diff-revert');
+  const overlay = document.getElementById('history-diff-overlay');
+
+  const closeModal = () => { if (overlay) overlay.style.display = 'none'; };
+
+  closeBtn?.addEventListener('click', closeModal);
+  cancelBtn?.addEventListener('click', closeModal);
+  overlay?.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+
+  revertBtn?.addEventListener('click', () => {
+    if (pendingRevertVersion !== null) {
+      closeModal();
+      confirmRevert(currentProjectId, currentNpcId, pendingRevertVersion);
+    }
+  });
+});
+
+/**
+ * Format a field name for display (snake_case → Title Case)
+ */
+function formatFieldName(field) {
+  return field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Format a history timestamp as a readable string
+ */
+function formatHistoryDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Render a field value for the diff view (handles objects/arrays/primitives)
+ */
+function renderDiffValue(val) {
+  if (val === undefined || val === null) return '<em style="opacity:0.5;">none</em>';
+  if (typeof val === 'object') {
+    return escapeHtml(JSON.stringify(val, null, 2));
+  }
+  return escapeHtml(String(val));
 }
 
 export default { initNpcListPage, initNpcEditorPage };

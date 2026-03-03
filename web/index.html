@@ -838,6 +838,9 @@
             <a href="#section-network" class="editor-nav-item" data-section="network">
               <span class="nav-icon">&#11042;</span> Network
             </a>
+            <a href="#section-history" class="editor-nav-item" data-section="history">
+              <span class="nav-icon">&#9673;</span> History
+            </a>
           </nav>
         </aside>
         <div class="editor-content">
@@ -1144,6 +1147,16 @@
               <div class="tier-legend-item"><span class="tier-badge tier-3">3</span><div><strong>Close</strong><p>Also knows personality</p></div></div>
             </div>
           </section>
+
+          <!-- History Section -->
+          <section class="editor-section" id="section-history">
+            <h2>Version History</h2>
+            <p class="section-desc">Every save archives a snapshot. Revert to any prior state — this creates a new version so the action itself is reversible.</p>
+            <div id="history-list" class="history-list">
+              <div class="history-empty">Loading history...</div>
+            </div>
+          </section>
+
         </div>
         <aside class="editor-preview">
           <div class="preview-header">
@@ -1826,6 +1839,23 @@
       </div>
     </div>
   </template>
+
+  <!-- History Diff Modal (NPC Editor) -->
+  <div class="modal-overlay" id="history-diff-overlay" style="display:none;">
+    <div class="modal history-diff-modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="history-diff-title">Version Details</h2>
+        <button class="btn btn-ghost modal-close" id="history-diff-close"><span class="icon">&#10005;</span></button>
+      </div>
+      <div class="modal-body" id="history-diff-body">
+        <!-- Populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="history-diff-revert">Revert to this version</button>
+        <button class="btn btn-ghost" id="history-diff-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Scripts -->
   <script type="module" src="/js/api.js"></script>
