@@ -2,7 +2,7 @@
  * Testing Playground Page Handler
  */
 
-import { npcs, session, conversation, cycles, VoiceClient } from '../api.js';
+import { npcs, projects, knowledge, mcpTools, session, conversation, cycles, VoiceClient } from '../api.js';
 import { toast, renderTemplate, updateNav, getMoodEmoji, getMoodLabel, modal } from '../components.js';
 import { router } from '../router.js';
 
@@ -71,6 +71,9 @@ export async function initPlaygroundPage(params) {
 
   // Bind event handlers
   bindEventHandlers();
+
+  // Load world context panel (project info, NPC roster, MCP tools)
+  await loadContextPanel();
 }
 
 async function loadNpcSelector(projectId) {
@@ -101,9 +104,13 @@ function bindEventHandlers() {
       cyclesPanel.style.display = 'block';
       await loadNpcInfo(currentNpcId);
       updateCyclesPanel(); // Enable/disable based on session state
+      await refreshMindPanel(); // Show NPC State panel with latest instance data
+      await loadContextPanel(); // Refresh context panel with NPC knowledge tiers
     } else {
       infoPanel.style.display = 'none';
       cyclesPanel.style.display = 'none';
+      const mindPanel = document.getElementById('npc-mind-panel');
+      if (mindPanel) mindPanel.style.display = 'none';
     }
   });
 
@@ -1216,34 +1223,12 @@ function resetPipelineTrace() {
   });
 }
 
-function addToolCallLog(name, args) {
-  const log = document.getElementById('tool-calls-log');
-  log.querySelector('.log-empty')?.remove();
-
-  const entry = document.createElement('div');
-  entry.className = 'log-entry';
-  entry.innerHTML = `
-    <span class="log-entry-time">${new Date().toLocaleTimeString()}</span>
-    <span class="log-entry-content">${escapeHtml(name)}(${JSON.stringify(args).slice(0, 50)}...)</span>
-  `;
-
-  log.appendChild(entry);
-  log.scrollTop = log.scrollHeight;
+function addToolCallLog(_name, _args) {
+  // Tool call logging removed — panel replaced with World Context
 }
 
-function addSecurityLog(type, message) {
-  const log = document.getElementById('security-log');
-  log.querySelector('.log-empty')?.remove();
-
-  const entry = document.createElement('div');
-  entry.className = `log-entry ${type}`;
-  entry.innerHTML = `
-    <span class="log-entry-time">${new Date().toLocaleTimeString()}</span>
-    <span class="log-entry-content">${escapeHtml(message)}</span>
-  `;
-
-  log.appendChild(entry);
-  log.scrollTop = log.scrollHeight;
+function addSecurityLog(_type, _message) {
+  // Security logging removed — panel replaced with World Context
 }
 
 function escapeHtml(text) {
@@ -1435,6 +1420,105 @@ async function refreshMindPanel() {
     if (viewBtn) viewBtn.disabled = false;
   } catch (error) {
     console.warn('[Playground] Failed to refresh mind panel:', error);
+  }
+}
+
+/**
+ * Load the World Context panel with project, NPC roster, knowledge tiers, and MCP tools.
+ * Called when a project loads and again when an NPC is selected.
+ */
+async function loadContextPanel() {
+  if (!currentProjectId) return;
+
+  // Project section
+  const projectEl = document.getElementById('ctx-project-info');
+  const npcListEl = document.getElementById('ctx-npc-list');
+  const knowledgeEl = document.getElementById('ctx-knowledge-list');
+  const mcpEl = document.getElementById('ctx-mcp-list');
+
+  try {
+    const project = await projects.get(currentProjectId);
+    if (projectEl) {
+      const provider = project.settings?.llm_provider || 'default';
+      const model = project.settings?.llm_model || '';
+      projectEl.innerHTML = `
+        <div class="ctx-item">
+          <span class="ctx-item-name">${escapeHtml(project.name)}</span>
+          <p class="ctx-item-desc">LLM: ${escapeHtml(provider)}${model ? ` / ${escapeHtml(model)}` : ''}</p>
+        </div>
+      `;
+    }
+  } catch {
+    if (projectEl) projectEl.innerHTML = '<p class="log-empty">Could not load project</p>';
+  }
+
+  // NPC roster — response shape: { npcs: [...] }
+  try {
+    const data = await npcs.list(currentProjectId);
+    const npcArray = data?.npcs || [];
+    if (npcListEl) {
+      if (!npcArray.length) {
+        npcListEl.innerHTML = '<p class="log-empty">No NPCs in this project</p>';
+      } else {
+        npcListEl.innerHTML = npcArray.map(npc => `
+          <div class="ctx-item ${npc.id === currentNpcId ? 'ctx-item-active' : ''}">
+            <span class="ctx-item-name">${escapeHtml(npc.name)}${npc.core_anchor?.role ? `<span class="ctx-item-badge">${escapeHtml(npc.core_anchor.role)}</span>` : ''}</span>
+          </div>
+        `).join('');
+      }
+    }
+  } catch {
+    if (npcListEl) npcListEl.innerHTML = '<p class="log-empty">Could not load NPCs</p>';
+  }
+
+  // MCP tools — response shape: { conversation_tools: [...], game_event_tools: [...] }
+  try {
+    const toolsData = await mcpTools.get(currentProjectId);
+    const convTools = toolsData?.conversation_tools || [];
+    const gameTools = toolsData?.game_event_tools || [];
+    const allTools = [...convTools, ...gameTools];
+    if (mcpEl) {
+      if (!allTools.length) {
+        mcpEl.innerHTML = '<p class="log-empty">No MCP tools configured</p>';
+      } else {
+        const convSection = convTools.length ? `<p class="ctx-item-desc" style="font-weight:500;margin:0 0 2px;">Conversation (${convTools.length})</p>${convTools.map(t => `<div class="ctx-item" style="padding:var(--space-2) 0"><span class="ctx-item-name">${escapeHtml(t.name)}</span>${t.description ? `<p class="ctx-item-desc">${escapeHtml(t.description)}</p>` : ''}</div>`).join('')}` : '';
+        const gameSection = gameTools.length ? `<p class="ctx-item-desc" style="font-weight:500;margin:var(--space-3) 0 2px;">Game Events (${gameTools.length})</p>${gameTools.map(t => `<div class="ctx-item" style="padding:var(--space-2) 0"><span class="ctx-item-name">${escapeHtml(t.name)}</span>${t.description ? `<p class="ctx-item-desc">${escapeHtml(t.description)}</p>` : ''}</div>`).join('')}` : '';
+        mcpEl.innerHTML = convSection + gameSection;
+      }
+    }
+  } catch {
+    if (mcpEl) mcpEl.innerHTML = '<p class="log-empty">No MCP tools configured</p>';
+  }
+
+  // Knowledge tiers — only when an NPC is selected
+  if (currentNpcId) {
+    await loadKnowledgeContext();
+  }
+}
+
+async function loadKnowledgeContext() {
+  const knowledgeEl = document.getElementById('ctx-knowledge-list');
+  if (!knowledgeEl || !currentProjectId) return;
+
+  try {
+    // Response shape: { categories: Record<string, { id, description, depths: {0,1,2,...} }> }
+    const kb = await knowledge.get(currentProjectId);
+    const categories = kb?.categories ? Object.values(kb.categories) : [];
+    if (!categories.length) {
+      knowledgeEl.innerHTML = '<p class="log-empty">No knowledge configured</p>';
+    } else {
+      knowledgeEl.innerHTML = categories.map(cat => {
+        const tierCount = cat.depths ? Object.keys(cat.depths).length : 0;
+        return `
+          <div class="ctx-item">
+            <span class="ctx-item-name">${escapeHtml(cat.id)}<span class="ctx-item-badge">${tierCount} tier${tierCount !== 1 ? 's' : ''}</span></span>
+            ${cat.description ? `<p class="ctx-item-desc">${escapeHtml(cat.description)}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+  } catch {
+    knowledgeEl.innerHTML = '<p class="log-empty">Could not load knowledge</p>';
   }
 }
 

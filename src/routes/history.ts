@@ -2,11 +2,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import {
-  getInstance,
-  getInstanceHistory,
-  rollbackInstance,
   StorageNotFoundError,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 
 const logger = createLogger('routes-history');
 
@@ -31,17 +29,19 @@ export const historyRoutes = new Hono();
 historyRoutes.get('/:instanceId/history', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
+  const userId = c.get('userId') ?? undefined;
+  const storage = getStorageForUser(userId);
 
   try {
-    // Find the instance
-    const instance = await findInstanceById(instanceId);
+    // Find the instance using the correct storage backend
+    const instance = await findInstanceById(instanceId, userId);
     if (!instance) {
       logger.warn({ instanceId }, 'Instance not found');
       return c.json({ error: 'Instance not found' }, 404);
     }
 
-    // Get history
-    const history = await getInstanceHistory(instance.project_id, instanceId);
+    // Get history from the correct storage backend
+    const history = await storage.getInstanceHistory(instance.project_id, instanceId);
 
     const duration = Date.now() - startTime;
     logger.debug({ instanceId, versionCount: history.length, duration }, 'Instance history retrieved');
@@ -74,6 +74,8 @@ historyRoutes.get('/:instanceId/history', async (c) => {
 historyRoutes.post('/:instanceId/rollback', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
+  const userId = c.get('userId') ?? undefined;
+  const storage = getStorageForUser(userId);
 
   try {
     const body = await c.req.json();
@@ -86,15 +88,15 @@ historyRoutes.post('/:instanceId/rollback', async (c) => {
 
     const { version } = parsed.data;
 
-    // Find the instance
-    const instance = await findInstanceById(instanceId);
+    // Find the instance using the correct storage backend
+    const instance = await findInstanceById(instanceId, userId);
     if (!instance) {
       logger.warn({ instanceId }, 'Instance not found');
       return c.json({ error: 'Instance not found' }, 404);
     }
 
-    // Perform rollback
-    const rolledBackInstance = await rollbackInstance(instance.project_id, instanceId, version);
+    // Perform rollback on the correct storage backend
+    const rolledBackInstance = await storage.rollbackInstance(instance.project_id, instanceId, version);
 
     const duration = Date.now() - startTime;
     logger.info({ instanceId, version, duration }, 'Instance rolled back');
@@ -137,10 +139,11 @@ historyRoutes.post('/:instanceId/rollback', async (c) => {
 historyRoutes.get('/:instanceId', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
+  const userId = c.get('userId') ?? undefined;
 
   try {
-    // Find the instance
-    const instance = await findInstanceById(instanceId);
+    // Find the instance using the correct storage backend
+    const instance = await findInstanceById(instanceId, userId);
     if (!instance) {
       logger.warn({ instanceId }, 'Instance not found');
       return c.json({ error: 'Instance not found' }, 404);
@@ -165,24 +168,21 @@ historyRoutes.get('/:instanceId', async (c) => {
 });
 
 /**
- * Helper to find an instance by ID across all projects.
+ * Helper to find an instance by ID across all projects using the correct storage backend.
+ * Uses getStorageForUser() to ensure Supabase instances are found for authenticated users.
  */
-async function findInstanceById(instanceId: string): Promise<import('../types/npc.js').NPCInstance | null> {
-  const fs = await import('fs/promises');
-  const path = await import('path');
-  const { getConfig } = await import('../config.js');
-
-  const config = getConfig();
-  const projectsDir = path.join(config.dataDir, 'projects');
+async function findInstanceById(
+  instanceId: string,
+  userId?: string | null
+): Promise<import('../types/npc.js').NPCInstance | null> {
+  const storage = getStorageForUser(userId);
 
   try {
-    const projects = await fs.readdir(projectsDir);
+    const projects = await storage.listProjects(userId ?? undefined);
 
-    for (const projectId of projects) {
-      if (!projectId.startsWith('proj_')) continue;
-
+    for (const project of projects) {
       try {
-        const instance = await getInstance(projectId, instanceId);
+        const instance = await storage.getInstance(project.id, instanceId);
         return instance;
       } catch {
         // Not in this project, continue

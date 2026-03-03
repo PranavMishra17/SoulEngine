@@ -1820,31 +1820,25 @@
         </main>
         <aside class="playground-xray" id="xray-panel">
           <div class="xray-header">
-            <h3>X-Ray Mode</h3>
+            <h3>World Context</h3>
             <button class="btn btn-sm btn-ghost" id="btn-toggle-xray"><span class="icon">&#9680;</span></button>
           </div>
-          <div class="xray-content">
-            <div class="xray-section">
-              <h4>Pipeline Trace</h4>
-              <div class="pipeline-trace" id="pipeline-trace">
-                <div class="trace-step" data-step="stt">STT</div>
-                <div class="trace-step" data-step="security">Security</div>
-                <div class="trace-step" data-step="context">Context</div>
-                <div class="trace-step" data-step="llm">LLM</div>
-                <div class="trace-step" data-step="tts">TTS</div>
-              </div>
+          <div class="xray-content" id="context-panel-content">
+            <div class="xray-section" id="ctx-project-section">
+              <h4>Project</h4>
+              <div id="ctx-project-info"><p class="log-empty">No project loaded</p></div>
             </div>
-            <div class="xray-section">
-              <h4>Tool Calls</h4>
-              <div class="tool-calls-log" id="tool-calls-log"><p class="log-empty">No tool calls yet</p></div>
+            <div class="xray-section" id="ctx-npc-section">
+              <h4>NPC Roster</h4>
+              <div id="ctx-npc-list"><p class="log-empty">Select a project</p></div>
             </div>
-            <div class="xray-section">
-              <h4>Memory Access</h4>
-              <div class="memory-access-log" id="memory-access-log"><p class="log-empty">No memories accessed</p></div>
+            <div class="xray-section" id="ctx-knowledge-section">
+              <h4>Knowledge Tiers</h4>
+              <div id="ctx-knowledge-list"><p class="log-empty">Select an NPC</p></div>
             </div>
-            <div class="xray-section">
-              <h4>Security Events</h4>
-              <div class="security-log" id="security-log"><p class="log-empty">No security events</p></div>
+            <div class="xray-section" id="ctx-mcp-section">
+              <h4>MCP Tools</h4>
+              <div id="ctx-mcp-list"><p class="log-empty">Select a project</p></div>
             </div>
           </div>
         </aside>

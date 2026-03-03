@@ -1882,6 +1882,14 @@
 .log-entry.warning { color: var(--color-warning); }
 .log-entry.error { color: var(--color-error); }
 
+/* World Context Panel */
+.ctx-item { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); display: flex; flex-direction: column; gap: var(--space-1); }
+.ctx-item:last-child { border-bottom: none; }
+.ctx-item-active .ctx-item-name { color: var(--color-accent-primary); }
+.ctx-item-name { font-size: var(--text-sm); color: var(--color-text-primary); font-weight: 500; display: flex; align-items: center; justify-content: space-between; }
+.ctx-item-badge { font-size: var(--text-xs); color: var(--color-text-tertiary); background: var(--color-surface-2); padding: 1px var(--space-2); border-radius: var(--radius-sm); flex-shrink: 0; }
+.ctx-item-desc { font-size: var(--text-xs); color: var(--color-text-tertiary); margin: 0; line-height: 1.4; }
+
 /* MCP Tools */
 .mcp-tools-page { padding: calc(var(--nav-height) + var(--space-8)) var(--space-6) var(--space-8); max-width: var(--content-max-width); margin: 0 auto; }
 .mcp-tools-layout { display: flex; flex-direction: column; gap: var(--space-10); }

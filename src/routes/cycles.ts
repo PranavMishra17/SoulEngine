@@ -2,11 +2,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import {
-  getInstance,
-  saveInstance,
-  getDefinition,
   StorageNotFoundError,
 } from '../storage/index.js';
+import { getStorageForUser } from '../storage/hybrid.js';
 import {
   runDailyPulse,
   runWeeklyWhisper,
@@ -49,6 +47,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
   cycleRoutes.post('/:instanceId/daily-pulse', async (c) => {
     const startTime = Date.now();
     const instanceId = c.req.param('instanceId');
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
     try {
       // Parse optional body
@@ -63,15 +63,15 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         // Empty body is fine
       }
 
-      // Find and load instance
-      const instance = await findInstanceById(instanceId);
+      // Find and load instance using the correct storage backend
+      const instance = await findInstanceById(instanceId, userId);
       if (!instance) {
         logger.warn({ instanceId }, 'Instance not found');
         return c.json({ error: 'Instance not found' }, 404);
       }
 
       // Get definition for NPC name
-      const definition = await getDefinition(instance.project_id, instance.definition_id);
+      const definition = await storage.getDefinition(instance.project_id, instance.definition_id);
 
       // Run daily pulse
       const result = await runDailyPulse(instance, llmProvider, definition.name, dayContext);
@@ -80,8 +80,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Daily pulse failed' }, 500);
       }
 
-      // Save updated instance
-      const saveResult = await saveInstance(instance);
+      // Save updated instance to the correct storage backend
+      const saveResult = await storage.saveInstance(instance);
 
       const duration = Date.now() - startTime;
       logger.info({ instanceId, duration }, 'Daily pulse completed via API');
@@ -113,6 +113,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
   cycleRoutes.post('/:instanceId/weekly-whisper', async (c) => {
     const startTime = Date.now();
     const instanceId = c.req.param('instanceId');
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
     try {
       // Parse optional body
@@ -127,21 +129,21 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         // Empty body is fine
       }
 
-      // Find and load instance
-      const instance = await findInstanceById(instanceId);
+      // Find and load instance using the correct storage backend
+      const instance = await findInstanceById(instanceId, userId);
       if (!instance) {
         logger.warn({ instanceId }, 'Instance not found');
         return c.json({ error: 'Instance not found' }, 404);
       }
 
       // Load NPC definition to get salience threshold
-      const definition = await getDefinition(instance.project_id, instance.definition_id);
+      const definition = await storage.getDefinition(instance.project_id, instance.definition_id);
       const salienceThreshold = definition.salience_threshold ?? 0.7;
-      
-      logger.debug({ 
-        instanceId, 
+
+      logger.debug({
+        instanceId,
         salienceThreshold,
-        npcName: definition.name 
+        npcName: definition.name
       }, 'Using NPC-specific salience threshold');
 
       // Run weekly whisper with NPC's salience threshold
@@ -151,8 +153,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Weekly whisper failed' }, 500);
       }
 
-      // Save updated instance
-      const saveResult = await saveInstance(instance);
+      // Save updated instance to the correct storage backend
+      const saveResult = await storage.saveInstance(instance);
 
       const duration = Date.now() - startTime;
       logger.info({ instanceId, duration, salienceThreshold }, 'Weekly whisper completed via API');
@@ -185,17 +187,19 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
   cycleRoutes.post('/:instanceId/persona-shift', async (c) => {
     const startTime = Date.now();
     const instanceId = c.req.param('instanceId');
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
 
     try {
-      // Find and load instance
-      const instance = await findInstanceById(instanceId);
+      // Find and load instance using the correct storage backend
+      const instance = await findInstanceById(instanceId, userId);
       if (!instance) {
         logger.warn({ instanceId }, 'Instance not found');
         return c.json({ error: 'Instance not found' }, 404);
       }
 
       // Get definition for NPC context
-      const definition = await getDefinition(instance.project_id, instance.definition_id);
+      const definition = await storage.getDefinition(instance.project_id, instance.definition_id);
 
       // Run persona shift
       const result = await runPersonaShift(
@@ -210,8 +214,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Persona shift failed' }, 500);
       }
 
-      // Save updated instance
-      const saveResult = await saveInstance(instance);
+      // Save updated instance to the correct storage backend
+      const saveResult = await storage.saveInstance(instance);
 
       const duration = Date.now() - startTime;
       logger.info({ instanceId, duration }, 'Persona shift completed via API');
@@ -238,29 +242,21 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
 }
 
 /**
- * Helper to find an instance by ID across all projects.
- * In a production system, this would be more efficient.
+ * Helper to find an instance by ID across all projects using the correct storage backend.
+ * Uses getStorageForUser() to ensure Supabase instances are found for authenticated users.
  */
-async function findInstanceById(instanceId: string): Promise<import('../types/npc.js').NPCInstance | null> {
-  // The instance ID contains enough info to derive the project
-  // For now, we'll try to load it from all projects
-  // This could be optimized with a separate index
-
-  const fs = await import('fs/promises');
-  const path = await import('path');
-  const { getConfig } = await import('../config.js');
-
-  const config = getConfig();
-  const projectsDir = path.join(config.dataDir, 'projects');
+async function findInstanceById(
+  instanceId: string,
+  userId?: string | null
+): Promise<import('../types/npc.js').NPCInstance | null> {
+  const storage = getStorageForUser(userId);
 
   try {
-    const projects = await fs.readdir(projectsDir);
+    const projects = await storage.listProjects(userId ?? undefined);
 
-    for (const projectId of projects) {
-      if (!projectId.startsWith('proj_')) continue;
-
+    for (const project of projects) {
       try {
-        const instance = await getInstance(projectId, instanceId);
+        const instance = await storage.getInstance(project.id, instanceId);
         return instance;
       } catch {
         // Not in this project, continue

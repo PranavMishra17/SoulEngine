@@ -63,11 +63,12 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       const { project_id, npc_id, player_id, player_info, mode } = parsed.data;
       const userId = c.get('userId') ?? undefined;
 
-      // BYOK Security: Check Game Client API Key if configured
+      // BYOK Security: Check Game Client API Key if configured — only for unauthenticated game clients
+      // Dashboard users (userId set via Supabase JWT) bypass this check
       const storage = getStorageForUser(userId);
       const project = await storage.getProject(project_id);
 
-      if (project.settings?.game_client_api_key_hash) {
+      if (!userId && project.settings?.game_client_api_key_hash) {
         const clientApiKey = c.req.header('x-api-key');
         if (!clientApiKey) {
           logger.warn({ projectId: project_id }, 'Missing Game Client API Key');
