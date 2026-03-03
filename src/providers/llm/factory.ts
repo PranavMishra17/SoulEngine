@@ -112,3 +112,32 @@ export function getModelsForProvider(provider: LLMProviderType): { id: string; n
   }
 }
 
+/**
+ * Resolve the active LLM provider for a project.
+ * Uses per-project BYOK API key if configured, otherwise falls back to the global provider.
+ *
+ * @param projectSettings - Project settings containing llm_provider and llm_model
+ * @param apiKeys - Per-project API keys (from storage.loadApiKeys)
+ * @param fallback - Global default LLM provider to use when no per-project key exists
+ * @returns The resolved LLM provider, or null if neither per-project nor fallback is available
+ */
+export function resolveProjectLlmProvider(
+  projectSettings: { llm_provider?: string; llm_model?: string },
+  apiKeys: Partial<Record<string, string>>,
+  fallback: LLMProvider | null
+): LLMProvider | null {
+  const defaultProviderType = getDefaultLlmProviderType();
+  const rawProviderType = projectSettings.llm_provider || defaultProviderType;
+  const providerType: LLMProviderType = isLlmProviderSupported(rawProviderType)
+    ? (rawProviderType as LLMProviderType)
+    : defaultProviderType;
+  const modelId = projectSettings.llm_model || getDefaultModel(providerType);
+  const projectApiKey = apiKeys[providerType];
+
+  if (projectApiKey) {
+    return createLlmProvider({ provider: providerType, apiKey: projectApiKey, model: modelId });
+  }
+
+  return fallback;
+}
+

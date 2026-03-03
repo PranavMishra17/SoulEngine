@@ -16,6 +16,7 @@ import { CONVERSATION_MODES, type ConversationMode } from '../types/voice.js';
 import type { KnowledgeBase } from '../types/knowledge.js';
 import type { Project } from '../types/project.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
+import { resolveProjectLlmProvider } from '../providers/llm/factory.js';
 
 const logger = createLogger('session-manager');
 
@@ -215,8 +216,15 @@ export async function endSession(
   const storage = getStorageForUser(userId);
 
   try {
-    // Load definition for summarization context
-    const definition = await storage.getDefinition(state.project_id, state.definition_id);
+    // Load project, definition, and API keys for per-project LLM resolution
+    const [project, definition, apiKeys] = await Promise.all([
+      storage.getProject(state.project_id),
+      storage.getDefinition(state.project_id, state.definition_id),
+      storage.loadApiKeys(state.project_id),
+    ]);
+
+    // Resolve per-project LLM provider (BYOK), falling back to global default
+    const activeProvider = resolveProjectLlmProvider(project.settings, apiKeys as Partial<Record<string, string>>, llmProvider);
 
     let memorySaved = false;
     const instance = state.instance;
@@ -230,11 +238,9 @@ export async function endSession(
         salienceThreshold: definition.salience_threshold,
       };
 
-      const summaryResult = await summarizeConversation(
-        llmProvider,
-        state.conversation_history,
-        npcPerspective
-      );
+      const summaryResult = activeProvider
+        ? await summarizeConversation(activeProvider, state.conversation_history, npcPerspective)
+        : { success: false, summary: null };
 
       if (summaryResult.success && summaryResult.summary) {
         // Calculate salience based on conversation

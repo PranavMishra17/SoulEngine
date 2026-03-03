@@ -12,6 +12,7 @@ import {
   DayContext,
 } from '../core/cycles.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
+import { resolveProjectLlmProvider } from '../providers/llm/factory.js';
 
 const logger = createLogger('routes-cycles');
 
@@ -70,11 +71,22 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Instance not found' }, 404);
       }
 
-      // Get definition for NPC name
-      const definition = await storage.getDefinition(instance.project_id, instance.definition_id);
+      // Load project settings, definition, and API keys in parallel
+      const [project, definition, apiKeys] = await Promise.all([
+        storage.getProject(instance.project_id),
+        storage.getDefinition(instance.project_id, instance.definition_id),
+        storage.loadApiKeys(instance.project_id),
+      ]);
+
+      // Resolve per-project LLM provider (BYOK), falling back to global default
+      const activeProvider = resolveProjectLlmProvider(project.settings, apiKeys as Partial<Record<string, string>>, llmProvider);
+      if (!activeProvider) {
+        logger.warn({ instanceId }, 'No LLM provider configured for daily pulse');
+        return c.json({ error: 'No LLM provider configured' }, 503);
+      }
 
       // Run daily pulse
-      const result = await runDailyPulse(instance, llmProvider, definition.name, dayContext);
+      const result = await runDailyPulse(instance, activeProvider, definition.name, dayContext);
 
       if (!result.success) {
         return c.json({ error: 'Daily pulse failed' }, 500);
@@ -198,13 +210,24 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Instance not found' }, 404);
       }
 
-      // Get definition for NPC context
-      const definition = await storage.getDefinition(instance.project_id, instance.definition_id);
+      // Load project settings, definition, and API keys in parallel
+      const [project, definition, apiKeys] = await Promise.all([
+        storage.getProject(instance.project_id),
+        storage.getDefinition(instance.project_id, instance.definition_id),
+        storage.loadApiKeys(instance.project_id),
+      ]);
+
+      // Resolve per-project LLM provider (BYOK), falling back to global default
+      const activeProvider = resolveProjectLlmProvider(project.settings, apiKeys as Partial<Record<string, string>>, llmProvider);
+      if (!activeProvider) {
+        logger.warn({ instanceId }, 'No LLM provider configured for persona shift');
+        return c.json({ error: 'No LLM provider configured' }, 503);
+      }
 
       // Run persona shift
       const result = await runPersonaShift(
         instance,
-        llmProvider,
+        activeProvider,
         definition.name,
         definition.core_anchor.backstory,
         definition.core_anchor.principles
