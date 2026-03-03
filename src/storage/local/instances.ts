@@ -321,6 +321,29 @@ export async function getInstanceHistory(
 }
 
 /**
+ * Get a specific historical snapshot of an instance without restoring it
+ */
+export async function getInstanceSnapshot(
+  projectId: string,
+  instanceId: string,
+  version: string
+): Promise<NPCInstance> {
+  const historyDir = getHistoryDir(projectId, instanceId);
+  const historyPath = path.join(historyDir, `${version}.json`);
+
+  try {
+    const content = await fs.readFile(historyPath, 'utf-8');
+    return JSON.parse(content) as NPCInstance;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new StorageNotFoundError('Instance version', version);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new StorageError(`Failed to get instance snapshot: ${errorMessage}`);
+  }
+}
+
+/**
  * Rollback an instance to a previous version
  */
 export async function rollbackInstance(

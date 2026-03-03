@@ -2,7 +2,7 @@
  * NPC List and Editor Page Handlers
  */
 
-import { npcs, knowledge, projects, mcpTools } from '../api.js';
+import { npcs, knowledge, projects, mcpTools, session, history } from '../api.js';
 import { toast, modal, loading, renderTemplate, updateNav, createTagInput, describePersonality } from '../components.js';
 import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
@@ -2060,34 +2060,80 @@ let historyLoaded = false;
 let pendingRevertVersion = null;
 
 /**
- * Load and render the version history section (lazy — called on first tab visit)
+ * Load and render the version history section (lazy — called on first tab visit).
+ * Mind State history (instance state) is shown first; Definition history second.
  */
 async function loadHistorySection(projectId, npcId) {
   if (!projectId || !npcId) return;
 
-  const list = document.getElementById('history-list');
-  if (!list) return;
+  const mindList = document.getElementById('mind-history-list');
+  const defList = document.getElementById('history-list');
+  if (!mindList || !defList) return;
 
-  // Reload every time the tab is opened so it stays fresh after saves
-  list.innerHTML = '<div class="history-empty">Loading history...</div>';
+  mindList.innerHTML = '<div class="history-empty">Loading...</div>';
+  defList.innerHTML = '<div class="history-empty">Loading...</div>';
 
+  // --- Mind State History ---
+  try {
+    const inst = await session.getInstance(projectId, npcId, 'test-player');
+    const { versions, count } = await history.getVersions(inst.id);
+
+    if (!count || count === 0) {
+      mindList.innerHTML = '<div class="history-empty">No mind state history yet. End a session or run a memory cycle to start tracking NPC evolution.</div>';
+    } else {
+      mindList.innerHTML = versions.map((entry, i) => {
+        const ts = formatHistoryDate(entry.timestamp);
+        return `
+          <div class="history-entry">
+            <div class="history-timeline">
+              <div class="history-dot"></div>
+              ${i < versions.length - 1 ? '<div class="history-line"></div>' : ''}
+            </div>
+            <div class="history-body">
+              <div class="history-meta">
+                <span class="history-version">${entry.version}</span>
+                <span class="history-ts">${ts}</span>
+              </div>
+              <div class="history-actions">
+                <button class="btn btn-outline btn-xs mind-view-btn"
+                  data-instance-id="${inst.id}"
+                  data-version="${entry.version}"
+                  data-ts="${escapeHtml(ts)}">View State</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      mindList.querySelectorAll('.mind-view-btn').forEach(btn => {
+        btn.addEventListener('click', () => openMindStateModal(
+          btn.dataset.instanceId,
+          btn.dataset.version,
+          btn.dataset.ts
+        ));
+      });
+    }
+  } catch (err) {
+    mindList.innerHTML = '<div class="history-empty">Could not load mind state history.</div>';
+    console.error('[mind-history] load failed', err);
+  }
+
+  // --- Definition History ---
   try {
     const { versions, count } = await npcs.getHistory(projectId, npcId);
 
     if (!count || count === 0) {
-      list.innerHTML = '<div class="history-empty">No history yet. Save this NPC to create the first version.</div>';
+      defList.innerHTML = '<div class="history-empty">No definition history yet. Edit and save this NPC to create the first version.</div>';
       return;
     }
 
     const currentVersion = currentDefinition?.version ?? null;
 
-    list.innerHTML = versions.map((entry, i) => {
+    defList.innerHTML = versions.map((entry, i) => {
       const isCurrent = entry.version === currentVersion;
-      const isCreateEntry = entry.changed_fields?.length === 0;
       const fields = entry.changed_fields || [];
       const ts = formatHistoryDate(entry.created_at);
 
-      // Detect revert markers stored as changed_fields
       const revertMatch = fields.length === 1 && fields[0]?.startsWith('reverted_to_v');
       const fieldDisplay = revertMatch
         ? `<span class="history-field-tag" style="color:var(--color-accent-primary);">${fields[0].replace(/_/g, ' ')}</span>`
@@ -2115,18 +2161,106 @@ async function loadHistorySection(projectId, npcId) {
       `;
     }).join('');
 
-    // Wire up buttons
-    list.querySelectorAll('.history-view-btn').forEach(btn => {
+    defList.querySelectorAll('.history-view-btn').forEach(btn => {
       btn.addEventListener('click', () => openDiffModal(projectId, npcId, parseInt(btn.dataset.version, 10)));
     });
-    list.querySelectorAll('.history-revert-btn').forEach(btn => {
+    defList.querySelectorAll('.history-revert-btn').forEach(btn => {
       btn.addEventListener('click', () => confirmRevert(projectId, npcId, parseInt(btn.dataset.version, 10)));
     });
 
   } catch (err) {
-    list.innerHTML = '<div class="history-empty">Failed to load history.</div>';
-    console.error('[history] load failed', err);
+    defList.innerHTML = '<div class="history-empty">Failed to load definition history.</div>';
+    console.error('[history] definition load failed', err);
   }
+}
+
+/**
+ * Open a modal showing the full NPC mind state at a given historical version
+ */
+async function openMindStateModal(instanceId, version, ts) {
+  const m = modal.open({ title: `Mind State — ${ts}`, content: '<div class="history-empty">Loading snapshot...</div>' });
+  const body = m.el.querySelector('.modal-body');
+  body.innerHTML = '<div class="history-empty">Loading snapshot...</div>';
+
+  try {
+    const { snapshot } = await history.getSnapshot(instanceId, version);
+    body.innerHTML = renderMindStateHtml(snapshot);
+  } catch (err) {
+    body.innerHTML = '<div class="history-empty">Failed to load mind state snapshot.</div>';
+    console.error('[mind-history] snapshot load failed', err);
+  }
+}
+
+/**
+ * Render a full NPCInstance snapshot as HTML for the mind state modal
+ */
+function renderMindStateHtml(s) {
+  const mood = s.current_mood || { valence: 0.5, arousal: 0.5, dominance: 0.5 };
+  const stm = s.short_term_memory || [];
+  const ltm = s.long_term_memory || [];
+  const pulse = s.daily_pulse;
+  const mods = s.trait_modifiers || {};
+  const hasMods = Object.keys(mods).some(k => mods[k] !== 0);
+  const meta = s.cycle_metadata || {};
+
+  const moodBar = (label, val) => `
+    <div class="mind-mood-row">
+      <span class="mind-mood-label">${label}</span>
+      <div class="mind-mood-track"><div class="mind-mood-fill" style="width:${Math.round(val * 100)}%"></div></div>
+      <span class="mind-mood-val">${Math.round(val * 100)}%</span>
+    </div>
+  `;
+
+  const memItem = (mem) => `
+    <div class="mind-memory-item">
+      <div class="mind-memory-content">${escapeHtml(mem.content || '')}</div>
+      <div class="mind-memory-meta">salience ${(mem.salience || 0).toFixed(2)} · ${formatHistoryDate(mem.timestamp)}</div>
+    </div>
+  `;
+
+  return `
+    <div class="mind-snapshot">
+      <div class="mind-section">
+        <div class="mind-section-title">Mood</div>
+        ${moodBar('Valence', mood.valence)}
+        ${moodBar('Arousal', mood.arousal)}
+        ${moodBar('Dominance', mood.dominance)}
+      </div>
+      <div class="mind-section">
+        <div class="mind-section-title">Short-Term Memory (${stm.length})</div>
+        ${stm.length === 0
+          ? '<div class="history-empty" style="padding:0.25rem 0 0;">No short-term memories</div>'
+          : stm.map(memItem).join('')}
+      </div>
+      <div class="mind-section">
+        <div class="mind-section-title">Long-Term Memory (${ltm.length})</div>
+        ${ltm.length === 0
+          ? '<div class="history-empty" style="padding:0.25rem 0 0;">No long-term memories</div>'
+          : ltm.map(memItem).join('')}
+      </div>
+      ${hasMods ? `
+        <div class="mind-section">
+          <div class="mind-section-title">Trait Modifiers</div>
+          ${Object.entries(mods).filter(([, v]) => v !== 0).map(([k, v]) =>
+            `<div class="mind-trait-row"><span>${formatFieldName(k)}</span><span>${v > 0 ? '+' : ''}${Number(v).toFixed(3)}</span></div>`
+          ).join('')}
+        </div>
+      ` : ''}
+      ${pulse ? `
+        <div class="mind-section">
+          <div class="mind-section-title">Daily Pulse</div>
+          <p class="mind-pulse-text">${escapeHtml(pulse.takeaway || '')}</p>
+        </div>
+      ` : ''}
+      ${(meta.last_weekly || meta.last_persona_shift) ? `
+        <div class="mind-section">
+          <div class="mind-section-title">Cycle Metadata</div>
+          ${meta.last_weekly ? `<div class="mind-trait-row"><span>Last Weekly Whisper</span><span>${formatHistoryDate(meta.last_weekly)}</span></div>` : ''}
+          ${meta.last_persona_shift ? `<div class="mind-trait-row"><span>Last Persona Shift</span><span>${formatHistoryDate(meta.last_persona_shift)}</span></div>` : ''}
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
 /**

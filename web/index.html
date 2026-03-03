@@ -1151,9 +1151,14 @@
           <!-- History Section -->
           <section class="editor-section" id="section-history">
             <h2>Version History</h2>
-            <p class="section-desc">Every save archives a snapshot. Revert to any prior state — this creates a new version so the action itself is reversible.</p>
+            <p class="section-desc">Every session end or memory cycle archives the NPC's mind state. Definition changes (personality, voice, etc.) are versioned separately.</p>
+            <h3 class="history-subsection-title">Mind State</h3>
+            <div id="mind-history-list" class="history-list">
+              <div class="history-empty">Loading mind state history...</div>
+            </div>
+            <h3 class="history-subsection-title" style="margin-top:1.5rem;">Definition</h3>
             <div id="history-list" class="history-list">
-              <div class="history-empty">Loading history...</div>
+              <div class="history-empty">Loading definition history...</div>
             </div>
           </section>
 

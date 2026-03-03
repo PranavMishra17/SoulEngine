@@ -132,6 +132,45 @@ historyRoutes.post('/:instanceId/rollback', async (c) => {
 });
 
 /**
+ * GET /api/instances/:instanceId/history/:version - Get a specific historical snapshot
+ *
+ * Returns a full NPCInstance snapshot for the given version without restoring it.
+ */
+historyRoutes.get('/:instanceId/history/:version', async (c) => {
+  const startTime = Date.now();
+  const instanceId = c.req.param('instanceId');
+  const version = c.req.param('version');
+  const userId = c.get('userId') ?? undefined;
+  const storage = getStorageForUser(userId);
+
+  try {
+    const instance = await findInstanceById(instanceId, userId);
+    if (!instance) {
+      logger.warn({ instanceId, version }, 'Instance not found for snapshot');
+      return c.json({ error: 'Instance not found' }, 404);
+    }
+
+    const snapshot = await storage.getInstanceSnapshot(instance.project_id, instanceId, version);
+
+    const duration = Date.now() - startTime;
+    logger.debug({ instanceId, version, duration }, 'Instance snapshot retrieved');
+
+    return c.json({ snapshot });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      logger.warn({ instanceId, version, duration }, 'Snapshot version not found');
+      return c.json({ error: 'Version not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ instanceId, version, error: errorMessage, duration }, 'Failed to get instance snapshot');
+    return c.json({ error: 'Failed to get instance snapshot', details: errorMessage }, 500);
+  }
+});
+
+/**
  * GET /api/instances/:instanceId - Get current instance state
  *
  * Returns the current state of an instance.

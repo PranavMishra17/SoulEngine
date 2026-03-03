@@ -105,6 +105,10 @@ export const rollbackInstance = useSupabase
   ? (await import('./supabase/instances.js')).rollbackInstance
   : (await import('./local/instances.js')).rollbackInstance;
 
+export const getInstanceSnapshot = useSupabase
+  ? (await import('./supabase/instances.js')).getInstanceSnapshot
+  : (await import('./local/instances.js')).getInstanceSnapshot;
+
 export const deleteInstance = useSupabase
   ? (await import('./supabase/instances.js')).deleteInstance
   : (await import('./local/instances.js')).deleteInstance;

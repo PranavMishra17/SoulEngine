@@ -291,6 +291,33 @@ export async function getInstanceHistory(
 }
 
 /**
+ * Get a specific historical snapshot of an instance without restoring it
+ */
+export async function getInstanceSnapshot(
+  projectId: string,
+  instanceId: string,
+  version: string
+): Promise<NPCInstance> {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from('npc_instance_history')
+    .select('state')
+    .eq('instance_id', instanceId)
+    .eq('version', parseInt(version, 10))
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new StorageNotFoundError('Instance version', version);
+    }
+    throw new StorageError(`Database error: ${error.message}`);
+  }
+
+  return data.state as NPCInstance;
+}
+
+/**
  * Rollback an instance to a previous version
  */
 export async function rollbackInstance(

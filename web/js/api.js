@@ -267,6 +267,8 @@ export const cycles = {
 export const history = {
   getVersions: (instanceId) => request(`/instances/${instanceId}/history`),
 
+  getSnapshot: (instanceId, version) => request(`/instances/${instanceId}/history/${version}`),
+
   rollback: (instanceId, version) => request(`/instances/${instanceId}/rollback`, {
     method: 'POST',
     body: JSON.stringify({ version }),
