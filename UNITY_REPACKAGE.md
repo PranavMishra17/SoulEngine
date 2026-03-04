@@ -1,229 +1,507 @@
 # SoulEngine Unity SDK
 
-Implementation plan for repackaging SoulEngine as a Unity asset that runs all NPC intelligence locally while syncing state to the cloud.
+Implementation plan for repackaging SoulEngine as a Unity asset. All NPC intelligence runs locally inside Unity, with optional cloud sync back to the SoulEngine backend for state persistence, history, and the web management UI.
+
+---
+
+## Design Goals
+
+A developer should be able to add SoulEngine to their Unity project in three steps:
+
+1. Drop three scripts into a scene: `SoulEngineManager`, `NPCCharacter`, `GameToolHandler`
+2. Fill in: Project ID + API Key (from soulengine.dev) + your LLM/TTS/STT API keys
+3. Assign the NPC ID from the web editor to each `NPCCharacter` component
+
+Everything else — memory, personalities, voice, cycles, tools — is handled by the SDK.
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              UNITY GAME                                     │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                    SoulEngine SDK (C#)                                │ │
-│  │                                                                       │ │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │ │
-│  │  │ LLMProvider │  │ STTProvider │  │ TTSProvider │  │ VADProcessor│  │ │
-│  │  │ (REST/SSE)  │  │ (WebSocket) │  │ (WebSocket) │  │ (Silero)    │  │ │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  │ │
-│  │         │                │                │                │         │ │
-│  │         └────────────────┼────────────────┼────────────────┘         │ │
-│  │                          │                │                          │ │
-│  │                    ┌─────┴────────────────┴─────┐                    │ │
-│  │                    │      VoicePipeline         │                    │ │
-│  │                    │  - Conversation orchestration                   │ │
-│  │                    │  - Turn management                              │ │
-│  │                    │  - Security/moderation                          │ │
-│  │                    └─────────────┬──────────────┘                    │ │
-│  │                                  │                                   │ │
-│  │  ┌─────────────────┐  ┌─────────┴─────────┐  ┌─────────────────┐    │ │
-│  │  │  MemoryCycles   │  │   SessionManager  │  │  ContextBuilder │    │ │
-│  │  │ - DailyPulse    │  │ - Start/End       │  │ - System prompt │    │ │
-│  │  │ - WeeklyWhisper │  │ - State tracking  │  │ - Knowledge     │    │ │
-│  │  │ - PersonaShift  │  │ - Summarization   │  │ - Network       │    │ │
-│  │  └─────────────────┘  └───────────────────┘  └─────────────────┘    │ │
-│  │                                                                       │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                       │
-│                                    │ Local Read/Write                      │
-│                                    ▼                                       │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                     Local Storage (StreamingAssets)                   │ │
-│  │  - Project config (project.yaml)                                      │ │
-│  │  - NPC definitions (*.yaml)                                           │ │
-│  │  - NPC instances/state (*.json)                                       │ │
-│  │  - Knowledge base                                                     │ │
-│  │  - MCP tool definitions                                               │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                       │
-│                                    │ Async Sync                            │
-│                                    ▼                                       │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                         SyncManager                                   │ │
-│  │  - Push NPC state changes to cloud                                    │ │
-│  │  - Pull project updates from cloud                                    │ │
-│  │  - Conflict resolution (local wins)                                   │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                    │                                       │
-└────────────────────────────────────┼───────────────────────────────────────┘
-                                     │ HTTPS
-                                     ▼
-                    ┌────────────────────────────────┐
-                    │        SoulEngine Cloud        │
-                    │    (Supabase + Vercel)         │
-                    │                                │
-                    │  - Project management          │
-                    │  - NPC state backup            │
-                    │  - User authentication         │
-                    └────────────────────────────────┘
++-----------------------------------------------------------------------------+
+|                              UNITY GAME                                     |
+|                                                                             |
+|  +-----------------------------------------------------------------------+  |
+|  |                    SoulEngine SDK (C#)                                |  |
+|  |                                                                       |  |
+|  |  +---------------+  +---------------+  +---------------+             |  |
+|  |  | LLMProvider   |  | STTProvider   |  | TTSProvider   |             |  |
+|  |  | (REST/SSE)    |  | (WebSocket)   |  | (WebSocket)   |             |  |
+|  |  +-------+-------+  +-------+-------+  +-------+-------+             |  |
+|  |          |                  |                  |                      |  |
+|  |          +------------------+------------------+                      |  |
+|  |                             |                                         |  |
+|  |                     +-------+-------+                                 |  |
+|  |                     |  VoicePipeline|                                 |  |
+|  |                     | (all 4 modes) |                                 |  |
+|  |                     +-------+-------+                                 |  |
+|  |                             |                                         |  |
+|  |  +-----------------+  +-----+--------+  +-------------------+        |  |
+|  |  | MemoryCycles    |  | SessionMgr   |  | ContextBuilder    |        |  |
+|  |  | DailyPulse      |  | Start / End  |  | System prompt     |        |  |
+|  |  | WeeklyWhisper   |  | State track  |  | Knowledge         |        |  |
+|  |  | PersonaShift    |  | Summarizer   |  | Network context   |        |  |
+|  |  +-----------------+  +--------------+  +-------------------+        |  |
+|  |                                                                       |  |
+|  +-----------------------------------------------------------------------+  |
+|                                     |                                       |
+|                          Local Read/Write                                   |
+|                                     v                                       |
+|  +-----------------------------------------------------------------------+  |
+|  |                  Local Storage (StreamingAssets)                      |  |
+|  |  project.yaml, definitions/*.yaml, instances/*.json                  |  |
+|  |  knowledge.yaml, mcp-tools.yaml                                      |  |
+|  +-----------------------------------------------------------------------+  |
+|                                     |                                       |
+|                               Async Sync                                    |
+|                                     v                                       |
+|  +-----------------------------------------------------------------------+  |
+|  |                         SyncManager                                   |  |
+|  |  Push NPC state -> cloud, Pull project updates <- cloud               |  |
+|  +-----------------------------------------------------------------------+  |
+|                                     |                                       |
++-------------------------------------|---------------------------------------+
+                                      | HTTPS
+                                      v
+                     +-----------------------------+
+                     |     SoulEngine Cloud        |
+                     |   (Supabase + Vercel)       |
+                     |                             |
+                     |  Project management UI      |
+                     |  NPC state backup           |
+                     |  Version history            |
+                     |  User authentication        |
+                     +-----------------------------+
 ```
 
 ---
 
 ## Key Design Principles
 
-1. **All Processing is Local**: LLM calls, STT, TTS, memory cycles - everything runs from Unity
-2. **Cloud is for Sync Only**: Backend stores project data and NPC states as backups
-3. **Offline-First**: Game works without internet; syncs when connection available
-4. **Direct Provider Connections**: Unity connects directly to Gemini/Deepgram/Cartesia APIs
-5. **Project Created on Website**: Users design NPCs on soulengine.dev, then link in Unity
+1. **All NPC intelligence is local** — LLM calls, STT, TTS, memory cycles all run directly from Unity to provider APIs. No server intermediary during gameplay.
+2. **Cloud is for sync and management only** — The SoulEngine backend stores project data and NPC states for backup and the web editor. Not involved in real-time conversations.
+3. **Offline-first** — Game works without internet. Syncs when connection is available.
+4. **Direct provider connections** — Unity connects directly to Gemini/Deepgram/Cartesia APIs using the developer's own keys (BYOK).
+5. **Designed on the web, played in Unity** — Developers configure NPCs, knowledge, tools, and schedules via soulengine.dev. Unity downloads the config and runs it.
 
 ---
 
-## SDK Structure
+## Complete Feature Mapping
 
-### Namespace: `SoulEngine`
+### Project & World Features
 
-```
-Assets/
-└── SoulEngine/
-    ├── Runtime/
-    │   ├── Core/
-    │   │   ├── SoulEngineManager.cs       # Singleton manager
-    │   │   ├── NPCCharacter.cs            # MonoBehaviour for NPCs
-    │   │   └── SessionManager.cs          # Conversation lifecycle
-    │   │
-    │   ├── Providers/
-    │   │   ├── LLM/
-    │   │   │   ├── ILLMProvider.cs        # Interface
-    │   │   │   ├── GeminiProvider.cs      # Google Gemini
-    │   │   │   ├── OpenAIProvider.cs      # OpenAI
-    │   │   │   ├── AnthropicProvider.cs   # Claude
-    │   │   │   └── GrokProvider.cs        # xAI Grok
-    │   │   ├── STT/
-    │   │   │   ├── ISTTProvider.cs        # Interface
-    │   │   │   └── DeepgramProvider.cs    # Deepgram WebSocket
-    │   │   └── TTS/
-    │   │       ├── ITTSProvider.cs        # Interface
-    │   │       ├── CartesiaProvider.cs    # Cartesia WebSocket
-    │   │       └── ElevenLabsProvider.cs  # ElevenLabs WebSocket
-    │   │
-    │   ├── Voice/
-    │   │   ├── VoicePipeline.cs           # Orchestrates STT→LLM→TTS
-    │   │   ├── MicrophoneCapture.cs       # Unity microphone input
-    │   │   ├── VADProcessor.cs            # Silero VAD via Sentis
-    │   │   ├── AudioPlayback.cs           # Queue-based audio player
-    │   │   └── SentenceDetector.cs        # Text chunking for TTS
-    │   │
-    │   ├── Memory/
-    │   │   ├── MemoryCycles.cs            # Daily/Weekly/Persona
-    │   │   ├── ConversationSummarizer.cs  # End-of-session summary
-    │   │   └── SalienceCalculator.cs      # Memory importance scoring
-    │   │
-    │   ├── Context/
-    │   │   ├── ContextBuilder.cs          # System prompt assembly
-    │   │   ├── KnowledgeResolver.cs       # Knowledge base access
-    │   │   └── NetworkResolver.cs         # NPC network context
-    │   │
-    │   ├── Storage/
-    │   │   ├── LocalStorage.cs            # Read/write local YAML/JSON
-    │   │   ├── ProjectLoader.cs           # Load project from files
-    │   │   └── StateManager.cs            # NPC instance state
-    │   │
-    │   ├── Sync/
-    │   │   ├── SyncManager.cs             # Cloud sync orchestration
-    │   │   ├── CloudClient.cs             # Supabase REST client
-    │   │   └── ConflictResolver.cs        # Local-wins merge logic
-    │   │
-    │   ├── MCP/
-    │   │   ├── ToolRegistry.cs            # Available tools
-    │   │   ├── ToolExecutor.cs            # Execute tool calls
-    │   │   └── ExitHandler.cs             # exit_convo handling
-    │   │
-    │   └── Types/
-    │       ├── NPCDefinition.cs           # NPC static data
-    │       ├── NPCInstance.cs             # NPC runtime state
-    │       ├── Memory.cs                  # Memory structures
-    │       └── ConversationMode.cs        # Text/Voice modes
-    │
-    ├── Editor/
-    │   ├── SoulEngineSetupWizard.cs       # Project linking UI
-    │   ├── NPCInspector.cs                # Custom NPC inspector
-    │   └── DebugWindow.cs                 # Debug/testing window
-    │
-    ├── Models/
-    │   └── silero_vad.onnx                # VAD model for Sentis
-    │
-    └── Resources/
-        └── SoulEngineSettings.asset       # Project config asset
-```
+| Feature | Web (TypeScript) | Unity (C#) | Notes |
+|---------|-----------------|-----------|-------|
+| Multi-project support | `GET /api/projects` | `ProjectLoader.LoadProject()` | One project per Unity build |
+| API key management (BYOK) | Settings page (AES encrypted) | `SoulEngineSettings` asset | Keys stored in ScriptableObject, not hardcoded |
+| LLM provider selection | Per-project setting | `SoulEngineSettings.llmProvider` | Gemini / OpenAI / Anthropic / Grok |
+| TTS provider selection | Per-project setting | `SoulEngineSettings.ttsProvider` | Cartesia / ElevenLabs |
+| STT provider selection | Per-project setting | `SoulEngineSettings.sttProvider` | Deepgram |
+| Knowledge base (tiered) | Knowledge editor UI | Loaded from `knowledge.yaml` | Depth-level access per NPC |
+| MCP tool definitions | MCP tools UI | Loaded from `mcp-tools.yaml` | Conversation + game-event types |
+| Game Client API Key | Project settings | `SoulEngineSettings.gameClientApiKey` | Sent as `x-api-key` header |
+| Starter packs | Load starter pack button | Pre-bundled in `StreamingAssets` | Optional template NPCs |
+| Project statistics | Dashboard | `SyncManager.GetStatsAsync()` | Session counts, memory counts |
+| Cloud sync | Auto on session end | `SyncManager.SyncInstanceAsync()` | Non-blocking, fire-and-forget |
+
+### NPC Definition Features
+
+| Feature | TypeScript Field | Unity Access | Notes |
+|---------|-----------------|-------------|-------|
+| Name & description | `name`, `description` | `npc.Definition.Name` | Shown in NPC inspector |
+| Core anchor (backstory) | `core_anchor.backstory` | `npc.Definition.CoreAnchor.Backstory` | Injected into system prompt, immutable |
+| Principles | `core_anchor.principles[]` | `npc.Definition.CoreAnchor.Principles` | Up to 10, define NPC values |
+| Trauma flags | `core_anchor.trauma_flags[]` | `npc.Definition.CoreAnchor.TraumaFlags` | Emotional triggers, narrative only |
+| Big Five personality | `personality_baseline` | `npc.Definition.PersonalityBaseline` | Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism (all 0-1) |
+| Memory retention | `salience_threshold` | `npc.Definition.SalienceThreshold` | 0=genius, 1=forgetful |
+| Voice provider | `voice.provider` | `npc.Definition.Voice.Provider` | 'cartesia' or 'elevenlabs' |
+| Voice ID | `voice.voice_id` | `npc.Definition.Voice.VoiceId` | Provider-specific |
+| Voice speed | `voice.speed` | `npc.Definition.Voice.Speed` | 0.5-2.0 |
+| Location schedule | `schedule[]` | `npc.Definition.Schedule` | Time blocks with location_id + activity |
+| Knowledge access | `knowledge_access` | `npc.Definition.KnowledgeAccess` | Category ID -> depth level map |
+| MCP tool permissions | `mcp_permissions` | `npc.Definition.McpPermissions` | Conversation + game-event + denied lists |
+| NPC network | `network[]` | `npc.Definition.Network` | Social graph with familiarity tiers |
+| Player recognition | `player_recognition` | `npc.Definition.PlayerRecognition` | Whether NPC can be told player identity |
+| Profile picture | `profile_image` | Loaded as `Texture2D` from StreamingAssets | Shown in UI overlays |
+| Draft status | `status` | Read-only in Unity | Warns if NPC is in draft state |
+
+### NPC Instance (Runtime Mind State) Features
+
+| Feature | TypeScript Field | Unity Access | Notes |
+|---------|-----------------|-------------|-------|
+| Current mood | `current_mood` (valence/arousal/dominance) | `session.Instance.CurrentMood` | Updated after each response |
+| Trait modifiers | `trait_modifiers` | `session.Instance.TraitModifiers` | Accumulated from persona shifts |
+| Short-term memory | `short_term_memory[]` | `session.Instance.ShortTermMemory` | Pruned at weekly whisper |
+| Long-term memory | `long_term_memory[]` | `session.Instance.LongTermMemory` | Synthesized persistent memories |
+| Player relationships | `relationships` | `session.Instance.Relationships` | Trust, familiarity, sentiment per player |
+| Daily pulse | `daily_pulse` | `session.Instance.DailyPulse` | Mood snapshot + 1-sentence takeaway |
+| Cycle metadata | `cycle_metadata` | `session.Instance.CycleMetadata` | Last weekly / last persona shift timestamps |
+| Version history | Auto-archived on save | `SyncManager.GetInstanceHistoryAsync()` | Every session end / cycle creates a snapshot |
+| Mind state rollback | Via API | `SyncManager.RollbackInstanceAsync()` | Restore to any prior snapshot |
+
+### Memory System Features
+
+| Feature | TypeScript | Unity | Notes |
+|---------|-----------|-------|-------|
+| Salience scoring | `calculateSalience()` | `SalienceCalculator.Score()` | Emotion 35% + player 30% + novelty 20% + action 15% |
+| Mood-modulated salience | In `calculateSalience()` | Built into `SalienceCalculator` | High arousal/extreme valence amplify salience |
+| STM creation | `createMemory()` | `MemoryManager.CreateMemory()` | On session end, not during conversation |
+| STM pruning | `pruneSTM()` | `MemoryManager.PruneSTM()` | Filters below NPC's salience_threshold |
+| LTM synthesis | `summarizeWeeklyMemories()` | `ConversationSummarizer.SynthesizeLTM()` | LLM compresses multiple STM entries into insights |
+| LTM promotion | `promoteToLTM()` | `MemoryManager.PromoteToLTM()` | Elevated salience (+0.1, capped 0.95) |
+| STM clearing after promotion | In `runWeeklyWhisper()` | `MemoryCycles.RunWeeklyWhisper()` | Promoted entries removed from STM |
+| LTM pruning | `pruneLTM()` | `MemoryManager.PruneLTM()` | Cap on LTM size; lowest-salience removed |
+| Memory injection into prompt | `formatMemoriesForPrompt()` | `ContextBuilder.FormatMemories()` | STM + LTM both included |
+
+### Conversation Features
+
+| Feature | TypeScript | Unity | Notes |
+|---------|-----------|-------|-------|
+| Text input | `POST /session/:id/message` | `session.SendMessage(text)` | Streaming response |
+| Voice input | WebSocket VAD pipeline | `VoicePipeline.PushAudio(samples)` | VAD via Silero ONNX (Unity Sentis) |
+| Voice output | Cartesia/ElevenLabs streaming | `AudioPlayback.PlayChunked(audio)` | Queue-based streamed playback |
+| Input sanitization | `sanitize()` | `InputSanitizer.Sanitize()` | XSS prevention, HTML entity escaping |
+| Content moderation | `moderate()` | `ContentModerator.Check()` | Keyword-based, exit_convo on violation |
+| Rate limiting | `rateLimiter.checkLimit()` | `RateLimiter.Check()` | Per-player per-NPC per-minute |
+| Narration stripping | `stripNarration()` | Applied after LLM response | Removes `(stage directions)` and `*actions*` |
+| Tool call handling | `toolRegistry.executeTool()` | `ToolRegistry.Execute()` | Conversation + game-event separation |
+| Exit conversation | `exit_convo` tool | `ExitHandler.Handle()` | Security escape, stays in character |
+| Player identity | `player_info` at session start | `session.StartConversation(playerInfo)` | Name, description, role, context |
+| Conversation history | `assembleConversationHistory()` | `ContextBuilder.AssembleHistory()` | Last N messages, token-bounded |
+| Mood drift | `blendMoods()` | `PersonalityEngine.BlendMoods()` | After moderation actions |
+
+### Security Features
+
+| Feature | TypeScript | Unity | Notes |
+|---------|-----------|-------|-------|
+| Core anchor immutability | `validateAnchorIntegrity()` | `AnchorGuard.Validate()` | Checked at session end |
+| Input injection filter | `filterInjectionPatterns()` | `InputSanitizer.FilterInjections()` | Strips instruction injection, preserves quotes |
+| BYOK API key isolation | `resolveProjectLlmProvider()` | Keys in `SoulEngineSettings` asset | Never in code or plaintext |
+| Game client authentication | SHA-256 hashed API key | `x-api-key` header on session start | Optional per-project |
 
 ---
 
-## Project Linking Flow
+## Unity Scene Setup
 
-### Step 1: User Creates Project on Website
+### Minimal Scene Requirements
+
+A fully functional SoulEngine scene needs just three GameObjects with their respective scripts:
 
 ```
-1. User visits soulengine.dev
-2. Creates account (Google OAuth)
-3. Creates project, adds NPCs, knowledge, tools
-4. Gets Project ID + API Key from Settings page
+Scene Hierarchy:
+  [SoulEngine Manager]
+      SoulEngineManager.cs      <- Required, singleton
+
+  [NPC: Osman]
+      NPCCharacter.cs           <- One per NPC
+      (your other NPC scripts, animator, NavMeshAgent, etc.)
+
+  [NPC: Elara]
+      NPCCharacter.cs
+
+  [Tool Handler]                <- Optional, only if you use MCP tools
+      GameToolHandler.cs
 ```
 
-### Step 2: Link Project in Unity
+That's it. Three script types for a complete NPC system.
+
+---
+
+### Script 1: SoulEngineManager (Singleton)
+
+Place on a persistent GameObject (do not destroy on load). Holds all configuration, initializes providers, and manages active sessions.
+
+**Inspector fields to fill in:**
+
+| Field | Description |
+|-------|-------------|
+| Project ID | From soulengine.dev project settings |
+| LLM Provider | gemini / openai / anthropic / grok |
+| LLM API Key | Your provider key |
+| TTS Provider | cartesia / elevenlabs |
+| TTS API Key | Your Cartesia or ElevenLabs key |
+| STT API Key | Your Deepgram key |
+| Game Client API Key | Optional, from project security settings |
+
+The manager auto-downloads project files on startup (definitions, knowledge, MCP tools) and caches them in `StreamingAssets/SoulEngine/{projectId}/`.
 
 ```csharp
-// In Unity Editor: SoulEngine > Setup Wizard
+// How to use from game code
+var session = await SoulEngineManager.Instance.StartConversation(
+    npcId: "npc_osman",
+    playerId: "player_1",
+    playerInfo: new PlayerInfo { Name = "Sir Aldric", Description = "A knight in silver armor" },
+    mode: ConversationMode.VoiceVoice
+);
 
-public class SoulEngineSetupWizard : EditorWindow
-{
-    private string projectId;
-    private string apiKey;
-    
-    void OnGUI()
-    {
-        projectId = EditorGUILayout.TextField("Project ID", projectId);
-        apiKey = EditorGUILayout.PasswordField("API Key", apiKey);
-        
-        if (GUILayout.Button("Link Project"))
-        {
-            await LinkProject(projectId, apiKey);
-        }
+await SoulEngineManager.Instance.EndConversation(session.Id);
+```
+
+---
+
+### Script 2: NPCCharacter (MonoBehaviour)
+
+Attach to each NPC GameObject. Handles the conversation lifecycle for that specific NPC. Wire up Unity Events in the Inspector — no code required for basic use.
+
+**Inspector fields to fill in:**
+
+| Field | Description |
+|-------|-------------|
+| NPC ID | From soulengine.dev NPC editor (e.g. `npc_abc123`) |
+| Player ID | Your player identifier string |
+| Conversation Mode | TextText / VoiceVoice / TextVoice / VoiceText |
+| Audio Source | AudioSource component for TTS playback (voice output modes) |
+
+**Unity Events (wire in Inspector):**
+
+| Event | When Fires | Payload |
+|-------|-----------|---------|
+| `OnNPCSpeak` | NPC generates a text response | `string` text |
+| `OnPlayerSpeak` | Player speech transcribed (voice input) | `string` transcript |
+| `OnConversationStart` | Conversation begins | — |
+| `OnConversationEnd` | Conversation ends | — |
+| `OnToolCall` | NPC invokes a game tool | `string` toolName, `object` args |
+| `OnMoodChange` | NPC mood updates | `MoodVector` |
+
+**Trigger conversation from any script:**
+
+```csharp
+// On proximity trigger
+async void OnTriggerEnter(Collider other) {
+    if (other.CompareTag("Player")) {
+        await npcCharacter.StartConversation();
     }
-    
-    async Task LinkProject(string projectId, string apiKey)
-    {
-        // 1. Validate credentials with cloud
-        // 2. Download project files to StreamingAssets
-        // 3. Save credentials to SoulEngineSettings.asset
+}
+
+// On player leave
+async void OnTriggerExit(Collider other) {
+    if (other.CompareTag("Player")) {
+        await npcCharacter.EndConversation();
+    }
+}
+
+// Send a text message (text-* modes)
+await npcCharacter.SendMessage("I need information about the eastern road.");
+
+// Feed microphone audio (voice-* modes) — called per frame during active VAD
+npcCharacter.PushAudio(microphoneSamples);
+```
+
+---
+
+### Script 3: GameToolHandler (Optional)
+
+Register handler functions for each MCP tool you've defined in your project. If your NPCs don't use any MCP tools, skip this script entirely.
+
+**Pattern:**
+
+```csharp
+void Start() {
+    ToolRegistry.Register("call_police", async (args) => {
+        var location = args["location"].ToString();
+        var urgency = (int)args["urgency"];
+        await SpawnPoliceAt(location, urgency);
+        return new ToolResult { Success = true };
+    });
+
+    ToolRegistry.Register("flee_to", async (args) => {
+        var locationId = args["location_id"].ToString();
+        await npcNavAgent.FleeToWaypoint(locationId);
+        return new ToolResult { Success = true };
+    });
+
+    ToolRegistry.Register("lock_door", async (args) => {
+        var doorId = args["door_id"].ToString();
+        DoorManager.Lock(doorId);
+        return new ToolResult { Success = true };
+    });
+}
+```
+
+---
+
+## Scene Configuration Walkthrough
+
+### Step 1: Create Project on soulengine.dev
+
+1. Sign in at soulengine.dev
+2. Create a new project
+3. Go to **Settings** → add your LLM, TTS, STT API keys
+4. Design your NPCs in the **NPC Editor** (name, backstory, principles, voice, schedule, tools)
+5. Add knowledge categories in the **Knowledge** tab
+6. Define MCP tools in the **MCP Tools** tab
+7. From **Settings** → **Game Client Security**: Generate a Game Client API Key
+8. Copy your **Project ID** and **Game Client API Key**
+
+### Step 2: Import SoulEngine into Unity
+
+1. Import the SoulEngine Unity package
+2. `Window -> SoulEngine -> Setup Wizard`
+3. Enter Project ID + Game Client API Key
+4. Click **Link Project** — SDK downloads all project files to `StreamingAssets/SoulEngine/`
+
+### Step 3: Configure the Scene
+
+```
+1. Create empty GameObject "SoulEngine Manager"
+   -> Add SoulEngineManager.cs
+   -> Fill in: LLM/TTS/STT API keys, provider selections
+
+2. Select each NPC GameObject
+   -> Add NPCCharacter.cs
+   -> Set NPC ID (copy from soulengine.dev NPC editor)
+   -> Set Player ID (e.g. "player_1" or your player identifier)
+   -> Set Conversation Mode
+   -> Wire up AudioSource (for voice output)
+   -> Wire up Unity Events (optional)
+
+3. If using MCP tools:
+   -> Create empty GameObject "Tool Handler"
+   -> Add GameToolHandler.cs
+   -> Implement handlers for each tool your NPCs can use
+```
+
+### Step 4: Trigger Conversations
+
+```csharp
+// Minimal: proximity-based start/end
+public class NPCInteraction : MonoBehaviour {
+    [SerializeField] NPCCharacter npc;
+
+    async void OnTriggerEnter(Collider c) {
+        if (!c.CompareTag("Player")) return;
+        var player = c.GetComponent<PlayerController>();
+        await npc.StartConversation(new PlayerInfo {
+            Name = player.CharacterName,
+            Description = "A traveler in worn leather armor"
+        });
+    }
+
+    async void OnTriggerExit(Collider c) {
+        if (c.CompareTag("Player")) await npc.EndConversation();
     }
 }
 ```
 
-### Step 3: SDK Downloads Project Files
+### Step 5: Run Memory Cycles at Game Events
+
+```csharp
+// End of in-game day
+public async void OnGameDayEnd(DayContext context) {
+    foreach (var npc in activeNpcs) {
+        await SoulEngineManager.Instance.RunDailyPulse(npc.NpcId, playerId, context);
+    }
+}
+
+// End of in-game week (memory consolidation)
+public async void OnGameWeekEnd() {
+    foreach (var npc in activeNpcs) {
+        await SoulEngineManager.Instance.RunWeeklyWhisper(npc.NpcId, playerId);
+    }
+}
+
+// Major story milestone (personality evolution)
+public async void OnMajorAct() {
+    foreach (var npc in activeNpcs) {
+        await SoulEngineManager.Instance.RunPersonaShift(npc.NpcId, playerId);
+    }
+}
+```
+
+---
+
+## SDK Package Structure
 
 ```
-StreamingAssets/
-└── SoulEngine/
-    └── {project_id}/
-        ├── project.yaml           # Project config
-        ├── definitions/
-        │   ├── npc_abc123.yaml    # NPC definitions
-        │   └── npc_def456.yaml
-        ├── instances/
-        │   └── inst_xyz789/
-        │       └── current.json   # NPC state
-        ├── knowledge.yaml         # Knowledge base
-        └── mcp-tools.yaml         # Tool definitions
+Assets/
++-- SoulEngine/
+    +-- Runtime/
+    |   +-- Core/
+    |   |   +-- SoulEngineManager.cs       # Singleton entry point, initializes everything
+    |   |   +-- NPCCharacter.cs            # MonoBehaviour, attach to NPC GameObjects
+    |   |   +-- SessionManager.cs          # Conversation lifecycle (start, end, state)
+    |   |
+    |   +-- Providers/
+    |   |   +-- LLM/
+    |   |   |   +-- ILLMProvider.cs
+    |   |   |   +-- GeminiProvider.cs
+    |   |   |   +-- OpenAIProvider.cs
+    |   |   |   +-- AnthropicProvider.cs
+    |   |   |   +-- GrokProvider.cs
+    |   |   +-- STT/
+    |   |   |   +-- ISTTProvider.cs
+    |   |   |   +-- DeepgramProvider.cs    # WebSocket streaming transcription
+    |   |   +-- TTS/
+    |   |       +-- ITTSProvider.cs
+    |   |       +-- CartesiaProvider.cs    # WebSocket streaming synthesis
+    |   |       +-- ElevenLabsProvider.cs
+    |   |
+    |   +-- Voice/
+    |   |   +-- VoicePipeline.cs           # Orchestrates all 4 modes
+    |   |   +-- MicrophoneCapture.cs       # Unity microphone access
+    |   |   +-- VADProcessor.cs            # Silero VAD via Unity Sentis
+    |   |   +-- AudioPlayback.cs           # Chunk-based streaming playback
+    |   |   +-- SentenceDetector.cs        # Split LLM output for TTS
+    |   |
+    |   +-- Memory/
+    |   |   +-- MemoryCycles.cs            # Daily / Weekly / Persona
+    |   |   +-- ConversationSummarizer.cs  # End-of-session STM creation + LTM synthesis
+    |   |   +-- SalienceCalculator.cs      # Salience scoring formula
+    |   |   +-- MemoryManager.cs           # STM/LTM lifecycle (create, prune, promote)
+    |   |
+    |   +-- Context/
+    |   |   +-- ContextBuilder.cs          # System prompt assembly (all sections)
+    |   |   +-- KnowledgeResolver.cs       # Depth-filtered knowledge access
+    |   |   +-- NetworkResolver.cs         # NPC relationship context injection
+    |   |
+    |   +-- Security/
+    |   |   +-- InputSanitizer.cs          # XSS + injection pattern removal
+    |   |   +-- ContentModerator.cs        # Keyword-based moderation + exit_convo
+    |   |   +-- RateLimiter.cs             # Per-player per-NPC rate limit
+    |   |   +-- AnchorGuard.cs             # Core anchor immutability enforcement
+    |   |
+    |   +-- Storage/
+    |   |   +-- LocalStorage.cs            # Read/write StreamingAssets YAML/JSON
+    |   |   +-- ProjectLoader.cs           # Load and parse project config
+    |   |   +-- StateManager.cs            # Instance state read/write + versioning
+    |   |
+    |   +-- Sync/
+    |   |   +-- SyncManager.cs             # Cloud sync orchestration
+    |   |   +-- CloudClient.cs             # SoulEngine REST API client
+    |   |   +-- ConflictResolver.cs        # Local-wins merge strategy
+    |   |
+    |   +-- MCP/
+    |   |   +-- ToolRegistry.cs            # Register + resolve available tools
+    |   |   +-- ToolExecutor.cs            # Execute tool calls with validation
+    |   |   +-- ExitHandler.cs             # exit_convo handling
+    |   |
+    |   +-- Types/
+    |       +-- NPCDefinition.cs
+    |       +-- NPCInstance.cs
+    |       +-- Memory.cs
+    |       +-- MoodVector.cs
+    |       +-- ConversationMode.cs
+    |       +-- PlayerInfo.cs
+    |       +-- ToolDefinition.cs
+    |
+    +-- Editor/
+    |   +-- SoulEngineSetupWizard.cs       # Project linking + download
+    |   +-- NPCInspector.cs               # Custom inspector for NPCCharacter
+    |   +-- DebugWindow.cs                # Runtime debug view (mind state, mood)
+    |
+    +-- Models/
+    |   +-- silero_vad.onnx               # VAD model for Unity Sentis
+    |
+    +-- Resources/
+        +-- SoulEngineSettings.asset      # ScriptableObject for credentials
 ```
 
 ---
 
 ## Core Classes
 
-### SoulEngineManager (Singleton)
+### SoulEngineManager
 
 ```csharp
 namespace SoulEngine
@@ -231,157 +509,38 @@ namespace SoulEngine
     public class SoulEngineManager : MonoBehaviour
     {
         public static SoulEngineManager Instance { get; private set; }
-        
-        [Header("Configuration")]
-        public SoulEngineSettings settings;
-        
-        [Header("Providers")]
-        private ILLMProvider llmProvider;
-        private ISTTProvider sttProvider;
-        private ITTSProvider ttsProvider;
-        
-        // Active sessions
-        private Dictionary<string, NPCSession> activeSessions = new();
-        
-        void Awake()
-        {
-            Instance = this;
-            InitializeProviders();
-        }
-        
-        void InitializeProviders()
-        {
-            // Initialize based on project settings
-            llmProvider = settings.llmProvider switch
-            {
-                "gemini" => new GeminiProvider(settings.geminiApiKey),
-                "openai" => new OpenAIProvider(settings.openaiApiKey),
-                "anthropic" => new AnthropicProvider(settings.anthropicApiKey),
-                "grok" => new GrokProvider(settings.grokApiKey),
-                _ => new GeminiProvider(settings.geminiApiKey)
-            };
-            
-            sttProvider = new DeepgramProvider(settings.deepgramApiKey);
-            ttsProvider = settings.ttsProvider switch
-            {
-                "cartesia" => new CartesiaProvider(settings.cartesiaApiKey),
-                "elevenlabs" => new ElevenLabsProvider(settings.elevenlabsApiKey),
-                _ => new CartesiaProvider(settings.cartesiaApiKey)
-            };
-        }
-        
-        // ============================================
+
+        [Header("Project")]
+        public SoulEngineSettings settings;   // ScriptableObject with all API keys
+
         // PUBLIC API
-        // ============================================
-        
-        /// <summary>
-        /// Start a conversation with an NPC
-        /// </summary>
+
+        // Start a conversation with an NPC
         public async Task<NPCSession> StartConversation(
             string npcId,
             string playerId,
             PlayerInfo playerInfo = null,
             ConversationMode mode = ConversationMode.TextText)
-        {
-            var definition = LocalStorage.LoadDefinition(npcId);
-            var instance = LocalStorage.LoadOrCreateInstance(npcId, playerId, definition);
-            
-            var session = new NPCSession(
-                definition, instance, playerInfo, mode,
-                llmProvider, sttProvider, ttsProvider
-            );
-            
-            await session.Initialize();
-            activeSessions[session.Id] = session;
-            
-            return session;
-        }
-        
-        /// <summary>
-        /// End a conversation and save state
-        /// </summary>
+
+        // End conversation: summarize, save instance, archive version, sync cloud
         public async Task EndConversation(string sessionId)
-        {
-            if (!activeSessions.TryGetValue(sessionId, out var session))
-                return;
-            
-            // Summarize and update state
-            await session.End();
-            
-            // Save locally
-            LocalStorage.SaveInstance(session.Instance);
-            
-            // Sync to cloud (async, non-blocking)
-            _ = SyncManager.SyncInstanceAsync(session.Instance);
-            
-            activeSessions.Remove(sessionId);
-        }
-        
-        /// <summary>
-        /// Run Daily Pulse cycle for an NPC
-        /// </summary>
+
+        // Memory cycles — call at appropriate game events
         public async Task RunDailyPulse(string npcId, string playerId, DayContext context = null)
-        {
-            var instance = LocalStorage.LoadInstance(npcId, playerId);
-            
-            await MemoryCycles.RunDailyPulse(instance, llmProvider, context);
-            
-            LocalStorage.SaveInstance(instance);
-            _ = SyncManager.SyncInstanceAsync(instance);
-        }
-        
-        /// <summary>
-        /// Run Weekly Whisper cycle for an NPC
-        /// </summary>
         public async Task RunWeeklyWhisper(string npcId, string playerId, int retainCount = 3)
-        {
-            var definition = LocalStorage.LoadDefinition(npcId);
-            var instance = LocalStorage.LoadInstance(npcId, playerId);
-            
-            await MemoryCycles.RunWeeklyWhisper(
-                instance, llmProvider, 
-                retainCount, 
-                definition.SalienceThreshold
-            );
-            
-            LocalStorage.SaveInstance(instance);
-            _ = SyncManager.SyncInstanceAsync(instance);
-        }
-        
-        /// <summary>
-        /// Run Persona Shift cycle for an NPC
-        /// </summary>
         public async Task RunPersonaShift(string npcId, string playerId)
-        {
-            var definition = LocalStorage.LoadDefinition(npcId);
-            var instance = LocalStorage.LoadInstance(npcId, playerId);
-            
-            await MemoryCycles.RunPersonaShift(instance, definition, llmProvider);
-            
-            LocalStorage.SaveInstance(instance);
-            _ = SyncManager.SyncInstanceAsync(instance);
-        }
-        
-        /// <summary>
-        /// Force sync all changes to cloud
-        /// </summary>
+
+        // Cloud sync
         public async Task SyncToCloud()
-        {
-            await SyncManager.SyncAllPendingAsync();
-        }
-        
-        /// <summary>
-        /// Refresh project from cloud (for updated NPCs, knowledge, etc.)
-        /// </summary>
         public async Task RefreshFromCloud()
-        {
-            await SyncManager.PullProjectUpdatesAsync(settings.projectId);
-        }
+
+        // State access
+        public NPCInstance GetInstance(string npcId, string playerId)
     }
 }
 ```
 
-### NPCCharacter (MonoBehaviour)
+### NPCCharacter
 
 ```csharp
 namespace SoulEngine
@@ -391,200 +550,77 @@ namespace SoulEngine
         [Header("NPC Configuration")]
         public string npcId;
         public string playerId = "default_player";
-        
+
         [Header("Voice Settings")]
-        public ConversationMode mode = ConversationMode.VoiceVoice;
-        public AudioSource audioSource;
-        
+        public ConversationMode mode = ConversationMode.TextText;
+        public AudioSource audioSource;    // For TTS output
+
         [Header("Events")]
-        public UnityEvent<string> OnNPCSpeak;       // Text response
-        public UnityEvent<string> OnPlayerSpeak;    // Transcribed input
+        public UnityEvent<string> OnNPCSpeak;         // text response
+        public UnityEvent<string> OnPlayerSpeak;       // transcribed input
+        public UnityEvent<MoodVector> OnMoodChange;    // mood update
         public UnityEvent OnConversationStart;
         public UnityEvent OnConversationEnd;
-        public UnityEvent<string, object> OnToolCall;
-        
-        private NPCSession currentSession;
-        
-        /// <summary>
-        /// Start talking to this NPC
-        /// </summary>
+        public UnityEvent<string, object> OnToolCall;  // tool name + args
+
+        // Call from your trigger/interaction logic
         public async Task StartConversation(PlayerInfo playerInfo = null)
-        {
-            currentSession = await SoulEngineManager.Instance.StartConversation(
-                npcId, playerId, playerInfo, mode
-            );
-            
-            // Subscribe to events
-            currentSession.OnTranscript += (text, isFinal) => {
-                if (isFinal) OnPlayerSpeak?.Invoke(text);
-            };
-            currentSession.OnTextChunk += (text) => OnNPCSpeak?.Invoke(text);
-            currentSession.OnAudioChunk += PlayAudio;
-            currentSession.OnToolCall += (name, args) => OnToolCall?.Invoke(name, args);
-            
-            OnConversationStart?.Invoke();
-        }
-        
-        /// <summary>
-        /// Send a text message to the NPC
-        /// </summary>
-        public async Task SendMessage(string text)
-        {
-            if (currentSession == null) return;
-            await currentSession.SendMessage(text);
-        }
-        
-        /// <summary>
-        /// Push audio samples (for voice input)
-        /// </summary>
-        public void PushAudio(float[] samples)
-        {
-            currentSession?.PushAudio(samples);
-        }
-        
-        /// <summary>
-        /// End the conversation
-        /// </summary>
         public async Task EndConversation()
-        {
-            if (currentSession == null) return;
-            
-            await SoulEngineManager.Instance.EndConversation(currentSession.Id);
-            currentSession = null;
-            
-            OnConversationEnd?.Invoke();
-        }
-        
-        private void PlayAudio(byte[] audioData)
-        {
-            // Convert to AudioClip and play
-            var clip = AudioConverter.BytesToClip(audioData);
-            audioSource.PlayOneShot(clip);
-        }
+        public async Task SendMessage(string text)       // text input modes
+        public void PushAudio(float[] samples)           // voice input modes
+        public void Interrupt()                          // stop current generation
+
+        // Read current state
+        public MoodVector CurrentMood { get; }
+        public NPCInstance CurrentInstance { get; }
     }
 }
 ```
 
----
-
-## Voice Pipeline in C#
-
-### VoicePipeline Class
+### GameToolHandler
 
 ```csharp
-namespace SoulEngine.Voice
+namespace SoulEngine
 {
-    public class VoicePipeline
+    // Extend this class to register your game's tool implementations
+    public abstract class GameToolHandler : MonoBehaviour
     {
-        private readonly ConversationMode mode;
-        private readonly ISTTProvider sttProvider;
-        private readonly ITTSProvider ttsProvider;
-        private readonly ILLMProvider llmProvider;
-        private readonly NPCSession session;
-        
-        private ISTTSession sttSession;
-        private ITTSSession ttsSession;
-        private SentenceDetector sentenceDetector;
-        
-        // Events
-        public event Action<string, bool> OnTranscript;
-        public event Action<string> OnTextChunk;
-        public event Action<byte[]> OnAudioChunk;
-        public event Action<string, Dictionary<string, object>> OnToolCall;
-        public event Action OnGenerationEnd;
-        
-        public async Task Initialize()
-        {
-            sentenceDetector = new SentenceDetector();
-            
-            // Only init STT if voice input
-            if (mode.Input == InputMode.Voice)
-            {
-                sttSession = await sttProvider.CreateSession(new STTConfig
-                {
-                    Language = "en",
-                    Model = "nova-2"
-                });
-                sttSession.OnTranscript += HandleTranscript;
-            }
-            
-            // Only init TTS if voice output
-            if (mode.Output == OutputMode.Voice)
-            {
-                ttsSession = await ttsProvider.CreateSession(new TTSConfig
-                {
-                    VoiceId = session.Definition.Voice.VoiceId,
-                    Speed = session.Definition.Voice.Speed
-                });
-                ttsSession.OnAudioChunk += (data) => OnAudioChunk?.Invoke(data);
-            }
+        void Awake() {
+            RegisterTools();
         }
-        
-        public void PushAudio(float[] samples)
-        {
-            if (sttSession == null) return;
-            var pcmBytes = AudioConverter.FloatToPCM(samples);
-            sttSession.SendAudio(pcmBytes);
+
+        protected abstract void RegisterTools();
+
+        // Helper: register a tool implementation
+        protected void Register(string toolName, Func<Dictionary<string, object>, Task<ToolResult>> handler) {
+            ToolRegistry.Register(toolName, handler);
         }
-        
-        public async Task SendText(string text)
-        {
-            await ProcessTurn(text);
-        }
-        
-        private async void HandleTranscript(string text, bool isFinal)
-        {
-            OnTranscript?.Invoke(text, isFinal);
-            
-            if (isFinal && !string.IsNullOrWhiteSpace(text))
-            {
-                await ProcessTurn(text);
-            }
-        }
-        
-        private async Task ProcessTurn(string input)
-        {
-            // 1. Build context
-            var systemPrompt = ContextBuilder.Build(session.Definition, session.Instance);
-            var history = session.GetConversationHistory();
-            
-            // 2. Stream LLM response
-            await foreach (var chunk in llmProvider.StreamChat(systemPrompt, history, input))
-            {
-                if (chunk.Text != null)
-                {
-                    OnTextChunk?.Invoke(chunk.Text);
-                    
-                    // TTS if voice output
-                    if (mode.Output == OutputMode.Voice)
-                    {
-                        var sentences = sentenceDetector.AddChunk(chunk.Text);
-                        foreach (var sentence in sentences)
-                        {
-                            await ttsSession.Synthesize(sentence);
-                        }
-                    }
-                }
-                
-                if (chunk.ToolCall != null)
-                {
-                    OnToolCall?.Invoke(chunk.ToolCall.Name, chunk.ToolCall.Arguments);
-                }
-            }
-            
-            // 3. Flush remaining TTS
-            if (mode.Output == OutputMode.Voice)
-            {
-                var remaining = sentenceDetector.Flush();
-                if (!string.IsNullOrEmpty(remaining))
-                {
-                    await ttsSession.Synthesize(remaining);
-                }
-                await ttsSession.Flush();
-            }
-            
-            OnGenerationEnd?.Invoke();
-        }
+    }
+}
+
+// Example: your implementation
+public class MyGameToolHandler : GameToolHandler
+{
+    protected override void RegisterTools()
+    {
+        Register("call_police", async (args) => {
+            string location = args["location"].ToString();
+            int urgency = Convert.ToInt32(args["urgency"]);
+            await PoliceSystem.Dispatch(location, urgency);
+            return ToolResult.Success();
+        });
+
+        Register("refuse_service", async (args) => {
+            string target = args["target"].ToString();
+            ShopSystem.RefusePlayer(target);
+            return ToolResult.Success();
+        });
+
+        Register("flee_to", async (args) => {
+            string locationId = args["location_id"].ToString();
+            GetComponent<NavMeshAgent>().SetDestination(Waypoints.Get(locationId));
+            return ToolResult.Success();
+        });
     }
 }
 ```
@@ -600,175 +636,113 @@ namespace SoulEngine.Sync
 {
     public static class SyncManager
     {
-        private static Queue<SyncOperation> pendingOperations = new();
-        private static bool isSyncing = false;
-        
-        /// <summary>
-        /// Queue an NPC instance for sync
-        /// </summary>
+        // Queue instance for cloud sync (call after EndConversation or cycles)
         public static async Task SyncInstanceAsync(NPCInstance instance)
-        {
-            pendingOperations.Enqueue(new SyncOperation
-            {
-                Type = SyncType.Instance,
-                Data = instance,
-                Timestamp = DateTime.UtcNow
-            });
-            
-            await ProcessQueueAsync();
-        }
-        
-        /// <summary>
-        /// Sync all pending operations
-        /// </summary>
+
+        // Flush all pending sync operations
         public static async Task SyncAllPendingAsync()
-        {
-            while (pendingOperations.Count > 0)
-            {
-                await ProcessQueueAsync();
-                await Task.Delay(100);
-            }
-        }
-        
-        /// <summary>
-        /// Pull project updates from cloud
-        /// </summary>
+
+        // Pull project updates (new NPCs, knowledge changes, etc.)
         public static async Task PullProjectUpdatesAsync(string projectId)
-        {
-            var client = new CloudClient();
-            
-            // Check for updates
-            var cloudProject = await client.GetProject(projectId);
-            var localProject = LocalStorage.LoadProject();
-            
-            if (cloudProject.UpdatedAt > localProject.UpdatedAt)
-            {
-                // Download updated files
-                var definitions = await client.GetDefinitions(projectId);
-                var knowledge = await client.GetKnowledge(projectId);
-                var tools = await client.GetMcpTools(projectId);
-                
-                // Save locally
-                LocalStorage.SaveProject(cloudProject);
-                LocalStorage.SaveDefinitions(definitions);
-                LocalStorage.SaveKnowledge(knowledge);
-                LocalStorage.SaveMcpTools(tools);
-            }
-        }
-        
-        private static async Task ProcessQueueAsync()
-        {
-            if (isSyncing || pendingOperations.Count == 0) return;
 
-            isSyncing = true;
-            var client = new CloudClient();
+        // Definition version history
+        public static async Task<List<DefinitionHistoryEntry>> GetDefinitionHistoryAsync(string projectId, string npcId)
+        public static async Task<DefinitionHistorySnapshot> GetDefinitionSnapshotAsync(string projectId, string npcId, int version)
+        public static async Task<NPCDefinition> RollbackDefinitionAsync(string projectId, string npcId, int targetVersion)
 
-            try
+        // Mind state version history
+        public static async Task<List<InstanceHistoryEntry>> GetInstanceHistoryAsync(string instanceId)
+        public static async Task<NPCInstance> GetInstanceSnapshotAsync(string instanceId, string version)
+        public static async Task<NPCInstance> RollbackInstanceAsync(string instanceId, string version)
+    }
+}
+```
+
+---
+
+## Voice Pipeline Details
+
+### Conversation Mode Handling
+
+```csharp
+public class VoicePipeline
+{
+    private readonly ConversationMode mode;
+    private ISTTSession sttSession;    // Only active in voice-input modes
+    private ITTSSession ttsSession;    // Only active in voice-output modes
+
+    public async Task Initialize()
+    {
+        // STT only if input is voice
+        if (mode.Input == InputMode.Voice)
+            sttSession = await sttProvider.CreateSession(new STTConfig { Language = "en", Model = "nova-2" });
+
+        // TTS only if output is voice
+        if (mode.Output == OutputMode.Voice)
+            ttsSession = await ttsProvider.CreateSession(new TTSConfig {
+                VoiceId = session.Definition.Voice.VoiceId,
+                Speed = session.Definition.Voice.Speed
+            });
+    }
+
+    // Full turn: input -> security -> LLM -> narration strip -> TTS (if voice out)
+    private async Task ProcessTurn(string input)
+    {
+        var systemPrompt = ContextBuilder.Build(session.Definition, session.Instance);
+
+        await foreach (var chunk in llmProvider.StreamChat(systemPrompt, history, input))
+        {
+            if (chunk.Text != null)
             {
-                while (pendingOperations.TryDequeue(out var op))
+                // Strip stage directions and asterisk actions
+                var cleanText = NarrationFilter.Strip(chunk.Text);
+                OnTextChunk?.Invoke(cleanText);
+
+                if (mode.Output == OutputMode.Voice)
                 {
-                    switch (op.Type)
-                    {
-                        case SyncType.Instance:
-                            await client.UpdateInstance((NPCInstance)op.Data);
-                            break;
-                    }
+                    var sentences = sentenceDetector.AddChunk(cleanText);
+                    foreach (var s in sentences) await ttsSession.Synthesize(s);
                 }
             }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"Sync failed: {e.Message}. Will retry later.");
-                // Re-queue failed operations
-            }
-            finally
-            {
-                isSyncing = false;
-            }
-        }
-
-        // ============================================================
-        // NPC DEFINITION VERSION HISTORY
-        // ============================================================
-
-        /// <summary>
-        /// Get version history metadata for an NPC definition.
-        /// Returns a list of archived versions (version number, changed fields, timestamp).
-        /// Does not include full snapshots — call GetDefinitionSnapshotAsync for those.
-        /// </summary>
-        public static async Task<List<DefinitionHistoryEntry>> GetDefinitionHistoryAsync(
-            string projectId, string npcId)
-        {
-            var client = new CloudClient();
-            return await client.GetDefinitionHistory(projectId, npcId);
-        }
-
-        /// <summary>
-        /// Get the full snapshot for a specific NPC definition version.
-        /// </summary>
-        public static async Task<DefinitionHistorySnapshot> GetDefinitionSnapshotAsync(
-            string projectId, string npcId, int version)
-        {
-            var client = new CloudClient();
-            return await client.GetDefinitionSnapshot(projectId, npcId, version);
-        }
-
-        /// <summary>
-        /// Revert an NPC definition to a prior version.
-        /// The current state is archived before reverting, so this action is itself reversible.
-        /// After rollback, reload the definition from local storage via ProjectLoader.
-        /// </summary>
-        public static async Task<NPCDefinition> RollbackDefinitionAsync(
-            string projectId, string npcId, int targetVersion)
-        {
-            var client = new CloudClient();
-            var definition = await client.RollbackDefinition(projectId, npcId, targetVersion);
-
-            // Persist the rolled-back definition locally so the next session uses it
-            LocalStorage.SaveDefinition(definition);
-
-            return definition;
+            if (chunk.ToolCall != null) OnToolCall?.Invoke(chunk.ToolCall.Name, chunk.ToolCall.Arguments);
         }
     }
 }
 ```
 
-### DefinitionHistoryEntry (Type)
+### VAD with Unity Sentis
+
+- Load `silero_vad.onnx` model via Unity Sentis (Inference Engine)
+- Process 30ms audio chunks in <1ms on CPU
+- Entirely client-side — saves bandwidth, enables instant interruption
+- Cross-platform: Windows, macOS, iOS, Android
 
 ```csharp
-namespace SoulEngine.Sync
+public class VADProcessor
 {
-    public class DefinitionHistoryEntry
-    {
-        public int Version { get; set; }
-        public string[] ChangedFields { get; set; }
-        public string CreatedAt { get; set; }
+    private Model vadModel;
+    private IWorker worker;
+
+    public void Initialize() {
+        vadModel = ModelLoader.Load(vadOnnxAsset);
+        worker = WorkerFactory.CreateWorker(BackendType.CPU, vadModel);
     }
 
-    public class DefinitionHistorySnapshot : DefinitionHistoryEntry
-    {
-        public NPCDefinition Snapshot { get; set; }
+    public bool ProcessChunk(float[] samples) {
+        // Returns true if speech detected
+        var tensor = new TensorFloat(new TensorShape(1, samples.Length), samples);
+        worker.Execute(new Dictionary<string, Tensor> { {"input", tensor} });
+        var output = worker.PeekOutput() as TensorFloat;
+        return output[0] > vadThreshold;
     }
 }
-```
-
-### CloudClient — History Methods
-
-```csharp
-// GET /api/projects/{projectId}/npcs/{npcId}/history
-public async Task<List<DefinitionHistoryEntry>> GetDefinitionHistory(string projectId, string npcId)
-
-// GET /api/projects/{projectId}/npcs/{npcId}/history/{version}
-public async Task<DefinitionHistorySnapshot> GetDefinitionSnapshot(string projectId, string npcId, int version)
-
-// POST /api/projects/{projectId}/npcs/{npcId}/rollback  { version }
-public async Task<NPCDefinition> RollbackDefinition(string projectId, string npcId, int version)
 ```
 
 ---
 
 ## Developer API Reference
 
-### Quick Start
+### Quick Start (Complete Example)
 
 ```csharp
 using SoulEngine;
@@ -777,200 +751,198 @@ public class GameManager : MonoBehaviour
 {
     async void Start()
     {
-        // Refresh project data from cloud (optional)
+        // Optional: refresh definitions/knowledge from cloud
         await SoulEngineManager.Instance.RefreshFromCloud();
     }
 }
 
-public class NPCInteraction : MonoBehaviour
+public class NPCInteractionZone : MonoBehaviour
 {
-    public NPCCharacter npc;
-    
+    [SerializeField] NPCCharacter npc;
+
+    void Awake()
+    {
+        // Wire up events in code (or use Inspector Unity Events)
+        npc.OnNPCSpeak.AddListener(text => dialogueUI.ShowNPCText(text));
+        npc.OnPlayerSpeak.AddListener(text => dialogueUI.ShowPlayerText(text));
+        npc.OnMoodChange.AddListener(mood => moodIndicator.Update(mood));
+        npc.OnToolCall.AddListener((toolName, args) => Debug.Log($"Tool: {toolName}"));
+    }
+
     async void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
-        {
-            var playerInfo = new PlayerInfo
-            {
-                Name = "Sir Aldric",
-                Description = "A knight in silver armor"
-            };
-            
-            await npc.StartConversation(playerInfo);
-        }
-    }
-    
-    public async void OnPlayerSendMessage(string text)
-    {
-        await npc.SendMessage(text);
-    }
-    
-    public async void OnPlayerLeave()
-    {
-        await npc.EndConversation();
-    }
-}
-```
+        if (!other.CompareTag("Player")) return;
 
-### Memory Cycles (Call at Game Events)
-
-```csharp
-// End of game day
-public async void OnDayEnd()
-{
-    var context = new DayContext
-    {
-        GameTime = "Evening, Day 15",
-        WorldEvents = new[] { "Storm passed", "Market opened" }
-    };
-    
-    // Run daily pulse for all active NPCs
-    foreach (var npcId in activeNpcIds)
-    {
-        await SoulEngineManager.Instance.RunDailyPulse(npcId, playerId, context);
-    }
-}
-
-// Weekly save point
-public async void OnWeekEnd()
-{
-    foreach (var npcId in activeNpcIds)
-    {
-        await SoulEngineManager.Instance.RunWeeklyWhisper(npcId, playerId);
-    }
-}
-
-// Major story milestone
-public async void OnActComplete()
-{
-    foreach (var npcId in activeNpcIds)
-    {
-        await SoulEngineManager.Instance.RunPersonaShift(npcId, playerId);
-    }
-}
-
-// Before quitting / autosave
-public async void OnGameSave()
-{
-    await SoulEngineManager.Instance.SyncToCloud();
-}
-```
-
-### Tool Handling
-
-```csharp
-public class GameToolHandler : MonoBehaviour
-{
-    void Start()
-    {
-        // Register tool handlers
-        ToolRegistry.Register("call_police", async (args) => {
-            var location = args["location"].ToString();
-            var urgency = (int)args["urgency"];
-            
-            // Execute game logic
-            await SpawnPolice(location, urgency);
-            
-            return new ToolResult { Success = true };
-        });
-        
-        ToolRegistry.Register("flee_to", async (args) => {
-            var locationId = args["location_id"].ToString();
-            
-            // Make NPC run away
-            await npcController.FleeToLocation(locationId);
-            
-            return new ToolResult { Success = true };
+        var player = other.GetComponent<PlayerController>();
+        await npc.StartConversation(new PlayerInfo {
+            Name = player.CharacterName,
+            Description = player.Appearance,
+            Role = player.CurrentRole,
+            Context = player.GetNPCContext(npc.npcId)
         });
     }
+
+    async void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player")) await npc.EndConversation();
+    }
+
+    // For text input modes
+    public async void OnPlayerSendMessage(string text) => await npc.SendMessage(text);
 }
 ```
+
+### Memory Cycles at Game Events
+
+```csharp
+public class GameTimeManager : MonoBehaviour
+{
+    [SerializeField] NPCCharacter[] allNPCs;
+    private string playerId = "player_1";
+
+    // Call at end of each in-game day
+    public async void OnDayEnd(GameDayContext dayCtx)
+    {
+        var context = new DayContext {
+            GameTime = dayCtx.timeString,
+            Events = dayCtx.significantEvents,
+            OverallMood = dayCtx.mood   // "positive" / "neutral" / "negative"
+        };
+
+        foreach (var npc in allNPCs)
+            await SoulEngineManager.Instance.RunDailyPulse(npc.npcId, playerId, context);
+    }
+
+    // Call at end of each in-game week
+    public async void OnWeekEnd()
+    {
+        foreach (var npc in allNPCs)
+            await SoulEngineManager.Instance.RunWeeklyWhisper(npc.npcId, playerId);
+    }
+
+    // Call at major story milestones / act breaks
+    public async void OnMajorMilestone()
+    {
+        foreach (var npc in allNPCs)
+            await SoulEngineManager.Instance.RunPersonaShift(npc.npcId, playerId);
+    }
+
+    // Before save / quit
+    public async void OnBeforeSave()
+    {
+        await SoulEngineManager.Instance.SyncToCloud();
+    }
+}
+```
+
+---
+
+## TypeScript → C# File Mapping
+
+| TypeScript File | C# Equivalent |
+|-----------------|---------------|
+| `src/providers/llm/gemini.ts` | `Providers/LLM/GeminiProvider.cs` |
+| `src/providers/llm/openai.ts` | `Providers/LLM/OpenAIProvider.cs` |
+| `src/providers/llm/anthropic.ts` | `Providers/LLM/AnthropicProvider.cs` |
+| `src/providers/llm/grok.ts` | `Providers/LLM/GrokProvider.cs` |
+| `src/providers/llm/factory.ts` | `Core/SoulEngineManager.cs` (InitializeProviders) |
+| `src/providers/stt/deepgram.ts` | `Providers/STT/DeepgramProvider.cs` |
+| `src/providers/tts/cartesia.ts` | `Providers/TTS/CartesiaProvider.cs` |
+| `src/providers/tts/elevenlabs.ts` | `Providers/TTS/ElevenLabsProvider.cs` |
+| `src/voice/pipeline.ts` | `Voice/VoicePipeline.cs` |
+| `src/core/context.ts` | `Context/ContextBuilder.cs` |
+| `src/core/cycles.ts` | `Memory/MemoryCycles.cs` |
+| `src/core/summarizer.ts` | `Memory/ConversationSummarizer.cs` |
+| `src/core/memory.ts` | `Memory/MemoryManager.cs` + `Memory/SalienceCalculator.cs` |
+| `src/core/personality.ts` | `Memory/PersonalityEngine.cs` |
+| `src/core/knowledge.ts` | `Context/KnowledgeResolver.cs` |
+| `src/core/tools.ts` | `MCP/ToolRegistry.cs` |
+| `src/session/manager.ts` | `Core/SessionManager.cs` |
+| `src/security/sanitizer.ts` | `Security/InputSanitizer.cs` |
+| `src/security/moderator.ts` | `Security/ContentModerator.cs` |
+| `src/security/rate-limiter.ts` | `Security/RateLimiter.cs` |
+| `src/storage/local/instances.ts` | `Storage/StateManager.cs` + `Storage/LocalStorage.cs` |
+| `src/mcp/registry.ts` | `MCP/ToolRegistry.cs` |
+| `src/mcp/exit-handler.ts` | `MCP/ExitHandler.cs` |
 
 ---
 
 ## Implementation Phases
 
 ### Phase 1: Core SDK Structure
-- [ ] Create Unity package structure
-- [ ] Implement LocalStorage (YAML/JSON read/write)
-- [ ] Implement ProjectLoader
-- [ ] Create SoulEngineSettings ScriptableObject
-- [ ] Implement Setup Wizard (Editor)
+- [ ] Create Unity package structure with namespace `SoulEngine`
+- [ ] Implement `LocalStorage` (StreamingAssets YAML/JSON read/write)
+- [ ] Implement `ProjectLoader` (parse project.yaml + definitions)
+- [ ] Create `SoulEngineSettings` ScriptableObject
+- [ ] Implement Setup Wizard (Editor window, project link + download)
+- [ ] Implement basic `NPCDefinition` and `NPCInstance` types
 
 ### Phase 2: Provider Ports
-- [ ] Port LLM providers (REST streaming in C#)
-- [ ] Port STT provider (WebSocket to Deepgram)
-- [ ] Port TTS provider (WebSocket to Cartesia/ElevenLabs)
-- [ ] Implement VAD with Sentis (Silero ONNX)
+- [ ] Port LLM providers (streaming REST in C#, async enumerable)
+- [ ] Port STT provider (WebSocket to Deepgram, `NativeWebSocket`)
+- [ ] Port TTS providers (WebSocket to Cartesia / ElevenLabs)
+- [ ] Factory pattern: `SoulEngineManager.InitializeProviders()`
 
 ### Phase 3: Voice Pipeline
-- [ ] Port VoicePipeline logic
-- [ ] Implement MicrophoneCapture
-- [ ] Implement AudioPlayback with queue
-- [ ] Port SentenceDetector
+- [ ] Port `VoicePipeline` (all 4 modes)
+- [ ] Implement `MicrophoneCapture` (Unity Microphone API)
+- [ ] Implement `VADProcessor` (Silero via Unity Sentis)
+- [ ] Implement `AudioPlayback` (chunk queue)
+- [ ] Port `SentenceDetector` (TTS chunking)
+- [ ] Implement `NarrationFilter` (strip stage directions)
 
 ### Phase 4: Context & Memory
-- [ ] Port ContextBuilder
-- [ ] Port MemoryCycles (Daily/Weekly/Persona)
-- [ ] Port ConversationSummarizer
+- [ ] Port `ContextBuilder` (full system prompt assembly)
+- [ ] Port `KnowledgeResolver` + `NetworkResolver`
+- [ ] Port `MemoryManager` + `SalienceCalculator`
+- [ ] Port `MemoryCycles` (Daily / Weekly / Persona)
+- [ ] Port `ConversationSummarizer` (STM creation + LTM synthesis)
 
-### Phase 5: Sync & Cloud
-- [ ] Implement CloudClient (Supabase REST)
-- [ ] Implement SyncManager
+### Phase 5: Security
+- [ ] Port `InputSanitizer`
+- [ ] Port `ContentModerator`
+- [ ] Port `RateLimiter`
+- [ ] Port `AnchorGuard`
+
+### Phase 6: Sync & Cloud
+- [ ] Implement `CloudClient` (SoulEngine REST API)
+- [ ] Implement `SyncManager`
 - [ ] Handle offline/online transitions
 
-### Phase 6: Testing & Polish
-- [ ] Create sample scenes
-- [ ] Write documentation
-- [ ] Performance optimization
-- [ ] Publish to Asset Store
+### Phase 7: Testing & Polish
+- [ ] Create sample scene (2-3 NPCs, trigger zone, tool handler)
+- [ ] Write `NPCInspector` custom editor
+- [ ] Write `DebugWindow` (runtime mind state viewer)
+- [ ] Performance profiling (especially STT/TTS WebSocket)
+- [ ] Publish to Unity Asset Store
 
 ---
 
-## File Comparison: TypeScript → C#
+## Security & BYOK
 
-| TypeScript File | C# Equivalent |
-|-----------------|---------------|
-| `src/providers/llm/gemini.ts` | `Providers/LLM/GeminiProvider.cs` |
-| `src/providers/stt/deepgram.ts` | `Providers/STT/DeepgramProvider.cs` |
-| `src/providers/tts/cartesia.ts` | `Providers/TTS/CartesiaProvider.cs` |
-| `src/voice/pipeline.ts` | `Voice/VoicePipeline.cs` |
-| `src/core/context.ts` | `Context/ContextBuilder.cs` |
-| `src/core/cycles.ts` | `Memory/MemoryCycles.cs` |
-| `src/core/summarizer.ts` | `Memory/ConversationSummarizer.cs` |
-| `src/session/manager.ts` | `Core/SessionManager.cs` |
-| `src/storage/definitions.ts` | `Storage/LocalStorage.cs` |
-| `src/storage/instances.ts` | `Storage/StateManager.cs` |
-| `src/mcp/registry.ts` | `MCP/ToolRegistry.cs` |
+The Unity SDK uses a **Bring Your Own Key (BYOK)** model. API keys are stored in `SoulEngineSettings.asset` (a ScriptableObject), never hardcoded in scripts. Keys are passed directly to provider APIs — neither SoulEngine's cloud nor any intermediary server sees them during gameplay.
 
----
+### API Key Protection
 
-## Security & Bring Your Own Key (BYOK)
-
-The Unity SDK utilizes a **Bring Your Own Key (BYOK)** model. The user configure their LLM provider API keys securely on the SoulEngine web dashboard, restricting them to project-specific operations.
-
-### API Protection
-- **Game Client API Key (`x-api-key`)**: To mitigate unauthorized exploitation of your endpoints and LLM credits, the Unity client must securely hold a Game Client API key.
-- Setup:
-  1. The API key corresponds uniquely to a `game_client_api_key`.
-  2. The Unity SDK injects this key into the headers for sensitive requests such as `/api/session/start`.
-  3. The backend validates the `x-api-key` header against the stored settings before allocating LLM tokens or initializing a session.
+- **Never commit** `SoulEngineSettings.asset` to source control if it contains real keys. Add it to `.gitignore`.
+- For production builds, consider loading keys from a separate encrypted config file rather than the ScriptableObject.
+- **Game Client API Key** (`x-api-key`): Required when communicating with the SoulEngine cloud backend (sync, history). Generated from the project settings page, hashed before storage server-side.
 
 ---
 
 ## Notes
 
 ### WebSocket Libraries for Unity
-- **NativeWebSocket**: `com.endel.nativewebsocket` (recommended)
-- **websocket-sharp**: Alternative option
+- **NativeWebSocket** (`com.endel.nativewebsocket`) — Recommended, works on all platforms
+- **websocket-sharp** — Alternative
 - Unity 6+ has built-in WebSocket support
 
-### Audio Format
+### Audio Formats
 - Deepgram expects: 16kHz, 16-bit PCM, mono
-- Cartesia returns: 24kHz, 16-bit PCM
-- Unity AudioClip: Convert as needed
+- Cartesia returns: 24kHz, 16-bit PCM (configurable)
+- Unity AudioClip: Convert with `AudioConverter` utility class
 
-### Sentis (Unity Inference Engine)
-- Silero VAD model (~1MB ONNX)
-- Runs on CPU, <1ms per 30ms audio chunk
-- Included in SDK package
+### Unity Sentis (Inference Engine)
+- Silero VAD model: ~1MB ONNX, included in package
+- <1ms per 30ms audio chunk on CPU
+- Fully cross-platform, no cloud dependency

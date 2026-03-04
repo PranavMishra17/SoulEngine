@@ -2083,6 +2083,7 @@ async function loadHistorySection(projectId, npcId) {
     } else {
       mindList.innerHTML = versions.map((entry, i) => {
         const ts = formatHistoryDate(entry.timestamp);
+        const isCurrent = i === 0; // Most recent snapshot = current state
         return `
           <div class="history-entry">
             <div class="history-timeline">
@@ -2099,6 +2100,10 @@ async function loadHistorySection(projectId, npcId) {
                   data-instance-id="${inst.id}"
                   data-version="${entry.version}"
                   data-ts="${escapeHtml(ts)}">View State</button>
+                ${!isCurrent ? `<button class="btn btn-ghost btn-xs mind-revert-btn"
+                  data-instance-id="${inst.id}"
+                  data-version="${entry.version}"
+                  data-ts="${escapeHtml(ts)}">Revert to this</button>` : ''}
               </div>
             </div>
           </div>
@@ -2107,6 +2112,14 @@ async function loadHistorySection(projectId, npcId) {
 
       mindList.querySelectorAll('.mind-view-btn').forEach(btn => {
         btn.addEventListener('click', () => openMindStateModal(
+          btn.dataset.instanceId,
+          btn.dataset.version,
+          btn.dataset.ts
+        ));
+      });
+
+      mindList.querySelectorAll('.mind-revert-btn').forEach(btn => {
+        btn.addEventListener('click', () => confirmMindRevert(
           btn.dataset.instanceId,
           btn.dataset.version,
           btn.dataset.ts
@@ -2188,6 +2201,26 @@ async function openMindStateModal(instanceId, version, ts) {
   } catch (err) {
     body.innerHTML = '<div class="history-empty">Failed to load mind state snapshot.</div>';
     console.error('[mind-history] snapshot load failed', err);
+  }
+}
+
+/**
+ * Confirm and execute a mind state revert
+ */
+async function confirmMindRevert(instanceId, version, ts) {
+  const confirmed = window.confirm(
+    `Revert this NPC's mind state to the snapshot from ${ts}?\n\nThe current state will be archived first, so this action is reversible.`
+  );
+  if (!confirmed) return;
+
+  try {
+    await history.rollback(instanceId, version);
+    toast.success('Reverted', `Mind state restored to snapshot from ${ts}.`);
+    historyLoaded = false;
+    loadHistorySection(currentProjectId, currentNpcId);
+  } catch (err) {
+    toast.error('Revert failed', err.message || 'Could not revert to that snapshot.');
+    console.error('[mind-history] revert failed', err);
   }
 }
 

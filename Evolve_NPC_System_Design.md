@@ -1,4 +1,4 @@
-# SoulEngine (Evolve.NPC v2.0)
+# SoulEngine (Evolve.NPC)
 
 **NPCs with memory, motive, and agency.**
 
@@ -8,13 +8,15 @@
 
 SoulEngine is a TypeScript framework for creating game characters that remember player interactions, evolve their personalities over time, speak with their own voices, and take actions in the game world. No persistent processes, no complex databases. NPCs are YAML files that become intelligent when queried against an LLM. Talk to them via text or voice (or any combination), they respond in kind through integrated STT/TTS pipelines. Define a character's childhood, principles, and personality once. The system handles the rest: forming memories, forgetting trivia, holding grudges, building relationships, and deciding when to call the cops on a threatening player. MCP-based tool system lets NPCs act on their decisions: lock doors, refuse service, alert guards, flee danger.
 
-**v2.0 Features:**
+**Core Features:**
 - **Multi-provider LLM support**: Gemini, OpenAI, Anthropic Claude, xAI Grok
-- **Flexible conversation modes**: Text↔Text, Voice↔Voice, Text→Voice, Voice→Text
+- **Flexible conversation modes**: Text-Text, Voice-Voice, Text-Voice, Voice-Text
 - **Player identity system**: NPCs can recognize and remember players
 - **Per-NPC memory retention**: Smart NPCs remember more, simpletons forget
 - **NPC profile pictures**: Visual identification in UI
-- **Dedicated settings page**: Per-project API key and provider configuration
+- **Dual storage backends**: Local filesystem (dev) + Supabase (production)
+- **BYOK security**: Per-project API key isolation with Game Client authentication
+- **Full version history**: NPC definitions and mind states are versioned and rollback-able
 
 Characters that listen, think, speak, and do.
 
@@ -24,7 +26,7 @@ Characters that listen, think, speak, and do.
 
 A lightweight, LLM-driven architecture that transforms static game NPCs into genuinely evolving entities. Unlike traditional scripted characters, these NPCs develop over time through player interactions, game events, and internal psychological cycles that mirror human memory formation and decay.
 
-The system operates on a fundamental insight: **humans don't remember everything**. We forget trivia, form habits through repetition, hold grudges from betrayals, and rarely change our core beliefs except through profound experiences. Evolve.NPC replicates these patterns through five interconnected psychological layers.
+The system operates on a fundamental insight: **humans don't remember everything**. We forget trivia, form habits through repetition, hold grudges from betrayals, and rarely change our core beliefs except through profound experiences. SoulEngine replicates these patterns through five interconnected psychological layers.
 
 ---
 
@@ -32,7 +34,7 @@ The system operates on a fundamental insight: **humans don't remember everything
 
 ### 1. Core Anchor (Immutable)
 
-Psychological DNA that never changes. A 100-200 token backstory encoding the character's fundamental worldview, childhood context, and 3-5 unbreakable principles. This foundation is **permanently immutable** - no trauma flags or milestone events can modify it. The anchor ensures characters remain recognizable across hundreds of interactions.
+Psychological DNA that never changes. A 100-200 token backstory encoding the character's fundamental worldview, childhood context, and 3-5 unbreakable principles. This foundation is **permanently immutable** — no trauma flags or milestone events can modify it. The anchor ensures characters remain recognizable across hundreds of interactions.
 
 ```
 core_anchor: {
@@ -42,11 +44,9 @@ core_anchor: {
 }
 ```
 
-A village elder who witnessed war as a child will carry that perspective forever. A merchant raised on honesty will struggle to lie even under pressure. The Core Anchor is enforced at both the cycle logic layer and storage layer - belt and suspenders.
+A village elder who witnessed war as a child will carry that perspective forever. A merchant raised on honesty will struggle to lie even under pressure. The Core Anchor is enforced at both the cycle logic layer and storage layer — belt and suspenders.
 
-**v2.0: Name Tolerance**
-
-NPCs are now instructed to be forgiving about slight name mispronunciations that occur due to STT transcription. A player saying "Slop" when the NPC's name is "Slorp" won't trigger frustration - the NPC assumes good intent and interprets close phonetic matches as their actual name.
+**Name Tolerance:** NPCs are instructed to be forgiving about slight name mispronunciations from STT transcription. A player saying "Slop" when the NPC's name is "Slorp" won't trigger frustration — the NPC assumes good intent and interprets close phonetic matches as their actual name.
 
 ### 2. Daily Pulse
 
@@ -62,34 +62,43 @@ daily_pulse: {
 
 The barista who had a rough morning carries irritability into afternoon interactions. The guard who received good news is more lenient at the gate. Small emotional threads that make characters feel present in time.
 
+**Token cost: ~200 tokens.** Accepts optional game context (events list, overall mood, notable interactions) to give the NPC narrative grounding without requiring direct player input.
+
 ### 3. Weekly Whisper
 
-Short-term memory curation with **cyclic pruning**. Most interactions fade, but emotionally significant events persist based on salience scoring. This is a **replacement** operation, not append. The system retains configurable N memories (default: 3) per cycle, aggressively discarding the rest.
+Short-term memory curation with **cyclic pruning and LLM synthesis**. Most interactions fade, but emotionally significant events persist based on salience scoring. This is a **replacement** operation, not append. The system retains configurable N memories per cycle, aggressively discarding the rest.
+
+**Two-stage memory pipeline:**
+
+1. **Prune:** Sort STM by salience. Keep top N (default: 3), discard the rest.
+2. **Synthesize:** Run high-salience STM entries through an LLM to produce condensed, insight-level LTM entries. Multiple raw session memories are compressed into a single meaningful observation. Synthesized entries receive elevated salience (`avg + 0.1`, capped at 0.95).
+3. **Promote:** Move synthesized memories to LTM. Remove promoted entries from STM (no duplication).
 
 ```
 weekly_whisper: {
-  retained_memories: Memory[],  // Replaces previous, not appends
+  retained_memories: Memory[],  // Replaces previous STM, not appends
+  ltm_entries: Memory[],        // Synthesized long-term memories
   last_run: ISO8601
 }
 ```
 
-**v2.0: Per-NPC Memory Retention**
+**Per-NPC Memory Retention:**
 
-Each NPC now has a configurable `salience_threshold` (0.0-1.0) that controls how well they remember:
+Each NPC has a configurable `salience_threshold` (0.0-1.0) that controls how well they remember:
 
 | Memory Retention | Threshold | Behavior |
 |-----------------|-----------|----------|
-| 80-100% (Genius) | 0.35-0.47 | Remembers small details, longer summaries |
-| 40-60% (Average) | 0.59-0.71 | Standard memory retention |
+| 80-100% (Genius) | 0.35-0.47 | Remembers small details, 2-sentence summaries |
+| 40-60% (Average) | 0.59-0.71 | Standard memory retention, 1-sentence summaries |
 | 0-20% (Dimwit) | 0.83-0.95 | Struggles to recall, brief summaries |
 
-This affects both Weekly Whisper (how many memories get promoted to LTM) and conversation summarization (how detailed the NPC's recap is).
+**Telephone Game Logic:** Session raw dialogue → summarized STM entry → weekly synthesis → condensed LTM. Old raw data is aggressively discarded at each stage. Only high-salience insights persist long-term.
 
-**Telephone Game Logic:** Day -> Summary -> Week -> Summary -> Core. Old raw data is aggressively discarded after each summarization step. Only high-salience summaries persist long-term, preventing unbounded memory growth.
+**Token cost: ~500 tokens.**
 
 ### 4. Persona Shift
 
-Major personality recalibration triggered at developer-defined intervals. The system reviews accumulated experiences, cross-references against the Core Anchor, and modifies active personality traits within bounded limits. Friendships deepen or dissolve. New habits form. Tone shifts naturally.
+Major personality recalibration triggered at developer-defined intervals. The system reviews accumulated experiences (LTM), cross-references against the Core Anchor, and modifies active personality traits within bounded limits. Friendships deepen or dissolve. New habits form. Tone shifts naturally.
 
 ```
 persona_shift: {
@@ -101,33 +110,40 @@ persona_shift: {
 
 The interval is entirely game-dependent. A survival game might trigger shifts after each in-game month. A social sim might run them weekly. A noir detective story might reserve shifts for act breaks.
 
-This is where genuine character development occurs. An NPC who experiences repeated kindness from a player gradually opens up. One who faces constant hostility hardens. Evolution happens organically, not through developer scripting.
+**Important:** Persona Shift can modify personality traits but NEVER the Core Anchor. Any LLM suggestions to modify the anchor are logged and ignored. Trait changes are bounded to [-0.1, +0.1] per cycle.
 
-**Important:** Persona Shift can modify personality traits but NEVER the Core Anchor. Any LLM suggestions to modify the anchor are logged and ignored.
+**Token cost: ~1000 tokens.**
 
-### 5. Player Identity & Network (v2.0)
+### 5. Player Identity & Network
 
-NPCs can now recognize players before conversation starts. Developers configure whether an NPC "knows" the player:
+NPCs can recognize players before conversation starts. Developers configure whether an NPC "knows" the player:
 
 ```
 player_recognition: {
   reveal_player_identity: boolean,  // Include player info in NPC context
-  default_player_tier: 1 | 2 | 3    // How well NPC knows player
 }
 ```
 
 When a session starts with player info provided, the NPC's system prompt includes:
 - Player's name (so NPC can address them)
 - Description (what the NPC sees)
-- Context (relationship notes)
+- Role and context (relationship notes)
 
-**Bidirectional Network Awareness:** The existing NPC network now supports one-sided relationships:
-- "You know them, and they know you back" (mutual)
-- "You know of them (famous), but they don't know you" (reverse context)
+**NPC Social Graph (Network):**
+
+Each NPC has a network of relationships with other NPCs, with tiered familiarity:
+
+| Tier | Label | Information Shared |
+|------|-------|-------------------|
+| 1 | Acquaintance | Name + brief description |
+| 2 | Familiar | + backstory + schedule/location |
+| 3 | Close | + personality traits + principles + trauma flags |
+
+Networks support **bidirectional awareness**: "You know them, and they know you back" (mutual) or "You know of them (famous), but they don't know you" (reverse context only).
 
 ### 6. MCP Action Layer
 
-NPCs don't just talk. They act. Through Model Context Protocol tools, characters execute world actions with real consequences. Two distinct tool categories serve different decision sources:
+NPCs don't just talk. They act. Through Model Context Protocol tools, characters execute world actions with real consequences. Two distinct tool categories:
 
 **Conversation Tools**: The LLM decides to invoke based on dialogue context. A player threatens the barista. The LLM decides to call the police. The decision emerges from the character's personality, current mood, and relationship with the player.
 
@@ -144,7 +160,7 @@ mcp_registry: {
 }
 ```
 
-The `exit_convo` tool is special - injected only when moderation flags inappropriate content, allowing the NPC to end conversation gracefully while staying in character.
+The `exit_convo` tool is special — injected only when moderation flags inappropriate content, allowing the NPC to end conversation gracefully while staying in character.
 
 ---
 
@@ -154,38 +170,52 @@ The `exit_convo` tool is special - injected only when moderation flags inappropr
 
 **Critical Design Decision:** The backend is **stateful during conversations** but **stateless between conversations**.
 
-When a conversation begins, the NPC's JSON state is "hydrated" into an ephemeral in-memory session. All state changes (mood updates, STM additions, conversation history) happen in RAM. Persistence (writing to JSON) happens **only on session_end** or explicit force_save.
+When a conversation begins, the NPC's JSON state is "hydrated" into an ephemeral in-memory session. All state changes (mood updates, STM additions, conversation history) happen in RAM. Persistence (writing to storage) happens **only on session_end** or explicit force_save.
 
 ```
 Session Lifecycle:
 1. START  -> Client requests NPC -> Server loads from storage, caches in RAM with SessionID
-2. CHAT   -> WebSocket uses SessionID -> Server appends to RAM state
-3. END    -> Server summarizes, updates state -> Writes to storage -> Returns sync confirmation -> Dumps RAM
+2. CHAT   -> SessionID -> Server appends to RAM state
+3. END    -> Server summarizes, updates state -> Writes to storage -> Archives version -> Dumps RAM
 ```
 
 **Trade-off acknowledged:** If connection drops or player force-quits before "End" signal, that conversation's memory is lost. This is acceptable for most game scenarios and dramatically simplifies the architecture.
 
 **Scalability:** 1000 concurrent NPCs = 1000 open WebSockets. Node/Bun handles this trivially. No database writes during conversation. No per-NPC background processes.
 
-### State Storage with History
+### Dual Storage Backend
 
-NPC states are stored on the server with optional version history (git-like commits):
+The system runs identically in two storage modes, selected automatically at startup:
+
+| Mode | When | Storage |
+|------|------|---------|
+| **Local** | Development (`NODE_ENV != production` or no Supabase env) | Filesystem: `./data/` |
+| **Supabase** | Production (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY set) | PostgreSQL via Supabase |
+
+`getStorageForUser(userId)` returns the appropriate backend based on authentication context. Authenticated dashboard users always get Supabase; unauthenticated local dev gets filesystem. All storage operations have identical interfaces in both backends.
+
+### Instance State with Version History
+
+Every NPC instance (a specific NPC-player pair) has full version history. On every `saveInstance()` call, the previous state is archived before the new one is written.
 
 ```
+Local:
 data/instances/{instance_id}/
   current.json          # Latest state
   history/
-    {timestamp}_v1.json
-    {timestamp}_v2.json
+    {timestamp}.json    # v1
+    {timestamp}.json    # v2
     ...
+
+Supabase:
+npc_instance_history table:
+  instance_id TEXT
+  version     INTEGER
+  state       JSONB     # Full NPCInstance snapshot
+  timestamp   TIMESTAMPTZ
 ```
 
-On session end, the server:
-1. Writes updated state to `current.json`
-2. Optionally archives previous state to `history/` with timestamp
-3. Returns sync confirmation to client
-
-This enables rollback if an NPC gets into a bad state, and provides audit trail for debugging personality drift.
+This happens on every **session end**, **daily pulse**, **weekly whisper**, and **persona shift**. The UI exposes all versions and supports rollback to any prior state.
 
 ### State Flow
 
@@ -203,7 +233,7 @@ SERVER STORAGE                    SERVER RAM                      CLIENT
      |                                 |  (all changes in RAM)        |
      |                                 |                              |
      |                                 |  [Session end]               |
-     |  [Write + archive]              |<-----------------------------|
+     |  [Write + archive version]      |<-----------------------------|
      |<-------------------------------|  { type: 'end' }             |
      |                                 |                              |
      |                                 |  [Return sync]               |
@@ -223,9 +253,9 @@ The same NPC definition works across web testing (text), voice demos (audio), an
 
 We use **LiveKit's TypeScript SDK** for STT/TTS integration patterns and audio utilities, but **NOT** their agent worker or room-based architecture. Instead, we implement a custom VoicePipeline class over standard WebSocket connections for maximum control and scalability.
 
-### v2.0: Conversation Modes
+### Conversation Modes
 
-The pipeline now supports four conversation modes, enabling flexible input/output combinations:
+The pipeline supports four conversation modes, enabling flexible input/output combinations:
 
 | Mode | Input | Output | Use Case |
 |------|-------|--------|----------|
@@ -262,13 +292,13 @@ async initialize(): Promise<void> {
 class VoicePipeline {
   private sttStream: DeepgramLiveClient;
   private ttsStream: CartesiaWebSocket;
-  private mode: ConversationMode;  // v2.0: Mode awareness
-  
+  private mode: ConversationMode;
+
   private isAgentSpeaking: boolean = false;
   private abortController: AbortController;
 
   constructor(
-    private session: Session, 
+    private session: Session,
     private config: VoiceConfig,
     mode: ConversationMode = { input: 'voice', output: 'voice' }
   ) {
@@ -277,20 +307,11 @@ class VoicePipeline {
     if (mode.output === 'voice') this.setupTTS();
   }
 
-  // Audio from client (voice-* modes)
-  public pushAudio(chunk: Buffer): void
-
-  // Text from client (text-* modes) - v2.0
-  public async handleTextInput(text: string): Promise<void>
-
-  // STT transcript -> LLM processing
-  private onTranscript(text: string, isFinal: boolean): void
-
-  // LLM streaming -> TTS streaming (if voice output)
-  private async processTurn(input: string): Promise<void>
-
-  // Client interruption -> cancel generation
-  public handleInterruption(): void
+  public pushAudio(chunk: Buffer): void         // Audio from client (voice-* modes)
+  public async handleTextInput(text: string)    // Text from client (text-* modes)
+  private onTranscript(text: string, isFinal: boolean): void  // STT -> LLM
+  private async processTurn(input: string)      // LLM -> TTS (if voice output)
+  public handleInterruption(): void             // Cancel generation
 }
 ```
 
@@ -311,15 +332,18 @@ Client Audio (VAD-filtered)
 [Context Assembly]
     |
     v
-[LLM - Gemini Streaming]
+[LLM - Streaming]
     |
     | token stream
+    v
+[Narration Filter]       <- Strip stage directions (text and voice)
+    |
     v
 [Sentence Detector]
     |
     | complete sentences
     v
-[TTS - Cartesia WebSocket]
+[TTS - Cartesia/ElevenLabs WebSocket]
     |
     | audio chunks
     v
@@ -328,20 +352,21 @@ Client Speaker
 
 Key principle: **Stream at every stage**. Don't wait for full LLM response before starting TTS. Detect sentence boundaries and synthesize incrementally.
 
+**Narration Stripping:** All NPC responses are post-processed before storage and playback. Parenthetical stage directions `(Osman frowns)` and asterisk actions `*sighs*` are stripped at the line level, ensuring clean dialogue output regardless of LLM tendency toward roleplay formatting. This runs on both text and voice modes.
+
 ### TTS Provider Configuration
 
-**Default: Cartesia** - Fastest latency (40ms), cost-effective, good voice quality.
+**Default: Cartesia** — Fastest latency (40ms), cost-effective, good voice quality.
 
-**Available alternatives** (configurable via environment):
-- ElevenLabs - Premium quality, most voice variety, higher cost
-- Deepgram Aura - Enterprise reliability, limited voices
-- PlayHT - Middle ground option
+**Available alternatives** (configurable per project):
+- ElevenLabs — Premium quality, most voice variety, higher cost
+- Deepgram Aura — Enterprise reliability, limited voices
 
 ```typescript
-// Provider selection in config
-TTS_PROVIDER=cartesia  // default
-// TTS_PROVIDER=elevenlabs
-// TTS_PROVIDER=deepgram
+// Provider selection in project settings
+llm_provider: 'gemini' | 'openai' | 'anthropic' | 'grok'
+tts_provider: 'cartesia' | 'elevenlabs'
+stt_provider: 'deepgram'
 ```
 
 ---
@@ -354,7 +379,7 @@ TTS_PROVIDER=cartesia  // default
 Player Input
     |
     v
-[1. INPUT SANITIZATION]     <- Max length, rate limit, pattern strip
+[1. INPUT SANITIZATION]     <- Max length, rate limit, pattern strip, XSS escape
     |
     v
 [2. MODERATION CHECK]       <- Content policy, inject exit_convo if flagged
@@ -369,23 +394,27 @@ Player Input
 [5. LLM CALL]
     |
     v
-[6. TOOL VALIDATION]        <- Permission check, exit_convo handling
+[6. NARRATION STRIP]        <- Remove stage directions from response
     |
     v
-[7. RESPONSE STREAMING]
+[7. TOOL VALIDATION]        <- Permission check, exit_convo handling
     |
     v
-[8. MEMORY CREATION]        <- Summarize (never raw), skip if exit_convo
+[8. RESPONSE STREAMING]
     |
     v
-[9. STATE UPDATE & SAVE]    <- Anchor immutability enforced
+[9. MEMORY CREATION]        <- Summarize (never raw), skip if exit_convo
+    |
+    v
+[10. STATE UPDATE & SAVE]   <- Anchor immutability enforced, version archived
 ```
 
 ### Security Measures
 
 **Input Sanitization:**
-- Max input length: 500 characters
+- Max input length: 2000 characters (configurable)
 - Rate limiting: 10 messages per minute per player per NPC
+- HTML entity escaping for XSS prevention
 - Pattern stripping for obvious injection attempts
 
 **Moderation + exit_convo:**
@@ -395,17 +424,22 @@ Player Input
 
 **Immutable Core Anchors:**
 - Enforced in Persona Shift logic (ignore LLM suggestions)
-- Enforced in storage layer (reject anchor changes on save)
+- Enforced at session end (anchor integrity verified against session-start snapshot)
 - Trauma flags recorded for narrative tracking only
 
-**Memory Summarization:**
-- Never store raw player input
-- LLM summarizes from NPC perspective (2-3 sentences)
-- Injection attempts defanged through summarization
+**Memory Summarization (Injection Hardening):**
+- Never store raw player input — always summarize from NPC perspective
+- Summarization prompt is detective-note style: capture specific facts, phrases, names
+- `filterInjectionPatterns()` strips instruction-injection attempts (`ignore previous`, `[SYSTEM: ...]`) but deliberately preserves quoted phrases and content the player intended to share
+- Max summary length: 500 characters
+
+**Narration Filtering:**
+- Server-side post-processing strips `(parenthetical stage directions)` and `*action asterisks*` from all LLM responses before storing or streaming to clients
+- Fallback to original text if stripping removes everything (prevents empty responses)
 
 **BYOK & Game Client Security:**
-- **Bring Your Own Key (BYOK):** Developers provide their own LLM API keys via the project settings.
-- **Game Client API Key:** To prevent abuse of the BYOK model (e.g. malicious users extracting API access through the endpoints), unity game instances are authenticated using a required `x-api-key` header when initiating a session, preventing unauthorized token utilization.
+- **Bring Your Own Key (BYOK):** Developers provide their own LLM/TTS/STT API keys per project via the settings page. Keys are AES-encrypted at rest, resolved per-request via `resolveProjectLlmProvider()`.
+- **Game Client API Key:** To prevent abuse of the BYOK model, external game clients must include a `x-api-key` header when initiating sessions. The key is stored as a SHA-256 hash only (never plaintext). The gate only applies to unauthenticated requests — dashboard users bypass it automatically.
 
 ---
 
@@ -414,19 +448,240 @@ Player Input
 Cycles are never auto-triggered. The host (game or web UI) explicitly calls these endpoints. This allows games to batch process during loading screens or rest sequences.
 
 ```
-POST /api/session/:sessionId/daily-pulse
-  body: { game_context?: DayContext }
-  effect: Summarizes day, updates mood baseline, captures takeaway
+POST /api/instances/:instanceId/daily-pulse
+  body: { game_context?: { events?, overallMood?, interactions? } }
+  effect: Summarizes day, updates mood baseline, captures 1-sentence takeaway
+  cost: ~200 tokens
 
-POST /api/session/:sessionId/weekly-whisper
+POST /api/instances/:instanceId/weekly-whisper
   body: { retain_count?: number }
-  effect: Curates STM, REPLACES with high-salience selections, purges rest
+  effect: Prunes STM → LLM synthesizes to LTM → STM cleared of promoted entries
+  cost: ~500 tokens
 
-POST /api/session/:sessionId/persona-shift
-  effect: Major review, can modify personality traits (NOT anchor), update relationships
+POST /api/instances/:instanceId/persona-shift
+  body: {}
+  effect: Major review, modifies personality traits (NOT anchor), updates relationships
+  cost: ~1000 tokens
 ```
 
-Token costs per cycle: Daily Pulse ~200, Weekly Whisper ~500, Persona Shift ~1000. These run asynchronously and are not latency-sensitive.
+All cycle endpoints:
+- Load per-project BYOK LLM provider (fall back to global default)
+- Save updated instance state and archive a new version
+- Return cycle result metrics (counts, changes, timestamps)
+
+---
+
+## NPC Definition Version History
+
+Every time an NPC definition is saved with at least one changed field, the previous state is archived. This gives developers a full audit trail and the ability to revert any NPC blueprint to any prior state.
+
+### How It Works
+
+1. On every `updateDefinition()` call, `computeChangedFields()` diffs the incoming update against the current definition.
+2. If any fields changed, the **current** definition is inserted into `npc_definition_history` before the update is applied.
+3. The `npc_definitions.version` counter increments with each archived save.
+4. **Rollback** fetches a snapshot from history, archives the current state as a new version, and writes the snapshot back as the new current — making every revert itself reversible.
+5. No pruning by default (definitions change infrequently). Full snapshots are stored (~3KB each).
+
+### Database Tables (Supabase)
+
+```sql
+-- Version column added to npc_definitions
+npc_definitions.version  INTEGER DEFAULT 1
+
+-- Full snapshot archive
+npc_definition_history (
+  id            UUID,
+  definition_id TEXT FK -> npc_definitions,
+  version       INTEGER,      -- version number at time of archival
+  snapshot      JSONB,        -- full NPCDefinition at that version
+  changed_fields TEXT[],      -- field names that changed (e.g. ["personality_baseline"])
+  created_at    TIMESTAMPTZ
+)
+```
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/projects/:projectId/npcs/:npcId/history` | List version metadata (no snapshots) |
+| `GET` | `/api/projects/:projectId/npcs/:npcId/history/:version` | Fetch full snapshot for a version |
+| `POST` | `/api/projects/:projectId/npcs/:npcId/rollback` | Body: `{ version }` — revert to that version |
+
+### Web UI (History Tab — Definition Section)
+
+The NPC editor History tab shows a vertical timeline of definition versions. Each entry displays:
+- Version number + timestamp
+- Pill tags for changed fields (e.g. `personality_baseline`, `core_anchor`)
+- "View" button: opens a two-column diff modal comparing the snapshot to the current state
+- "Revert to vN" button: prompts for confirmation, then calls the rollback API and reloads
+
+---
+
+## NPC Mind State Version History
+
+Every save of an NPC's runtime instance state creates a versioned snapshot. This captures the evolving mind of the NPC over time — memory growth, mood drift, trait changes.
+
+### When Snapshots Are Created
+
+| Trigger | Endpoint |
+|---------|---------|
+| Session end | `POST /api/session/:sessionId/end` |
+| Daily Pulse | `POST /api/instances/:instanceId/daily-pulse` |
+| Weekly Whisper | `POST /api/instances/:instanceId/weekly-whisper` |
+| Persona Shift | `POST /api/instances/:instanceId/persona-shift` |
+| Manual rollback (the rollback itself is archived) | `POST /api/instances/:instanceId/rollback` |
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/instances/:instanceId/history` | List all instance snapshots (version + timestamp) |
+| `GET` | `/api/instances/:instanceId/history/:version` | Fetch full NPCInstance at that version |
+| `POST` | `/api/instances/:instanceId/rollback` | Body: `{ version }` — restore mind state to that snapshot |
+
+### Web UI (History Tab — Mind State Section)
+
+The Mind State section appears at the top of the History tab (above Definition History):
+
+- Each entry shows: version identifier + formatted timestamp
+- **"View State"** button: opens a modal showing the full mind snapshot:
+  - Mood bars (Valence / Arousal / Dominance as visual progress bars)
+  - Short-Term Memory list (content + salience + timestamp per entry)
+  - Long-Term Memory list
+  - Trait Modifiers (only non-zero deltas shown)
+  - Daily Pulse takeaway text
+  - Cycle Metadata (last weekly whisper / last persona shift timestamps)
+- **"Revert to this"** button (hidden for the most recent / current snapshot): restores the instance to that state after confirmation. The current state is archived first, so the revert is itself reversible.
+
+---
+
+## NPC Definition Fields
+
+### Full Schema
+
+```typescript
+NPCDefinition {
+  id: string                        // Unique identifier
+  project_id: string
+  name: string                      // Display name (1-100 chars)
+  description: string               // Brief external description (what others see)
+  status: 'draft' | 'complete'     // Configuration completeness
+
+  // Core Psychology (immutable in production)
+  core_anchor: {
+    backstory: string               // Up to 2000 chars
+    principles: string[]            // Up to 10 principles, 500 chars each
+    trauma_flags: string[]          // Sensitive topics, narrative use only
+  }
+
+  // Personality (Big Five model, all 0-1)
+  personality_baseline: {
+    openness: number
+    conscientiousness: number
+    extraversion: number
+    agreeableness: number
+    neuroticism: number
+  }
+
+  // Voice
+  voice: {
+    provider: 'cartesia' | 'elevenlabs'
+    voice_id: string
+    speed: number                   // 0.5 - 2.0
+  }
+
+  // World presence
+  schedule: ScheduleBlock[] {
+    start: string                   // ISO 8601 time
+    end: string
+    location_id: string             // Game-world location reference
+    activity: string                // What NPC is doing
+  }
+
+  // MCP tool access
+  mcp_permissions: {
+    conversation_tools: string[]    // Tools NPC can invoke from dialogue
+    game_event_tools: string[]      // Tools game can trigger on NPC
+    denied: string[]                // Explicitly blocked tools
+  }
+
+  // Knowledge base access
+  knowledge_access: Record<string, number>
+  // Maps knowledge category ID -> depth level (0-N)
+
+  // Social graph
+  network: NPCNetworkEntry[] {
+    npc_id: string
+    familiarity_tier: 1 | 2 | 3
+    mutual_awareness?: boolean
+    reverse_context?: string
+  }
+
+  // Player identity
+  player_recognition: {
+    reveal_player_identity: boolean
+  }
+
+  // Memory intelligence
+  salience_threshold: number        // 0-1, default 0.7
+
+  // Avatar
+  profile_image?: string            // Stored filename
+
+  // Version tracking
+  version?: number                  // Incremented on every definition save
+}
+```
+
+---
+
+## NPC Instance (Runtime Mind State)
+
+```typescript
+NPCInstance {
+  id: string
+  definition_id: string
+  project_id: string
+  player_id: string
+
+  // Current emotional state (MoodVector all 0-1)
+  current_mood: {
+    valence: number          // How positive/negative
+    arousal: number          // How energized/calm
+    dominance: number        // How in-control/submissive
+  }
+
+  // Personality drift from baseline
+  trait_modifiers: Partial<PersonalityBaseline>
+  // Bounded to [-0.3, +0.3], final = baseline + modifier (clamped 0-1)
+
+  // Memory
+  short_term_memory: Memory[]      // Session-scoped, pruned at weekly whisper
+  long_term_memory: Memory[]       // Synthesized and persistent, pruned when over limit
+  // Memory = { id, content, timestamp, salience, type }
+
+  // Player relationship
+  relationships: Record<string, {
+    trust: number                  // 0-1
+    familiarity: number            // 0-1
+    sentiment: number              // -1 to 1
+  }>
+
+  // Daily state
+  daily_pulse: {
+    mood: MoodVector
+    takeaway: string               // 1-sentence day reflection
+    timestamp: string
+  } | null
+
+  // Cycle tracking
+  cycle_metadata: {
+    last_weekly: string | null
+    last_persona_shift: string | null
+  }
+}
+```
 
 ---
 
@@ -441,22 +696,19 @@ Token costs per cycle: Daily Pulse ~200, Weekly Whisper ~500, Persona Shift ~100
 
 ### Providers
 
-**v2.0: Factory Pattern for All Providers**
-
 The system uses a factory pattern for LLM, STT, and TTS providers, enabling runtime switching via configuration:
 
 ```typescript
-// LLM Provider Factory
 const llmProvider = createLlmProvider({
   provider: 'gemini',  // or 'openai', 'anthropic', 'grok'
   apiKey: config.providers.geminiApiKey,
-  model: 'gemini-2.5-flash',
+  model: 'gemini-2.0-flash',
 });
 ```
 
 | Provider Type | Options | Default | Library |
 |---------------|---------|---------|---------|
-| **LLM** | Gemini, OpenAI, Anthropic, Grok | Gemini 2.5 Flash | Native fetch streaming |
+| **LLM** | Gemini, OpenAI, Anthropic, Grok | Gemini 2.0 Flash | Native fetch streaming |
 | **STT** | Deepgram | Deepgram Nova-2 | `@deepgram/sdk` |
 | **TTS** | Cartesia, ElevenLabs | Cartesia Sonic | Native WebSocket |
 
@@ -464,19 +716,18 @@ const llmProvider = createLlmProvider({
 
 | Provider | Default Model | Other Models | Notes |
 |----------|---------------|--------------|-------|
-| Google Gemini | gemini-2.5-flash | gemini-2.5-pro, gemini-1.5-pro | Fastest, recommended |
+| Google Gemini | gemini-2.0-flash | gemini-2.0-flash-exp, gemini-pro | Fastest, recommended |
 | OpenAI | gpt-4o | gpt-4o-mini, gpt-4-turbo | Best quality |
 | Anthropic | claude-3-5-sonnet | claude-3-opus, claude-3-haiku | Strong reasoning |
 | xAI Grok | grok-beta | - | Experimental |
 
-**Why WebSocket for STT/TTS?** REST APIs add per-request latency. WebSocket connections stay open, enabling true streaming with sub-100ms time-to-first-audio.
-
 ### Storage
 
-- **NPC State**: JSON files with version history
-- **Active Sessions**: In-memory Map (RAM)
-- **Project Config**: YAML files, loaded at startup
-- **Future**: SQLite or Postgres for multi-tenant SaaS
+- **NPC State**: JSON files with version history (local) or Supabase PostgreSQL (production)
+- **Active Sessions**: In-memory Map (RAM only, no write during conversation)
+- **Project Config**: Database/YAML files
+- **API Keys**: AES-encrypted, never stored in plaintext
+- **Images**: Local filesystem (dev) or Supabase Storage (production)
 
 ### Dependencies
 
@@ -489,7 +740,8 @@ const llmProvider = createLlmProvider({
   "hono": "Web framework",
   "zod": "Schema validation",
   "pino": "Structured logging",
-  "ws": "WebSocket server"
+  "ws": "WebSocket server",
+  "@supabase/supabase-js": "Production storage"
 }
 ```
 
@@ -535,151 +787,124 @@ Client-side (Web):
 
 ---
 
-## NPC Definition Version History
+## Web UI
 
-Every time an NPC definition is saved with at least one changed field, the previous state is archived. This gives developers a full audit trail and the ability to revert any NPC blueprint to any prior state.
+The framework includes a complete web-based management and testing interface built as a vanilla JS SPA (no build step).
 
-### How It Works
+### Project Management
 
-1. On every `updateDefinition()` call, `computeChangedFields()` diffs the incoming update against the current definition.
-2. If any fields changed, the **current** definition is inserted into `npc_definition_history` before the update is applied.
-3. The `npc_definitions.version` counter increments with each archived save.
-4. **Rollback** fetches a snapshot from history, archives the current state as a new version, and writes the snapshot back as the new current — making every revert itself reversible.
-5. No pruning by default (definitions change infrequently). Full snapshots are stored (~3KB each).
+- Create/manage multiple NPC projects
+- **Settings Page** for each project with:
+  - LLM provider selection (Gemini, OpenAI, Anthropic, Grok) + model selection
+  - API key management (AES-encrypted storage, never exposed after entry)
+  - TTS/STT provider configuration
+  - Game Client API Key generation and revocation (for external game clients)
+  - Import API keys from another project
 
-### Database Tables
+### NPC Editor
 
-```sql
--- Version column added to npc_definitions
-npc_definitions.version  INTEGER DEFAULT 1
+**9-tab editor** for complete NPC configuration:
 
--- Full snapshot archive
-npc_definition_history (
-  id            UUID,
-  definition_id TEXT FK → npc_definitions,
-  version       INTEGER,      -- version number at time of archival
-  snapshot      JSONB,        -- full NPCDefinition at that version
-  changed_fields TEXT[],      -- field names that changed (e.g. ["personality_baseline"])
-  created_at    TIMESTAMPTZ
-)
-```
+1. **Basic Info** — Name, description, draft/complete status, profile picture upload
+2. **Core Anchor** — Backstory, principles (tag input), trauma flags (tag input)
+3. **Personality** — Big Five sliders, personality template presets (6+ archetypes), memory retention slider mapped to salience threshold
+4. **Voice** — Provider selection, voice browser with sample playback, speed control
+5. **Knowledge Access** — Knowledge category browser with depth-level assignment per NPC
+6. **Schedule** — Time-block builder for location and activity routines
+7. **MCP Tools** — Tool permission assignment (conversation vs game-event, with deny list)
+8. **Network** — NPC social graph builder: add relationships with familiarity tiers, mutual/one-sided awareness
+9. **History** — Version timeline with two sub-sections:
+   - **Mind State** (primary): All instance snapshots with "View State" and "Revert to this" buttons
+   - **Definition** (secondary): All definition change versions with field-level diff view and "Revert to vN" buttons
 
-### API Endpoints
+### Testing Playground
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/projects/:projectId/npcs/:npcId/history` | List version metadata (no snapshots) |
-| `GET` | `/api/projects/:projectId/npcs/:npcId/history/:version` | Fetch full snapshot for a version |
-| `POST` | `/api/projects/:projectId/npcs/:npcId/rollback` | Body: `{ version }` — revert to that version |
+- **Conversation mode selector** (4 modes: text-text, voice-voice, text-voice, voice-text)
+- Real-time chat with NPCs (streaming response)
+- Player identity configuration (name, description, role, context)
+- **Live NPC State panel** in sidebar showing:
+  - Current mood (valence/arousal/dominance as progress bars) + mood emoji label
+  - Short-term and long-term memory counts
+  - Latest memory snippet
+  - Daily pulse takeaway
+- **Cycles panel** for triggering daily-pulse, weekly-whisper, persona-shift directly
+- **World Context panel** showing project context:
+  - Project info (ID, settings)
+  - NPC roster (all NPCs in project)
+  - Knowledge base tiers
+  - Available MCP tools
 
-### Web UI (History Tab)
+### Starter Packs
 
-The NPC editor sidebar has a **History** tab that shows a vertical timeline of versions. Each entry displays:
-- Version number + timestamp
-- Pill tags for changed fields (e.g. `personality_baseline`, `core_anchor`)
-- "View" button: opens a two-column diff modal comparing the snapshot to the current state
-- "Revert to vN" button: prompts for confirmation, then calls the rollback API and reloads
-
-### Unity SDK
-
-The `SyncManager` exposes three methods for working with history from the Unity client:
-
-```csharp
-// List all archived versions (metadata only)
-List<DefinitionHistoryEntry> history = await SyncManager.GetDefinitionHistoryAsync(projectId, npcId);
-
-// Fetch full snapshot for a specific version
-DefinitionHistorySnapshot snap = await SyncManager.GetDefinitionSnapshotAsync(projectId, npcId, version);
-
-// Revert to a prior version (archives current first, saves locally after)
-NPCDefinition restored = await SyncManager.RollbackDefinitionAsync(projectId, npcId, targetVersion);
-```
-
-After `RollbackDefinitionAsync`, the SDK calls `LocalStorage.SaveDefinition(restored)` so the next session starts from the rolled-back state without requiring another cloud pull.
+Pre-built NPC templates that can be loaded into a project as a starting point. Includes full definition, starter knowledge, and example tool configurations.
 
 ---
 
-## Unity Integration (Future)
+## API Overview
 
-The TypeScript backend and web testing UI are stepping stones to the primary goal: a Unity SDK that game developers can drop into their projects.
+### Session
 
-### Integration Model
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/session/start` | Start conversation; input: project_id, npc_id, player_id, optional player_info, mode |
+| POST | `/api/session/:id/end` | End session, persist memory, archive version |
+| GET | `/api/session/:id` | Get session state |
 
-Unity game connects to Evolve.NPC backend via **standard WebSocket** (not WebRTC). This is simpler to implement, easier to load balance, and doesn't require a media server.
+### Conversation
 
-```
-Unity Client                          Evolve.NPC Server
-     |                                      |
-     |-- WebSocket Connect ---------------->|
-     |-- { type: 'init', instance_id } ---->|
-     |<-- { type: 'ready', ... } -----------|
-     |                                      |
-     |-- Audio chunks (VAD active) -------->|
-     |-- { type: 'commit' } --------------->|
-     |<-- { type: 'text_chunk', ... } ------|
-     |<-- { type: 'audio_chunk', ... } -----|
-     |<-- { type: 'generation_end' } -------|
-     |                                      |
-     |-- { type: 'end' } ------------------>|
-     |<-- { type: 'sync', success: true } --|
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/session/:id/message` | Send message; rate-limited, moderated, streams response |
+| GET | `/api/session/:id/history` | Get conversation history |
 
-### SDK Responsibilities
+### Cycles
 
-- C# WebSocket client wrapper
-- NPC component (MonoBehaviour) for easy scene integration
-- Microphone capture with VAD (Silero via Unity Sentis/Inference Engine)
-- Audio playback with queue management
-- Tool bridge for registering game-side handlers
-- Update cycle triggers for game time integration
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/instances/:id/daily-pulse` | Capture daily emotional state |
+| POST | `/api/instances/:id/weekly-whisper` | Curate STM, synthesize to LTM |
+| POST | `/api/instances/:id/persona-shift` | Recalibrate personality from experiences |
 
-### Unity VAD Solution
+### Instance History
 
-**Silero VAD + Unity Sentis (now Inference Engine)**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/instances/:id/history` | List all mind state snapshots |
+| GET | `/api/instances/:id/history/:version` | Fetch specific snapshot |
+| POST | `/api/instances/:id/rollback` | Restore mind state to version |
+| GET | `/api/instances/:id` | Current instance state |
 
-- Load `silero_vad.onnx` model via Unity Sentis
-- Process 30ms audio chunks in <1ms on CPU
-- Runs entirely client-side, saves bandwidth
-- Cross-platform: Windows, Mac, iOS, Android
-- MIT licensed, no cloud dependency
+### Projects
 
-### What Stays in Unity
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET/POST | `/api/projects` | List / create projects |
+| GET/PUT/DELETE | `/api/projects/:id` | Get / update / delete project |
+| GET/PUT | `/api/projects/:id/keys` | API key management |
+| POST/DELETE/GET | `/api/projects/:id/api-key` | Game Client API Key management |
+| GET | `/api/projects/:id/voices` | List available voices |
+| GET | `/api/projects/:id/stats` | Project statistics |
+| POST | `/api/projects/:id/load-starter-pack` | Load NPC template pack |
 
-- NPC movement, pathfinding, animation
-- FSM/behavior trees for routine behaviors
-- Game-event tool execution (actual game effects)
-- Schedule interpretation (location IDs to transforms)
-- When to trigger update cycles (game time mapping)
-- VAD processing (saves bandwidth, enables instant interruption)
+### NPCs
 
----
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET/POST | `/api/projects/:id/npcs` | List / create NPC definitions |
+| GET/PUT/DELETE | `/api/projects/:id/npcs/:npcId` | Get / update / delete NPC |
+| POST/GET/DELETE | `/api/projects/:id/npcs/:npcId/avatar` | Profile picture management |
+| GET | `/api/projects/:id/npcs/:npcId/history` | Definition version list |
+| GET | `/api/projects/:id/npcs/:npcId/history/:version` | Definition snapshot |
+| POST | `/api/projects/:id/npcs/:npcId/rollback` | Revert definition |
 
-## Future Enhancements
+### Knowledge & Tools
 
-### NPC Health Dashboard
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET/PUT | `/api/projects/:id/knowledge` | Knowledge base CRUD |
+| GET/PUT | `/api/projects/:id/mcp-tools` | MCP tool definitions |
 
-A web-based dashboard for monitoring NPC states across a project:
-
-**Per-NPC Metrics:**
-- Current mood visualization
-- Trait drift from baseline
-- Memory counts (STM/LTM)
-- Relationship summary
-- Tool call history
-- Moderation event log
-
-**Project-wide Metrics:**
-- Total conversations
-- Tool usage breakdown
-- Moderation trigger rate
-- Average conversation length
-
-**Health Flags:**
-- Mood stuck at extreme >3 days
-- Trait drift >0.25 from baseline
-- Multiple moderation triggers
-
-*Implementation deferred to post-MVP.*
+**WebSocket**: `ws://host:port+1/ws/voice?session_id=xxx`
 
 ---
 
@@ -688,53 +913,22 @@ A web-based dashboard for monitoring NPC states across a project:
 | Principle | Implementation |
 |-----------|----------------|
 | Transient sessions | RAM during conversation, persist only on end |
-| State with history | Server stores states with optional version tracking |
+| State with history | Every save creates a versioned archive |
 | Immutable anchors | Core Anchor never modified, enforced at multiple layers |
 | Client-side VAD | Saves bandwidth, enables instant interruption |
-| WebSocket everything | STT, TTS, client comms - all WebSocket for low latency |
-| Stream everything | Token-by-token LLM -> sentence-by-sentence TTS -> chunk-by-chunk audio |
-| Cyclic memory pruning | Replace, don't append. Aggressive data discard. |
-| **Modal I/O** | Any input mode (text/voice) with any output mode (text/voice) |
-| **Factory providers** | Swap LLM/STT/TTS at runtime via configuration |
-| **Per-NPC memory** | Configurable memory retention per character |
-| **Player awareness** | NPCs can recognize players before conversation |
-| Explicit triggers | Host controls update cycles |
+| WebSocket everything | STT, TTS, client comms — all WebSocket for low latency |
+| Stream everything | Token-by-token LLM -> sentence-by-sentence TTS -> chunk audio |
+| Cyclic memory pruning | Replace, don't append. Aggressive data discard |
+| LLM memory synthesis | Weekly whisper compresses STM into insight-level LTM via LLM |
+| Modal I/O | Any input mode (text/voice) with any output mode (text/voice) |
+| Factory providers | Swap LLM/STT/TTS at runtime via configuration |
+| Per-NPC memory | Configurable memory retention per character |
+| Player awareness | NPCs can recognize players before conversation |
+| Explicit cycle triggers | Host controls all update cycles |
 | Two tool types | Conversation (LLM decides) vs Game-event (game decides) |
 | Comprehensive logging | Structured, traceable, no PII |
 | Graceful degradation | Failures reduce features, not availability |
-| Security by design | Five layers, clear pipeline positions |
-
----
-
-## Web UI (v2.0)
-
-The framework includes a complete web-based management and testing interface:
-
-### Project Management
-- Create/manage multiple NPC projects
-- **Settings Page** for each project with:
-  - LLM provider selection (Gemini, OpenAI, Anthropic, Grok)
-  - Model selection per provider
-  - API key management (encrypted storage)
-  - TTS/STT provider configuration
-
-### NPC Editor
-- **8-tab editor** for complete NPC configuration:
-  - Basic Info (name, description, profile picture)
-  - Core Anchor (backstory, principles, traumas)
-  - Personality (traits, template, memory retention slider)
-  - Voice (provider, voice ID, style)
-  - Knowledge Access (tiered knowledge categories)
-  - Schedule & Stats (routines, default mood)
-  - MCP Tools (permitted actions)
-  - Network (NPC relationships, player recognition)
-
-### Testing Playground
-- **Conversation mode selector** (4 modes)
-- Real-time chat with NPCs
-- Player identity testing
-- Mind viewer for NPC state inspection
-- Memory cycle triggers
+| Security by design | Multiple pipeline layers, no raw player input stored |
 
 ---
 
@@ -776,8 +970,8 @@ DEFAULT_LLM_PROVIDER=gemini  # or openai, anthropic, grok
 
 # Encryption for API key storage
 ENCRYPTION_KEY=your_32_char_key
+
+# Production only
+SUPABASE_URL=your_url
+SUPABASE_SERVICE_ROLE_KEY=your_key
 ```
-
----
-
-**SoulEngine** - Characters that listen, think, speak, and do.

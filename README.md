@@ -4,7 +4,7 @@
 
 ![SoulEngine Demo](img/demo.gif)
 
-[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.onrender.com)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.onrender.com)
 [![GitHub](https://img.shields.io/badge/GitHub-SoulEngine-181717?style=for-the-badge&logo=github)](https://github.com/PranavMishra17/SoulEngine)
 [![License](https://img.shields.io/badge/License-ISC-green?style=for-the-badge)](LICENSE)
 
@@ -32,47 +32,141 @@ No persistent processes. No complex databases. NPCs are YAML files that become i
 
 | Pillar | Purpose |
 |--------|---------|
-| **Core Anchor** | Immutable psychological DNA - backstory, principles, trauma flags |
-| **Daily Pulse** | Short-term emotional state and daily takeaway |
-| **Weekly Whisper** | Cyclic memory pruning with per-NPC salience thresholds |
-| **Persona Shift** | Periodic personality recalibration within bounded limits |
-| **MCP Actions** | Tool invocation for world actions (call_police, refuse_service, flee, etc.) |
+| **Core Anchor** | Immutable psychological DNA — backstory, principles, trauma flags. Never modified by any system. |
+| **Daily Pulse** | End-of-session emotional snapshot. 1-sentence takeaway. Carries mood continuity into next interaction. |
+| **Weekly Whisper** | Cyclic memory pruning with LLM synthesis. STM is consolidated into insight-level LTM entries, not just moved verbatim. |
+| **Persona Shift** | Periodic personality recalibration within bounded limits. Trait drift from sustained experiences. |
+| **MCP Actions** | Tool invocation for world actions — call_police, refuse_service, flee, lock_door, alert_guards, exit_convo. |
 
 ---
 
 ## Features
 
-### Multi-Provider LLM Support
-Switch between **Gemini**, **OpenAI**, **Anthropic Claude**, or **xAI Grok** via configuration.
+### Multi-Provider LLM, TTS, and STT
+
+| Provider Type | Options | Default |
+|---------------|---------|---------|
+| **LLM** | Google Gemini, OpenAI, Anthropic Claude, xAI Grok | Gemini 2.0 Flash |
+| **TTS** | Cartesia, ElevenLabs | Cartesia Sonic |
+| **STT** | Deepgram Nova-2 | Deepgram |
+
+Switch providers per-project. Use your own API keys (BYOK — encrypted at rest, never logged).
 
 ### Flexible Conversation Modes
-| Mode | Description |
-|------|-------------|
-| Text → Text | Traditional chat interface |
-| Voice → Voice | Full duplex voice conversations |
-| Text → Voice | Type to NPC, hear their response |
-| Voice → Text | Speak to NPC, read their response |
+
+| Mode | Input | Output |
+|------|-------|--------|
+| `text-text` | Keyboard | Text |
+| `voice-voice` | Microphone | Speakers |
+| `text-voice` | Keyboard | Speakers |
+| `voice-text` | Microphone | Text |
+
+### Memory Architecture
+
+**Short-Term Memory (STM):** Created at session end from a detective-style LLM summary that captures specific facts, phrases, and names — not emotional atmosphere. Filtered against injection patterns while preserving legitimate player-shared content.
+
+**Long-Term Memory (LTM):** Synthesized at weekly whisper time. Multiple STM entries are compressed by an LLM into condensed, insight-level observations. Raw entries are removed from STM after promotion — no duplication.
+
+**Per-NPC Memory Retention:** Configurable `salience_threshold` per NPC. Low threshold = genius-level recall (2-sentence summaries, promotes more to LTM). High threshold = forgetful character (1-sentence summaries, most memories fade).
+
+| Retention | Threshold | Character Type |
+|-----------|-----------|----------------|
+| 80-100% | 0.35-0.47 | Scholar, Elder, Detective |
+| 40-60% | 0.59-0.71 | Average townsperson |
+| 0-20% | 0.83-0.95 | Simple-minded NPC |
 
 ### Player Identity System
-NPCs can recognize and remember players before conversations start. Bidirectional network awareness supports one-sided relationships (celebrity/fan, guard/citizen).
 
-### Per-NPC Memory Intelligence
-Configure how well each NPC remembers - genius scholars recall every detail while simple-minded characters forget conversations quickly.
+NPCs can be told who the player is before conversation starts:
+- Player name, description, role, context
+- Bidirectional network: "You know them" vs "You know of them (famous)"
+- Relationship persistence: trust, familiarity, sentiment tracked per player
+
+### NPC Social Graph
+
+Each NPC has a configurable network of relationships with other NPCs, with tiered familiarity levels controlling what information they share in context:
+
+| Tier | Information |
+|------|-------------|
+| 1 - Acquaintance | Name + brief description |
+| 2 - Familiar | + backstory + schedule/location |
+| 3 - Close | + personality traits + principles + trauma flags |
+
+### Full Version History
+
+Every state change creates a versioned snapshot — rollback is always available.
+
+**NPC Definition History:** Every time you save changes to an NPC's personality, voice, backstory, etc., the previous version is archived. View field-level diffs, revert to any prior version.
+
+**Mind State History:** Every session end, daily pulse, weekly whisper, and persona shift creates a snapshot of the NPC's runtime mind (mood, STM, LTM, trait modifiers, relationships). View any historical snapshot in the UI. Revert to any prior mind state.
+
+### Security
+
+- **Core Anchor immutability:** Enforced at the cycle logic layer and session integrity check. Modifications are detected and rejected.
+- **Input sanitization:** XSS prevention, injection pattern detection. Quoted content preserved (doesn't strip legitimate player phrases).
+- **Content moderation:** Keyword-based, triggers in-character conversation exit.
+- **Rate limiting:** Per-player per-NPC per-minute.
+- **Narration stripping:** `(stage directions)` and `*actions*` stripped from all LLM responses post-processing, both in text and voice modes.
+- **Game Client API Key:** SHA-256 hashed. Required for external game clients (Unity), bypassed for authenticated dashboard users.
+
+### MCP Tool System
+
+Two tool types for different decision authorities:
+
+| Tool Type | Who Decides | Example |
+|-----------|------------|---------|
+| Conversation Tool | LLM (from dialogue context) | call_police when threatened |
+| Game-Event Tool | Game code (bypasses LLM) | flee_to on explosion event |
+
+Define tools once in the web UI, assign permissions per NPC, implement handlers in your game client.
+
+---
+
+## Web UI
+
+Full management and testing interface — no build step required.
 
 <div align="center">
 
-| NPC Editor | 
+| NPC Editor |
 
 ![Editor](img/editor.png)
 
-|-------------------------|
-
+|---|
 
 | Playground |
 
 ![Playground](img/playground.png)
 
 </div>
+
+### NPC Editor (9 tabs)
+
+1. **Basic Info** — Name, description, profile picture, draft/complete status
+2. **Core Anchor** — Backstory, principles, trauma flags
+3. **Personality** — Big Five sliders, preset archetypes, memory retention slider
+4. **Voice** — Provider, voice browser with previews, speed control
+5. **Knowledge** — Depth-level knowledge access assignment per category
+6. **Schedule** — Time-block routines (location + activity)
+7. **MCP Tools** — Conversation and game-event tool permissions
+8. **Network** — NPC social graph with familiarity tiers and mutual/one-sided awareness
+9. **History** — Mind state snapshots + definition version timeline, both with revert buttons
+
+### Testing Playground
+
+- 4 conversation modes
+- Live NPC State panel: real-time mood bars, memory counts, latest memory, daily pulse
+- Cycle trigger panel: run daily pulse / weekly whisper / persona shift from the UI
+- World Context panel: project overview, NPC roster, knowledge tiers, available tools
+- Player identity configuration per session
+
+### Project Settings
+
+- LLM/TTS/STT provider configuration
+- Per-project API key management (encrypted)
+- Game Client API Key generation and revocation
+- Import API keys from another project
+- Project limits and timeout configuration
 
 ---
 
@@ -114,6 +208,10 @@ ELEVENLABS_API_KEY=your_key    # Text-to-speech (alternative)
 # Configuration
 DEFAULT_LLM_PROVIDER=gemini
 ENCRYPTION_KEY=your_32_char_key_for_api_storage
+
+# Production (Supabase)
+SUPABASE_URL=your_url
+SUPABASE_SERVICE_ROLE_KEY=your_key
 ```
 
 ---
@@ -122,40 +220,70 @@ ENCRYPTION_KEY=your_32_char_key_for_api_storage
 
 ```
 src/
-├── index.ts              # Server entry point
-├── config.ts             # Environment configuration
-├── providers/
-│   ├── llm/              # LLM factory (Gemini, OpenAI, Anthropic, Grok)
-│   ├── stt/              # Speech-to-text (Deepgram)
-│   └── tts/              # Text-to-speech factory (Cartesia, ElevenLabs)
-├── storage/              # YAML-based storage with encrypted secrets
-├── core/                 # NPC cognition (memory, personality, cycles)
-├── session/              # In-memory session management
-├── mcp/                  # MCP tool registry and execution
-├── voice/                # Multi-modal voice pipeline
-├── routes/               # REST API endpoints
-└── ws/                   # WebSocket voice handler
++-- index.ts              # Server entry point
++-- config.ts             # Environment configuration
++-- providers/
+|   +-- llm/              # LLM factory (Gemini, OpenAI, Anthropic, Grok)
+|   +-- stt/              # Speech-to-text (Deepgram)
+|   +-- tts/              # Text-to-speech (Cartesia, ElevenLabs)
++-- storage/              # Dual-backend storage (local filesystem + Supabase)
++-- core/                 # NPC cognition (memory, personality, cycles, summarizer)
++-- session/              # In-memory session management
++-- mcp/                  # MCP tool registry and execution
++-- voice/                # Multi-modal voice pipeline
++-- security/             # Sanitizer, moderator, rate limiter
++-- routes/               # REST API endpoints
++-- ws/                   # WebSocket voice handler
 
-web/                      # Web UI (vanilla JS SPA)
-├── index.html            # SPA with templates
-├── css/                  # Design system
-└── js/                   # Router, API client, page modules
+web/                      # Web UI (vanilla JS SPA, no build step)
++-- index.html            # SPA with all page templates
++-- css/                  # Design system
++-- js/                   # Router, API client, page modules
 ```
 
 ---
 
 ## API Overview
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/projects` | GET/POST | List/create projects |
-| `/api/projects/:id/settings` | GET/PUT | Project settings & API keys |
-| `/api/projects/:id/npcs` | GET/POST | NPC definitions |
-| `/api/projects/:id/npcs/:npcId/avatar` | GET/POST/DELETE | NPC profile pictures |
-| `/api/session/start` | POST | Start conversation (with player info) |
-| `/api/session/:id/message` | POST | Send message (streaming) |
-| `/api/session/:id/end` | POST | End session, persist state |
-| `/api/instances/:id/weekly-whisper` | POST | Run memory curation cycle |
+### Session & Conversation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/session/start` | Start conversation |
+| POST | `/api/session/:id/end` | End session, persist memory |
+| POST | `/api/session/:id/message` | Send message, get streaming response |
+| GET | `/api/session/:id/history` | Get conversation history |
+
+### Memory Cycles
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/instances/:id/daily-pulse` | Capture daily mood + takeaway |
+| POST | `/api/instances/:id/weekly-whisper` | Consolidate STM, synthesize to LTM |
+| POST | `/api/instances/:id/persona-shift` | Recalibrate personality from experiences |
+
+### Mind State History
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/instances/:id/history` | List all mind state snapshots |
+| GET | `/api/instances/:id/history/:version` | Fetch snapshot at version |
+| POST | `/api/instances/:id/rollback` | Restore mind state to version |
+
+### Projects & NPCs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET/POST | `/api/projects` | List/create projects |
+| GET/PUT/DELETE | `/api/projects/:id` | Project CRUD |
+| GET/PUT | `/api/projects/:id/keys` | API key management |
+| GET/POST | `/api/projects/:id/npcs` | List/create NPC definitions |
+| GET/PUT/DELETE | `/api/projects/:id/npcs/:npcId` | NPC CRUD |
+| POST/GET/DELETE | `/api/projects/:id/npcs/:npcId/avatar` | Profile picture |
+| GET | `/api/projects/:id/npcs/:npcId/history` | Definition version list |
+| POST | `/api/projects/:id/npcs/:npcId/rollback` | Revert NPC definition |
+| GET/PUT | `/api/projects/:id/knowledge` | Knowledge base |
+| GET/PUT | `/api/projects/:id/mcp-tools` | MCP tool definitions |
 
 **WebSocket**: `ws://localhost:3001/ws/voice?session_id=xxx`
 
@@ -165,21 +293,22 @@ web/                      # Web UI (vanilla JS SPA)
 
 | Layer | Technology |
 |-------|------------|
-| Runtime | Node.js 20+ |
+| Runtime | Node.js 20+ / Bun |
 | Framework | Hono |
 | LLM | Gemini / OpenAI / Anthropic / Grok |
 | STT | Deepgram Nova-2 |
 | TTS | Cartesia Sonic / ElevenLabs |
-| Storage | YAML + Encrypted Secrets |
+| Storage | Local JSON + Supabase PostgreSQL |
 | Frontend | Vanilla JS SPA |
 
 ---
 
 ## Documentation
 
-- **[System Design](Evolve_NPC_System_Design.md)** - Full architecture and design philosophy
-- **[SDK Reference](SDK_REFERENCE.md)** - Third-party SDK documentation
-- **[Additional Providiers](ADD_PROVIDERS.MD)** - How to add additional model endpoints for LLM/TTS/STT
+- **[System Design](Evolve_NPC_System_Design.md)** — Full architecture, all design decisions, and implementation details
+- **[Unity SDK](UNITY_REPACKAGE.md)** — Unity integration plan, scene setup guide, feature mapping
+- **[SDK Reference](SDK_REFERENCE.md)** — Third-party SDK documentation
+- **[Add Providers](ADD_PROVIDERS.MD)** — How to add additional LLM/TTS/STT providers
 
 ---
 
@@ -197,7 +326,7 @@ ISC
   <img src="img/me.jpg" alt="Pranav Mishra" width="180" style="border: 5px solid; border-image: linear-gradient(45deg, #9d4edd, #ff006e) 1;">
 </td>
 <td>
-  
+
 [![Portfolio](https://img.shields.io/badge/-Portfolio-000?style=for-the-badge&logo=vercel&logoColor=white)](https://portfolio-pranav-mishra-paranoid.vercel.app)
 [![LinkedIn](https://img.shields.io/badge/-LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/pranavgamedev/)
 [![Resume](https://img.shields.io/badge/-Resume-4B0082?style=for-the-badge&logo=read-the-docs&logoColor=white)](https://portfolio-pranav-mishra-paranoid.vercel.app/resume)
@@ -212,7 +341,7 @@ ISC
 
 <div align="center">
 
-### ⚠️ BEWARE ⚠️
+### BEWARE
 
 **They remember. They change. They act.**
 
