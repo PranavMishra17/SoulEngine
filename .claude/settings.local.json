@@ -14,7 +14,10 @@
       "Bash(node -e \"[''space'',''fishing'',''office''].forEach\\(p => { const d=''data/starter-pack/''+p; [''meta.json'',''npcs.json'',''knowledge-base.json'',''mcp-tools.json''].forEach\\(f => { try{JSON.parse\\(require\\(''fs''\\).readFileSync\\(d+''/''+f,''utf8''\\)\\); console.log\\(''OK: ''+p+''/''+f\\);}catch\\(e\\){console.error\\(''FAIL: ''+p+''/''+f+'': ''+e.message\\);} }\\); }\\)\")",
       "Bash(echo \"EXIT:$?\")",
       "Bash(grep -n \"playground\" \"e:/Evolve-NPC/web/css\"/*.css)",
-      "Bash(find src/storage -name \"*.ts\" -exec grep -l \"DefinitionHistory\\\\|DefinitionSnapshot\" {} ;)"
+      "Bash(find src/storage -name \"*.ts\" -exec grep -l \"DefinitionHistory\\\\|DefinitionSnapshot\" {} ;)",
+      "Bash(xargs grep -l \"avatar\")",
+      "Bash(xargs grep -l \"avatar\\\\|npcRoutes\")",
+      "Bash(npm run build)"
     ]
   }
 }

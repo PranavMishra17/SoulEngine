@@ -8,7 +8,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-SoulEngine-181717?style=for-the-badge&logo=github)](https://github.com/PranavMishra17/SoulEngine)
 [![License](https://img.shields.io/badge/License-ISC-green?style=for-the-badge)](LICENSE)
 
-*Stateless NPC intelligence with layered memory cycles, personality evolution, multi-modal voice interaction, and MCP-based agency.*
+*Stateless NPC intelligence with layered memory cycles, personality evolution, multi-modal voice interaction, social networks, tiered knowledge-base and MCP-based agency.*
 
 </div>
 
@@ -18,8 +18,6 @@
 
 SoulEngine transforms static game NPCs into genuinely evolving entities. Characters remember player interactions, develop personalities over time, speak with their own voices, and take autonomous actions in the game world.
 
-No persistent processes. No complex databases. NPCs are YAML files that become intelligent when queried against an LLM.
-
 <div align="center">
 
 ![SoulEngine Interface](img/pillar.png)
@@ -28,7 +26,7 @@ No persistent processes. No complex databases. NPCs are YAML files that become i
 
 ---
 
-## The Five Pillars
+## The Five Pillars of SoulEngine NPCs
 
 | Pillar | Purpose |
 |--------|---------|
@@ -41,6 +39,8 @@ No persistent processes. No complex databases. NPCs are YAML files that become i
 ---
 
 ## Features
+
+    Unity SDK coming soon!
 
 ### Multi-Provider LLM, TTS, and STT
 
@@ -128,11 +128,14 @@ Full management and testing interface — no build step required.
 
 <div align="center">
 
+| Dashboard |
+
+![Dashboard](img/dashboard.png)
+
 | NPC Editor |
 
 ![Editor](img/editor.png)
 
-|---|
 
 | Playground |
 
@@ -341,10 +344,9 @@ ISC
 
 <div align="center">
 
-### BEWARE
+### BEWARE FRIEND
 
-**They remember. They change. They act.**
+**They listen. They remember. They act.**
 
-*Your NPCs are watching. Your NPCs are learning. Your NPCs are judging.*
 
 </div>

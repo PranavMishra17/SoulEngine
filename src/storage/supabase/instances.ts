@@ -294,7 +294,7 @@ export async function getInstanceHistory(
  * Get a specific historical snapshot of an instance without restoring it
  */
 export async function getInstanceSnapshot(
-  projectId: string,
+  _projectId: string,
   instanceId: string,
   version: string
 ): Promise<NPCInstance> {

@@ -528,29 +528,35 @@ function bindFormHandlers() {
 
         // Get auth headers
         const headers = {};
-        const token = getAccessToken();
+        const token = await getAccessToken();
+        console.log('[Avatar] Upload - token present:', !!token);
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
 
+        console.log('[Avatar] POSTing avatar for NPC:', currentNpcId);
         const response = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
           method: 'POST',
           headers,
           body: formData,
         });
 
+        console.log('[Avatar] Upload response:', response.status);
         if (!response.ok) {
           const error = await response.json();
+          console.error('[Avatar] Upload failed:', error);
           throw new Error(error.error || error.details || 'Upload failed');
         }
 
         const result = await response.json();
+        console.log('[Avatar] Upload success, stored url:', result.url);
         // Store the URL (full URL in production, filename in local)
         currentDefinition.profile_image = result.url;
         // Update preview with cache-busting
         updateProfilePreview(result.url + '?t=' + Date.now());
         toast.success('Avatar Uploaded', 'Profile picture saved.');
       } catch (error) {
+        console.error('[Avatar] Upload exception:', error);
         toast.error('Upload Failed', error.message);
       }
     } else {
@@ -565,7 +571,7 @@ function bindFormHandlers() {
       try {
         // Get auth headers
         const headers = {};
-        const token = getAccessToken();
+        const token = await getAccessToken();
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
@@ -1263,7 +1269,7 @@ function updateProfilePreview(imageSrc) {
   const previewAvatar = document.querySelector('.preview-avatar');
 
   if (imageSrc) {
-    const safeImageSrc = escapeHtmlAttr(imageSrc);
+    const safeImageSrc = escapeHtml(imageSrc);
     preview.innerHTML = `<img src="${safeImageSrc}" alt="Profile" class="profile-img">`;
     if (removeBtn) removeBtn.style.display = 'block';
     if (previewAvatar) previewAvatar.innerHTML = `<img src="${safeImageSrc}" alt="Avatar" class="avatar-img">`;
@@ -1398,18 +1404,29 @@ async function handleSaveNpc() {
 
           // Get auth headers
           const avatarHeaders = {};
-          const token = getAccessToken();
+          const token = await getAccessToken();
+          console.log('[Avatar] Pending upload - token present:', !!token);
           if (token) {
             avatarHeaders['Authorization'] = `Bearer ${token}`;
           }
 
-          await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
+          console.log('[Avatar] POSTing pending avatar for NPC:', currentNpcId);
+          const avatarResponse = await fetch(`/api/projects/${currentProjectId}/npcs/${currentNpcId}/avatar`, {
             method: 'POST',
             headers: avatarHeaders,
             body: formData,
           });
+          console.log('[Avatar] Pending upload response:', avatarResponse.status);
+          if (!avatarResponse.ok) {
+            const errBody = await avatarResponse.json().catch(() => ({}));
+            console.error('[Avatar] Pending upload failed:', errBody);
+          } else {
+            const avatarResult = await avatarResponse.json();
+            console.log('[Avatar] Pending upload success, url:', avatarResult.url);
+            currentDefinition.profile_image = avatarResult.url;
+          }
         } catch (err) {
-          console.warn('Failed to upload avatar:', err);
+          console.error('[Avatar] Pending upload exception:', err);
         }
         pendingProfileImage = null;
       }

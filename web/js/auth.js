@@ -33,6 +33,11 @@ async function loadConfig() {
  * @returns {boolean} Whether initialization was successful
  */
 export async function initAuth() {
+  // Guard against double initialization
+  if (supabase) {
+    return true;
+  }
+
   // Check if Supabase SDK is available (loaded via CDN)
   if (typeof window.supabase === 'undefined') {
     console.log('[Auth] Supabase SDK not loaded - running in local mode');
