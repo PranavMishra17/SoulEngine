@@ -20,6 +20,23 @@ import { handleExitConvo, ExitConvoResult } from '../mcp/exit-handler.js';
 const logger = createLogger('routes-conversation');
 
 /**
+ * Remove stage directions and narration from NPC responses.
+ * Strips lines/paragraphs starting with (action descriptions) or *action* patterns.
+ */
+function stripNarration(text: string): string {
+  const cleaned = text
+    // Strip leading parenthetical stage directions, e.g. "(Osman frowns.) Hello."
+    .replace(/^\s*\(.*?\)\s*/gm, '')
+    // Strip *action* at the start of a line, e.g. "*sighs* Well then."
+    .replace(/^\s*\*[^*]+\*\s*/gm, '')
+    // Collapse extra blank lines left behind
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  // Fall back to original if stripping removed everything
+  return cleaned || text;
+}
+
+/**
  * Zod schemas for request validation
  */
 const SendMessageSchema = z.object({
@@ -245,7 +262,9 @@ export function createConversationRoutes(
         }
       }
 
-      // 14. Add assistant message to history
+      // 14. Strip stage directions / narration from response before storing
+      responseText = stripNarration(responseText);
+
       const assistantMessage: Message = {
         role: 'assistant',
         content: responseText,

@@ -148,18 +148,32 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         return c.json({ error: 'Instance not found' }, 404);
       }
 
-      // Load NPC definition to get salience threshold
-      const definition = await storage.getDefinition(instance.project_id, instance.definition_id);
+      // Load project settings, definition, and API keys in parallel
+      const [project, definition, apiKeys] = await Promise.all([
+        storage.getProject(instance.project_id),
+        storage.getDefinition(instance.project_id, instance.definition_id),
+        storage.loadApiKeys(instance.project_id),
+      ]);
       const salienceThreshold = definition.salience_threshold ?? 0.7;
 
       logger.debug({
         instanceId,
         salienceThreshold,
-        npcName: definition.name
+        npcName: definition.name,
       }, 'Using NPC-specific salience threshold');
 
-      // Run weekly whisper with NPC's salience threshold
-      const result = await runWeeklyWhisper(instance, retainCount, salienceThreshold);
+      // Resolve per-project LLM provider for memory synthesis (BYOK), falling back to global
+      const activeProvider = resolveProjectLlmProvider(project.settings, apiKeys as Partial<Record<string, string>>, llmProvider);
+
+      const npcPerspective = {
+        name: definition.name,
+        backstory: definition.core_anchor.backstory,
+        principles: definition.core_anchor.principles,
+        salienceThreshold: definition.salience_threshold,
+      };
+
+      // Run weekly whisper with LLM synthesis for STM→LTM consolidation
+      const result = await runWeeklyWhisper(instance, retainCount, salienceThreshold, activeProvider ?? undefined, npcPerspective);
 
       if (!result.success) {
         return c.json({ error: 'Weekly whisper failed' }, 500);

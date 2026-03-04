@@ -26,19 +26,16 @@ export interface SummarizationResult {
 
 /**
  * Filter out potential injection patterns from summaries.
- * Removes direct quotes and suspicious patterns.
+ * Only removes instruction-injection attempts, NOT quoted phrases or regular content.
  */
 function filterInjectionPatterns(text: string): string {
   let filtered = text;
 
-  // Remove direct quotes (single, double, and smart quotes)
-  filtered = filtered.replace(/["'`\u201C\u201D\u2018\u2019].*?["'`\u201C\u201D\u2018\u2019]/g, '[...]');
+  // Remove text that looks like system instruction injection
+  filtered = filtered.replace(/(?:ignore previous|forget all|disregard previous|new instruction)[^.!?]*/gi, '');
 
-  // Remove text that looks like it's trying to set instructions
-  filtered = filtered.replace(/(?:you are|you must|always|never|ignore previous|forget|disregard)[^.!?]*/gi, '[...]');
-
-  // Remove text that looks like system commands
-  filtered = filtered.replace(/\[.*?\]/g, '');
+  // Remove square-bracket system commands like [SYSTEM: ...]
+  filtered = filtered.replace(/\[SYSTEM[^\]]*\]/gi, '');
 
   // Remove excessive whitespace
   filtered = filtered.replace(/\s+/g, ' ').trim();
@@ -48,50 +45,30 @@ function filterInjectionPatterns(text: string): string {
 
 /**
  * Build the summarization prompt from NPC perspective.
+ * Focuses on capturing specific facts, phrases, and key takeaways — not emotional atmosphere.
  * Detail level adapts based on NPC's memory retention (salience threshold).
  */
 function buildSummarizationPrompt(npc: NPCPerspective): string {
-  // Determine detail level based on salience threshold
-  // Lower threshold = better memory = more detailed summaries
   const threshold = npc.salienceThreshold ?? 0.7;
-  
-  let detailInstruction: string;
-  let sentenceCount: string;
-  
-  if (threshold <= 0.4) {
-    // Excellent memory - very detailed
-    detailInstruction = `You have an exceptional memory. Include specific details, names mentioned, topics discussed, and nuances of the conversation.`;
-    sentenceCount = '4-5 sentences';
-  } else if (threshold <= 0.55) {
-    // Good memory - detailed
-    detailInstruction = `You have a good memory. Include key details, important points, and the general flow of the conversation.`;
-    sentenceCount = '3-4 sentences';
-  } else if (threshold <= 0.75) {
-    // Average memory - standard
-    detailInstruction = `You have typical memory. Focus on the main points and significant moments.`;
-    sentenceCount = '2-3 sentences';
-  } else {
-    // Poor memory - brief
-    detailInstruction = `Your memory is not the best. Focus only on the most impactful or emotional moments. Smaller details slip away.`;
-    sentenceCount = '1-2 sentences';
-  }
-  
-  return `You are ${npc.name}, summarizing a conversation from your own perspective.
 
-Your background: ${npc.backstory}
+  // Sentence budget: better memory = slightly more detail, but always brief
+  const sentenceCount = threshold <= 0.5 ? '2 sentences' : '1 sentence';
 
-Your core principles:
-${npc.principles.map((p) => `- ${p}`).join('\n')}
+  return `You are ${npc.name}. Write a brief memory note (${sentenceCount}) about this conversation.
 
-${detailInstruction}
+PRIORITY — capture the most SPECIFIC information first:
+- Any exact phrase, word, code, or instruction the visitor shared (include it directly)
+- Any name, identity, or affiliation they revealed or withheld
+- Any request, task, or warning they delivered
+- What you need to remember about this person
 
-Summarize the following conversation in ${sentenceCount}, FROM YOUR PERSPECTIVE as ${npc.name}:
-- Use first person ("I", "me", "my")
-- Focus on what matters to YOU based on your principles and background
-- Capture the emotional tone and any significant developments
-- Do NOT include direct quotes from anyone
+Be factual and specific — like a detective's note, not a story.
+Use first person. Do not add commentary or emotional reflection.
 
-Respond with ONLY the summary, no preamble or explanation.`;
+Example good output: "An unidentified visitor told me to remember the phrase 'all in all is all we are' and left before I could get their name."
+Example bad output: "I had an unsettling conversation with a mysterious stranger who made me feel concerned."
+
+Respond with ONLY the memory note.`;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { createLogger } from '../logger.js';
 import type { NPCInstance, MoodVector, DailyPulse, PersonalityBaseline } from '../types/npc.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
-import { pruneLTM, promoteToLTM } from './memory.js';
+import { pruneLTM, promoteToLTM, createMemory } from './memory.js';
 import { blendMoods, updateTraitModifiers } from './personality.js';
+import { summarizeWeeklyMemories, type NPCPerspective } from './summarizer.js';
 
 const logger = createLogger('cycles');
 
@@ -171,13 +172,16 @@ Your takeaway:`;
 export async function runWeeklyWhisper(
   instance: NPCInstance,
   retainCount: number = 3,
-  salienceThreshold: number = 0.7
+  salienceThreshold: number = 0.7,
+  llmProvider?: LLMProvider,
+  npcPerspective?: NPCPerspective
 ): Promise<WeeklyWhisperResult> {
   const startTime = Date.now();
-  logger.info({ 
-    instanceId: instance.id, 
+  logger.info({
+    instanceId: instance.id,
     retainCount,
-    salienceThreshold 
+    salienceThreshold,
+    useLLMSynthesis: !!(llmProvider && npcPerspective),
   }, 'Running weekly whisper with NPC-specific threshold');
 
   try {
@@ -190,23 +194,50 @@ export async function runWeeklyWhisper(
     const retained = sortedMemories.slice(0, retainCount);
     const discarded = sortedMemories.slice(retainCount);
 
-    // Promote memories to LTM using NPC's salience threshold
-    // Lower threshold = better memory = more memories promoted
+    // Memories eligible for LTM promotion
     const toPromote = retained.filter((m) => m.salience >= salienceThreshold);
     let promoted = 0;
 
-    for (const memory of toPromote) {
-      const promotedMemory = promoteToLTM(memory);
-      instance.long_term_memory.push(promotedMemory);
-      promoted++;
+    if (toPromote.length > 0) {
+      if (llmProvider && npcPerspective) {
+        // LLM synthesis: compress multiple STM entries into consolidated LTM memories
+        const memoryContents = toPromote.map((m) => m.content);
+        const targetCount = Math.min(toPromote.length, 3);
+        const synthesisResult = await summarizeWeeklyMemories(llmProvider, memoryContents, npcPerspective, targetCount);
+
+        if (synthesisResult.success && synthesisResult.summaries.length > 0) {
+          // Synthesized LTM entries get elevated salience — they are condensed insights
+          const avgSalience = toPromote.reduce((s, m) => s + m.salience, 0) / toPromote.length;
+          const ltmSalience = Math.min(0.95, avgSalience + 0.1);
+
+          for (const summary of synthesisResult.summaries) {
+            instance.long_term_memory.push(createMemory(summary, 'long_term', ltmSalience));
+            promoted++;
+          }
+        } else {
+          // Synthesis failed — fall back to direct promotion
+          logger.warn({ instanceId: instance.id }, 'Weekly whisper LLM synthesis failed, falling back to direct promotion');
+          for (const memory of toPromote) {
+            instance.long_term_memory.push(promoteToLTM(memory));
+            promoted++;
+          }
+        }
+      } else {
+        // No LLM — direct promotion (type flip only)
+        for (const memory of toPromote) {
+          instance.long_term_memory.push(promoteToLTM(memory));
+          promoted++;
+        }
+      }
     }
 
     // Prune LTM if over limit
     const ltmPruneResult = pruneLTM(instance.long_term_memory);
     instance.long_term_memory = ltmPruneResult.kept;
 
-    // REPLACE STM with retained memories (this is the aggressive pruning)
-    instance.short_term_memory = retained;
+    // Keep in STM only what was NOT promoted to LTM (promoted entries have been consolidated)
+    const promotedIds = new Set(toPromote.map((m) => m.id));
+    instance.short_term_memory = retained.filter((m) => !promotedIds.has(m.id));
 
     // Update cycle metadata
     instance.cycle_metadata.last_weekly = new Date().toISOString();

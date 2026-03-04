@@ -257,14 +257,16 @@ function formatConversationTask(definition: NPCDefinition, voiceMode: boolean): 
 Respond as ${definition.name}. Be natural. Be brief. Be human.
 - Don't narrate your thoughts or justify your actions
 - React, don't explain
-- Match the energy of the conversation`;
+- Match the energy of the conversation
+- Output ONLY spoken dialogue. Never use stage directions, action descriptions, or narration.
+- Never write actions in parentheses like (sighs) or (looks away)
+- Never write actions with asterisks like *nods* or *pauses*`;
 
   if (voiceMode) {
     task += `
 
 [VOICE MODE]
-Output ONLY what you SAY. No actions, no descriptions, no asterisks.
-Keep it conversational - short sentences, natural rhythm.`;
+Short sentences, natural rhythm. No written formatting.`;
   }
 
   return task;
