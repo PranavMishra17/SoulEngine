@@ -88,16 +88,10 @@ export async function initPlaygroundPage(params) {
     }
   }
 
-  // beforeunload: fires when the tab/window is about to close
+  // beforeunload: fires when the tab/window is about to close or navigate away.
+  // sendBeacon guarantees delivery even when the page is unloading.
   window.addEventListener('beforeunload', () => {
     sendEndBeacon();
-  });
-
-  // visibilitychange: fires when user switches tabs / minimizes — use as a secondary safety net
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && currentSessionId) {
-      sendEndBeacon();
-    }
   });
 }
 
@@ -390,6 +384,11 @@ async function handleStartSession() {
 async function handleEndSession(exitConvoUsed = false) {
   if (!currentSessionId) return;
 
+  // Capture and clear session ID immediately to prevent double-triggers
+  // (WS close auto-ends server-side, beacon + manual click = double call is expected)
+  const sessionIdToEnd = currentSessionId;
+  currentSessionId = null;
+
   try {
     // Stop live voice if active
     if (isVoiceActive) {
@@ -399,8 +398,16 @@ async function handleEndSession(exitConvoUsed = false) {
     // Stop any audio playback
     stopAudioPlayback();
 
-    // End session
-    await session.end(currentSessionId, exitConvoUsed);
+    // End session — 404 means the server already ended it (WS cleanup), which is fine
+    try {
+      await session.end(sessionIdToEnd, exitConvoUsed);
+    } catch (endErr) {
+      if (endErr?.status !== 404) {
+        // Real error — re-throw so outer catch can report it
+        throw endErr;
+      }
+      // 404 = already ended by WS cleanup — continue with UI cleanup normally
+    }
 
     // Disconnect voice if connected
     if (voiceClient) {
