@@ -219,7 +219,7 @@ async function loadUsageData(projectId) {
             <span class="transcript-msgs">${t.message_count} msg${t.message_count !== 1 ? 's' : ''}</span>
           </div>
           <div class="transcript-tokens">
-            ${textTok > 0 ? `<span title="Text tokens (est.)">&#128196; ${textTok.toLocaleString()} tok</span>` : ''}
+            ${textTok > 0 ? `<span title="Text tokens">&#128196; ${textTok.toLocaleString()} tok</span>` : ''}
             ${voiceCh > 0 ? `<span title="Voice chars">&#127908; ${voiceCh.toLocaleString()} ch</span>` : ''}
           </div>
           <span class="transcript-date">${date}</span>

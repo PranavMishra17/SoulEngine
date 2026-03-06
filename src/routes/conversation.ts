@@ -182,6 +182,7 @@ export function createConversationRoutes(
       // 12. Call LLM
       let responseText = '';
       const toolCalls: ToolCall[] = [];
+      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
 
       const llmMessages: LLMMessage[] = conversationHistory;
 
@@ -196,21 +197,28 @@ export function createConversationRoutes(
         if (chunk.toolCalls.length > 0) {
           toolCalls.push(...chunk.toolCalls);
         }
+        if (chunk.done && chunk.usage) {
+          providerUsage = chunk.usage;
+        }
       }
 
-      // Gracefully estimate token usage from this LLM turn.
-      // We approximate 1 token ≈ 4 characters (standard heuristic for English text).
-      // If we ever get real token counts from providers, they'd override this.
+      // Track token usage — prefer real counts from the provider, fall back to chars/4 estimate.
       try {
-        const inputText = systemPrompt + conversationHistory.map(m => m.content).join('') + playerInput;
-        const estimatedInput = Math.ceil(inputText.length / 4);
-        const estimatedOutput = Math.ceil(responseText.length / 4);
-        addTokensToSession(sessionId, {
-          text_input_tokens: estimatedInput,
-          text_output_tokens: estimatedOutput,
-        });
+        if (providerUsage) {
+          addTokensToSession(sessionId, {
+            text_input_tokens: providerUsage.input_tokens,
+            text_output_tokens: providerUsage.output_tokens,
+          });
+        } else {
+          // Fallback: chars/4 heuristic for providers that don't return usage data
+          const inputText = systemPrompt + conversationHistory.map(m => m.content).join('') + playerInput;
+          addTokensToSession(sessionId, {
+            text_input_tokens: Math.ceil(inputText.length / 4),
+            text_output_tokens: Math.ceil(responseText.length / 4),
+          });
+        }
       } catch {
-        // Never block the conversation for token estimation failures
+        // Never block the conversation for token tracking failures
       }
 
       // 13. Handle tool calls

@@ -152,6 +152,7 @@ export class GrokLlmProvider implements LLMProvider {
         max_tokens: this.maxTokens,
         temperature: this.temperature,
         stream: true,
+        stream_options: { include_usage: true },
       };
 
       // Add tools if provided
@@ -185,6 +186,7 @@ export class GrokLlmProvider implements LLMProvider {
       let buffer = '';
       let accumulatedText = '';
       const accumulatedToolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
+      let collectedUsage: { input_tokens: number; output_tokens: number } | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -201,6 +203,16 @@ export class GrokLlmProvider implements LLMProvider {
 
           try {
             const json = JSON.parse(trimmed.slice(6));
+
+            // Capture usage from the final usage-only chunk
+            if (json.usage && Array.isArray(json.choices) && json.choices.length === 0) {
+              collectedUsage = {
+                input_tokens: json.usage.prompt_tokens ?? 0,
+                output_tokens: json.usage.completion_tokens ?? 0,
+              };
+              continue;
+            }
+
             const choice = json.choices?.[0];
             if (!choice) continue;
 
@@ -279,6 +291,7 @@ export class GrokLlmProvider implements LLMProvider {
         text: '',
         toolCalls: [],
         done: true,
+        usage: collectedUsage,
       };
 
       const duration = Date.now() - startTime;

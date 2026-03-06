@@ -138,9 +138,15 @@ export class AnthropicLlmProvider implements LLMProvider {
         stream: true,
       };
 
-      // Add system prompt
+      // Add system prompt with cache_control for prompt caching
       if (request.systemPrompt) {
-        body.system = request.systemPrompt;
+        body.system = [
+          {
+            type: 'text',
+            text: request.systemPrompt,
+            cache_control: { type: 'ephemeral' },
+          },
+        ];
       }
 
       // Add tools if provided
@@ -155,6 +161,7 @@ export class AnthropicLlmProvider implements LLMProvider {
           'Content-Type': 'application/json',
           'x-api-key': this.apiKey,
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31',
         },
         body: JSON.stringify(body),
         signal: request.signal,
@@ -175,6 +182,8 @@ export class AnthropicLlmProvider implements LLMProvider {
       let accumulatedText = '';
       const accumulatedToolCalls: ToolCall[] = [];
       let currentToolUse: { id: string; name: string; input: string } | null = null;
+      let inputTokens = 0;
+      let outputTokens = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -235,6 +244,20 @@ export class AnthropicLlmProvider implements LLMProvider {
                 });
               }
               currentToolUse = null;
+            } else if (eventType === 'message_start') {
+              // Capture input token counts (including cache tokens)
+              const u = json?.message?.usage;
+              if (u) {
+                inputTokens =
+                  (u.input_tokens ?? 0) +
+                  (u.cache_creation_input_tokens ?? 0) +
+                  (u.cache_read_input_tokens ?? 0);
+              }
+            } else if (eventType === 'message_delta') {
+              // Capture output token count
+              if (json?.usage?.output_tokens) {
+                outputTokens = json.usage.output_tokens;
+              }
             } else if (eventType === 'message_stop') {
               // Message complete
             }
@@ -253,11 +276,12 @@ export class AnthropicLlmProvider implements LLMProvider {
         };
       }
 
-      // Yield final chunk
+      // Yield final chunk with real token counts when available
       yield {
         text: '',
         toolCalls: [],
         done: true,
+        usage: inputTokens > 0 ? { input_tokens: inputTokens, output_tokens: outputTokens } : undefined,
       };
 
       const duration = Date.now() - startTime;

@@ -256,11 +256,27 @@ export class GeminiLlmProvider implements LLMProvider {
         }
       }
 
+      // Capture token usage from the final response — safe to await after the stream loop
+      let usageMeta: { input_tokens: number; output_tokens: number } | undefined;
+      try {
+        const finalResponse = await result.response;
+        const meta = finalResponse.usageMetadata;
+        if (meta && meta.promptTokenCount) {
+          usageMeta = {
+            input_tokens: meta.promptTokenCount,
+            output_tokens: meta.candidatesTokenCount ?? 0,
+          };
+        }
+      } catch {
+        // Non-fatal — usage is best-effort
+      }
+
       // Yield final chunk
       yield {
         text: '',
         toolCalls: [],
         done: true,
+        usage: usageMeta,
       };
 
       const duration = Date.now() - startTime;

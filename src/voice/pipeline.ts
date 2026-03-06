@@ -119,6 +119,11 @@ export class VoicePipeline {
   } = { text: '', timer: null, lastTimestamp: 0 };
   private static readonly AGGREGATION_WINDOW_MS = 1500; // Wait 1.5s after last speech_final
 
+  // Suppress the next STT final transcript when commit() already processed the interim.
+  // Without this, commit() processes interim → NPC responds, then STT final arrives
+  // 1.5s later via the aggregation timer → NPC responds a second time for the same utterance.
+  private pendingSTTFinal: boolean = false;
+
   constructor(config: VoicePipelineConfig) {
     this.sessionId = config.sessionId;
     this.sttProvider = config.sttProvider;
@@ -346,6 +351,10 @@ export class VoicePipeline {
         clearTimeout(this.transcriptAggregator.timer);
       }
       this.processAggregatedTranscript();
+      // Mark that we already processed this utterance via interim text.
+      // The STT server will return a final transcript shortly (triggered by finalize() above),
+      // which would otherwise re-trigger processing 1500ms later via the aggregation timer.
+      this.pendingSTTFinal = true;
       return;
     }
 
@@ -452,10 +461,22 @@ export class VoicePipeline {
       // This prevents commit() from re-processing the same text
       this.accumulatedTranscript = '';
 
+      // If commit() already flushed the interim for this utterance, the STT final
+      // is a duplicate trigger for the same speech. Discard it to prevent a second
+      // NPC response for the same player input.
+      if (this.pendingSTTFinal) {
+        this.pendingSTTFinal = false;
+        logger.debug({ sessionId: this.sessionId }, 'Discarding STT final — already processed via commit interim, skipping duplicate');
+        return;
+      }
+
       // Aggregate transcripts instead of immediate processing
       // This handles fragmented speech (brief pauses causing multiple speech_final events)
       this.aggregateTranscript(event);
     } else {
+      // New interim = new speech turn. Reset the suppress flag so a subsequent
+      // STT final (for this new utterance) is processed normally if commit() hasn't fired yet.
+      this.pendingSTTFinal = false;
       // Accumulate interim transcript
       this.accumulatedTranscript = event.text;
     }
@@ -741,6 +762,7 @@ export class VoicePipeline {
       // Stream LLM response
       let fullResponse = '';
       const pendingToolCalls: ToolCall[] = [];
+      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
 
       for await (const chunk of this.llmProvider.streamChat(request)) {
         if (this.turnState.abortController.signal.aborted) {
@@ -768,6 +790,11 @@ export class VoicePipeline {
         if (chunk.toolCalls.length > 0) {
           pendingToolCalls.push(...chunk.toolCalls);
         }
+
+        // Capture real token counts from the provider's final chunk
+        if (chunk.done && chunk.usage) {
+          providerUsage = chunk.usage;
+        }
       }
 
       // Flush remaining text to TTS (only if voice output)
@@ -792,11 +819,15 @@ export class VoicePipeline {
         addMessageToSession(this.sessionId, assistantMessage);
       }
 
-      // Gracefully track voice char counts (input = STT transcript, output = TTS text)
+      // Track token usage — voice chars always, plus real LLM token counts when available
       try {
         addTokensToSession(this.sessionId, {
-          voice_input_chars: _userInput.length,   // characters transcribed by STT
-          voice_output_chars: fullResponse.length, // characters synthesized by TTS
+          voice_input_chars: _userInput.length,
+          voice_output_chars: fullResponse.length,
+          ...(providerUsage && {
+            text_input_tokens: providerUsage.input_tokens,
+            text_output_tokens: providerUsage.output_tokens,
+          }),
         });
       } catch {
         // Never break the voice pipeline for token tracking
