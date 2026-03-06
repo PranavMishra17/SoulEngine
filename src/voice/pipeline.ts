@@ -340,25 +340,28 @@ export class VoicePipeline {
       }
     }
 
-    // Flush any pending aggregated transcript immediately (don't wait for timer)
+    // Restart debounce timer — do NOT flush immediately.
+    // VAD fires multiple speech-end events for natural mid-sentence pauses; debouncing
+    // combines all rapid segments into a single LLM turn instead of one per segment.
     if (this.transcriptAggregator.text.trim()) {
-      logger.info({
-        sessionId: this.sessionId,
-        textLength: this.transcriptAggregator.text.length
-      }, 'Commit: flushing aggregated transcript');
-
       if (this.transcriptAggregator.timer) {
         clearTimeout(this.transcriptAggregator.timer);
       }
-      this.processAggregatedTranscript();
-      // Mark that we already processed this utterance via interim text.
-      // The STT server will return a final transcript shortly (triggered by finalize() above),
-      // which would otherwise re-trigger processing 1500ms later via the aggregation timer.
-      this.pendingSTTFinal = true;
-      return;
-    }
+      this.transcriptAggregator.timer = setTimeout(() => {
+        this.processAggregatedTranscript();
+      }, VoicePipeline.AGGREGATION_WINDOW_MS);
 
-    logger.debug({ sessionId: this.sessionId }, 'Commit called - STT finalize sent');
+      // Suppress the STT final for this VAD segment (interim text already captured above).
+      // If a new speech segment starts before the STT final arrives, pendingSTTFinal gets
+      // reset to false — that's fine, aggregateTranscript() will deduplicate the text.
+      this.pendingSTTFinal = true;
+      logger.debug({
+        sessionId: this.sessionId,
+        textLength: this.transcriptAggregator.text.length
+      }, 'Commit: debounce timer (re)started');
+    } else {
+      logger.debug({ sessionId: this.sessionId }, 'Commit: nothing to process, STT finalize sent');
+    }
   }
 
   /**
@@ -453,33 +456,31 @@ export class VoicePipeline {
    * Handle STT transcript events
    */
   private handleSTTTranscript(event: TranscriptEvent): void {
-    // Emit transcript to client
-    this.events.onTranscript(event.text, event.isFinal);
-
-    if (event.isFinal) {
-      // CRITICAL: Clear accumulated transcript since STT provided final
-      // This prevents commit() from re-processing the same text
-      this.accumulatedTranscript = '';
-
-      // If commit() already flushed the interim for this utterance, the STT final
-      // is a duplicate trigger for the same speech. Discard it to prevent a second
-      // NPC response for the same player input.
-      if (this.pendingSTTFinal) {
-        this.pendingSTTFinal = false;
-        logger.debug({ sessionId: this.sessionId }, 'Discarding STT final — already processed via commit interim, skipping duplicate');
-        return;
-      }
-
-      // Aggregate transcripts instead of immediate processing
-      // This handles fragmented speech (brief pauses causing multiple speech_final events)
-      this.aggregateTranscript(event);
-    } else {
-      // New interim = new speech turn. Reset the suppress flag so a subsequent
-      // STT final (for this new utterance) is processed normally if commit() hasn't fired yet.
+    if (!event.isFinal) {
+      // Emit interim to client for live preview
+      this.events.onTranscript(event.text, false);
+      // New interim = new speech turn. Reset suppress flag.
       this.pendingSTTFinal = false;
-      // Accumulate interim transcript
+      // Accumulate interim transcript for commit() to use
       this.accumulatedTranscript = event.text;
+      return;
     }
+
+    // --- Final transcript ---
+    // CRITICAL: Clear accumulated transcript since STT provided final
+    this.accumulatedTranscript = '';
+
+    if (this.pendingSTTFinal) {
+      // commit() already processed this utterance via interim text.
+      // processAggregatedTranscript() already emitted onTranscript to the client.
+      // Discard this STT final to prevent a duplicate NPC response.
+      this.pendingSTTFinal = false;
+      logger.debug({ sessionId: this.sessionId }, 'Discarding STT final — already processed via commit interim');
+      return;
+    }
+
+    // Non-commit path: aggregate and let processAggregatedTranscript emit to client
+    this.aggregateTranscript(event);
   }
 
   /**
@@ -495,11 +496,13 @@ export class VoicePipeline {
       clearTimeout(this.transcriptAggregator.timer);
     }
 
-    // Append to aggregated text (with space if needed)
-    if (this.transcriptAggregator.text) {
-      this.transcriptAggregator.text += ' ' + text;
-    } else {
-      this.transcriptAggregator.text = text;
+    // Append to aggregated text, skipping duplicates (commit() may have already added this text)
+    if (!this.transcriptAggregator.text.includes(text)) {
+      if (this.transcriptAggregator.text) {
+        this.transcriptAggregator.text += ' ' + text;
+      } else {
+        this.transcriptAggregator.text = text;
+      }
     }
     this.transcriptAggregator.lastTimestamp = Date.now();
 
@@ -532,6 +535,10 @@ export class VoicePipeline {
       textLength: aggregatedText.length,
       text: aggregatedText.slice(0, 50)
     }, 'Processing aggregated transcript');
+
+    // Emit final transcript to client — this is the single authoritative emit point
+    // for final transcripts (both commit path and non-commit/STT-final path)
+    this.events.onTranscript(aggregatedText, true);
 
     // Deduplication check
     const hash = aggregatedText.toLowerCase().trim();

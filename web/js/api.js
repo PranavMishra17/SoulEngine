@@ -342,7 +342,6 @@ export class VoiceClient {
 
       this.ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
-        console.log('[VoiceClient] Message received:', message.type);
         this.handleMessage(message, resolve, reject);
       };
 

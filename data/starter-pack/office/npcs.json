@@ -33,7 +33,7 @@
       },
       "voice": {
         "provider": "cartesia",
-        "voice_id": "3b554b46-2f1a-4e3d-b9c2-a11d7e8f1234",
+        "voice_id": "f24ae0b7-a3d2-4dd1-89df-959bdc4ab179",
         "speed": 0.92
       },
       "schedule": [
@@ -98,7 +98,7 @@
       },
       "voice": {
         "provider": "cartesia",
-        "voice_id": "7c2a9f53-4b1e-4f8a-9d3c-b22e6a7f5678",
+        "voice_id": "f0377496-2708-4cc9-b2f8-1b7fdb5e1a2a",
         "speed": 1.05
       },
       "schedule": [
@@ -163,7 +163,7 @@
       },
       "voice": {
         "provider": "cartesia",
-        "voice_id": "9e4b2c17-8f3a-4d6e-b5c1-d33f9a2e4567",
+        "voice_id": "dbfa416f-d5c3-4006-854b-235ef6bdf4fd",
         "speed": 0.95
       },
       "schedule": [
@@ -228,7 +228,7 @@
       },
       "voice": {
         "provider": "cartesia",
-        "voice_id": "2d8e5f91-6c4b-4a7d-e2b3-f44c1a9b3456",
+        "voice_id": "f4a3a8e4-694c-4c45-9ca0-27caf97901b5",
         "speed": 1.05
       },
       "schedule": [
@@ -293,7 +293,7 @@
       },
       "voice": {
         "provider": "cartesia",
-        "voice_id": "5f3a7b82-9e2c-4f1d-c4b6-e55d8b3a2345",
+        "voice_id": "ea93f57f-7c71-4d79-aeaa-0a39b150f6ca",
         "speed": 0.9
       },
       "schedule": [

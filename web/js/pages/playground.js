@@ -18,6 +18,7 @@ let micVAD = null; // @ricky0123/vad-web instance
 let messageCount = 0;
 let responseBuffer = '';
 let currentNpcInfo = null; // Store {name, profile_image, id} for chat bubbles and header
+let voiceUserTranscript = ''; // Accumulates STT final segments for one utterance
 
 // Audio playback state
 let audioContext = null;
@@ -696,11 +697,11 @@ async function connectVoice() {
         updatePipelineStep('stt', isFinal ? 'complete' : 'active');
 
         if (isFinal && text.trim()) {
-          // Remove interim transcript indicator and add final message
+          // Accumulate finals — Deepgram may emit several is_final=true events
+          // for one utterance (fragmented speech). Display consolidated on generationEnd.
+          voiceUserTranscript += (voiceUserTranscript ? ' ' : '') + text.trim();
+          console.log('[Transcript] Final segment accumulated:', JSON.stringify(text.trim()), '| total:', JSON.stringify(voiceUserTranscript));
           removeInterimTranscript();
-          addChatMessage('user', text);
-          messageCount++;
-          updateMessageCount();
         } else if (!isFinal && text.trim()) {
           // Show interim transcript as user is speaking
           showInterimTranscript(text);
@@ -712,13 +713,21 @@ async function connectVoice() {
       })
       .on('audioChunk', (data) => {
         updatePipelineStep('tts', 'active');
-        // Play the audio chunk
         queueAudioChunk(data);
       })
       .on('toolCall', (name, args) => {
+        console.log('[ToolCall] Received tool call:', name, args);
         addToolCallLog(name, args);
       })
       .on('generationEnd', () => {
+        // Flush accumulated user transcript as a single message
+        if (voiceUserTranscript) {
+          addChatMessage('user', voiceUserTranscript);
+          messageCount++;
+          updateMessageCount();
+          voiceUserTranscript = '';
+        }
+
         if (responseBuffer) {
           addChatMessage('assistant', responseBuffer);
           messageCount++;
@@ -816,6 +825,8 @@ async function startLiveVoice() {
         updateVadIndicator(true);
         updatePipelineStep('stt', 'active');
         audioChunkCount = 0;
+        // Reset accumulator for new utterance
+        voiceUserTranscript = '';
       },
 
       // Called when speech ends - commit for STT processing
@@ -1032,9 +1043,6 @@ function queueAudioChunk(base64Data) {
   // Queue the buffer
   audioQueue.push(audioBuffer);
 
-  const durationMs = (audioData.length / sampleRate) * 1000;
-  console.log(`[Audio] Queued: ${audioData.length} samples (${durationMs.toFixed(0)}ms), queue: ${audioQueue.length}`);
-
   // Start playback if not already playing
   if (!isPlayingAudio) {
     playNextInQueue();
@@ -1048,14 +1056,11 @@ function playNextInQueue() {
   if (audioQueue.length === 0) {
     isPlayingAudio = false;
     currentAudioSource = null;
-    console.log('[Audio] Queue empty, playback stopped');
     return;
   }
 
   isPlayingAudio = true;
   const buffer = audioQueue.shift();
-  const durationMs = (buffer.length / buffer.sampleRate) * 1000;
-  console.log(`[Audio] Playing: ${buffer.length} samples (${durationMs.toFixed(0)}ms), remaining: ${audioQueue.length}`);
 
   const source = audioContext.createBufferSource();
   source.buffer = buffer;

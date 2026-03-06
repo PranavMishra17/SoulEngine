@@ -17,7 +17,8 @@
       "Bash(find src/storage -name \"*.ts\" -exec grep -l \"DefinitionHistory\\\\|DefinitionSnapshot\" {} ;)",
       "Bash(xargs grep -l \"avatar\")",
       "Bash(xargs grep -l \"avatar\\\\|npcRoutes\")",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(curl -s -X GET \"https://api.cartesia.ai/voices\" -H \"X-API-Key: sk_car_A1tDhxA9P59rCQnNV1u2mv\" -H \"Cartesia-Version: 2024-06-10\")"
     ]
   }
 }
