@@ -36,14 +36,14 @@ const vadState = {
 
 // Mood presets (VAD values: valence, arousal, dominance)
 const MOOD_PRESETS = {
-  neutral:  { valence: 0.5, arousal: 0.5, dominance: 0.5, emoji: '😐', label: 'Neutral' },
-  happy:    { valence: 0.8, arousal: 0.6, dominance: 0.6, emoji: '😊', label: 'Happy' },
-  sad:      { valence: 0.2, arousal: 0.3, dominance: 0.3, emoji: '😢', label: 'Sad' },
-  angry:    { valence: 0.2, arousal: 0.8, dominance: 0.7, emoji: '😠', label: 'Angry' },
-  fearful:  { valence: 0.2, arousal: 0.7, dominance: 0.2, emoji: '😨', label: 'Fearful' },
-  excited:  { valence: 0.8, arousal: 0.9, dominance: 0.7, emoji: '🤩', label: 'Excited' },
-  tired:    { valence: 0.4, arousal: 0.2, dominance: 0.3, emoji: '😴', label: 'Tired' },
-  content:  { valence: 0.7, arousal: 0.3, dominance: 0.5, emoji: '😌', label: 'Content' },
+  neutral: { valence: 0.5, arousal: 0.5, dominance: 0.5, emoji: '😐', label: 'Neutral' },
+  happy: { valence: 0.8, arousal: 0.6, dominance: 0.6, emoji: '😊', label: 'Happy' },
+  sad: { valence: 0.2, arousal: 0.3, dominance: 0.3, emoji: '😢', label: 'Sad' },
+  angry: { valence: 0.2, arousal: 0.8, dominance: 0.7, emoji: '😠', label: 'Angry' },
+  fearful: { valence: 0.2, arousal: 0.7, dominance: 0.2, emoji: '😨', label: 'Fearful' },
+  excited: { valence: 0.8, arousal: 0.9, dominance: 0.7, emoji: '🤩', label: 'Excited' },
+  tired: { valence: 0.4, arousal: 0.2, dominance: 0.3, emoji: '😴', label: 'Tired' },
+  content: { valence: 0.7, arousal: 0.3, dominance: 0.5, emoji: '😌', label: 'Content' },
 };
 
 export async function initPlaygroundPage(params) {
@@ -74,6 +74,31 @@ export async function initPlaygroundPage(params) {
 
   // Load world context panel (project info, NPC roster, MCP tools)
   await loadContextPanel();
+
+  // Graceful session end: fire a beacon to /api/session/:id/end when the page is closing.
+  // sendBeacon works even if the browser tab closes abruptly or the JS event loop is blocked.
+  function sendEndBeacon() {
+    if (!currentSessionId) return;
+    const url = `/api/session/${currentSessionId}/end`;
+    const body = JSON.stringify({ exit_convo_used: false });
+    try {
+      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+    } catch {
+      // Beacon may not be available in all environments; silently fail
+    }
+  }
+
+  // beforeunload: fires when the tab/window is about to close
+  window.addEventListener('beforeunload', () => {
+    sendEndBeacon();
+  });
+
+  // visibilitychange: fires when user switches tabs / minimizes — use as a secondary safety net
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && currentSessionId) {
+      sendEndBeacon();
+    }
+  });
 }
 
 async function loadNpcSelector(projectId) {
@@ -263,7 +288,7 @@ async function handleStartSession() {
     const enableRecognition = document.getElementById('enable-player-recognition')?.checked;
     const playerName = document.getElementById('player-name')?.value?.trim();
     let playerInfo = null;
-    
+
     if (enableRecognition && playerName) {
       playerInfo = {
         name: playerName,
@@ -450,16 +475,16 @@ function setConversationMode(input, output) {
  */
 function configureChatInterface() {
   const { input, output } = currentConversationMode;
-  
+
   const textInputContainer = document.getElementById('text-input-container');
   const voiceInputContainer = document.getElementById('voice-input-container');
   const inputModeToggle = document.querySelector('.input-mode-toggle');
-  
+
   // Hide the legacy mode toggle buttons - mode is already selected
   if (inputModeToggle) {
     inputModeToggle.style.display = 'none';
   }
-  
+
   // Configure INPUT area
   if (input === 'text') {
     if (textInputContainer) textInputContainer.style.display = 'flex';
@@ -472,7 +497,7 @@ function configureChatInterface() {
     if (textInputContainer) textInputContainer.style.display = 'none';
     if (voiceInputContainer) voiceInputContainer.style.display = 'flex';
   }
-  
+
   // Update placeholder text based on output mode
   const messageInput = document.getElementById('message-input');
   if (messageInput) {
@@ -482,7 +507,7 @@ function configureChatInterface() {
       messageInput.placeholder = 'Type a message...';
     }
   }
-  
+
   // Update voice hint based on output mode
   const voiceHint = document.querySelector('.voice-hint');
   if (voiceHint) {
@@ -492,7 +517,7 @@ function configureChatInterface() {
       voiceHint.textContent = 'Voice is live - speak naturally. NPC will respond with text.';
     }
   }
-  
+
   console.log('[Playground] Chat interface configured for:', currentConversationMode);
 }
 
@@ -505,26 +530,26 @@ function resetChatInterface() {
   const voiceInputContainer = document.getElementById('voice-input-container');
   const messageInput = document.getElementById('message-input');
   const voiceHint = document.querySelector('.voice-hint');
-  
+
   // Show mode toggle again (in case it was hidden)
   if (inputModeToggle) {
     inputModeToggle.style.display = 'flex';
   }
-  
+
   // Reset to text input by default
   if (textInputContainer) textInputContainer.style.display = 'flex';
   if (voiceInputContainer) voiceInputContainer.style.display = 'none';
-  
+
   // Reset placeholder text
   if (messageInput) {
     messageInput.placeholder = 'Type a message...';
   }
-  
+
   // Reset voice hint
   if (voiceHint) {
     voiceHint.textContent = 'Voice is live - just speak naturally.';
   }
-  
+
   console.log('[Playground] Chat interface reset');
 }
 
@@ -566,7 +591,7 @@ async function handleSendMessage() {
       input.focus();
       return;
     }
-    
+
     // Otherwise, use REST API for text response
     const response = await conversation.sendMessage(currentSessionId, content);
 
@@ -596,10 +621,10 @@ async function handleSendMessage() {
     if (response.exit_convo) {
       // Show exit reason as NPC dialogue (not system message)
       addChatMessage('assistant', response.exit_convo.reason);
-      
+
       // Add system notification about session ending
       addChatMessage('system', 'NPC has ended the conversation. Saving state...');
-      
+
       // Automatically end the session
       setTimeout(async () => {
         try {
@@ -662,7 +687,7 @@ async function connectVoice() {
       })
       .on('transcript', (text, isFinal) => {
         updatePipelineStep('stt', isFinal ? 'complete' : 'active');
-        
+
         if (isFinal && text.trim()) {
           // Remove interim transcript indicator and add final message
           removeInterimTranscript();
@@ -1156,22 +1181,22 @@ function buildMiniAvatar(npc) {
  */
 function showInterimTranscript(text) {
   const messages = document.getElementById('chat-messages');
-  
+
   // Remove placeholder if present
   const placeholder = messages.querySelector('.chat-placeholder');
   if (placeholder) {
     placeholder.remove();
   }
-  
+
   // Find or create interim transcript element
   let interimEl = messages.querySelector('.chat-message.interim');
-  
+
   if (!interimEl) {
     interimEl = document.createElement('div');
     interimEl.className = 'chat-message user interim';
     messages.appendChild(interimEl);
   }
-  
+
   // Update with current interim text
   interimEl.innerHTML = `<span class="interim-text">${escapeHtml(text)}</span><span class="interim-indicator">...</span>`;
   messages.scrollTop = messages.scrollHeight;
@@ -1183,7 +1208,7 @@ function showInterimTranscript(text) {
 function removeInterimTranscript() {
   const messages = document.getElementById('chat-messages');
   const interimEl = messages.querySelector('.chat-message.interim');
-  
+
   if (interimEl) {
     interimEl.remove();
   }
@@ -1223,8 +1248,42 @@ function resetPipelineTrace() {
   });
 }
 
-function addToolCallLog(_name, _args) {
-  // Tool call logging removed — panel replaced with World Context
+/**
+ * Render an MCP tool call as a distinct chat bubble.
+ * Uses a special .msg-tool-call style so it's clearly not a regular message.
+ * exit_convo gets an extra .msg-tool-call--exit class for visual emphasis.
+ */
+function addToolCallLog(name, args) {
+  const messages = document.getElementById('chat-messages');
+  if (!messages) return;
+
+  const isExit = name === 'exit_convo';
+  const extraClass = isExit ? ' msg-tool-call--exit' : '';
+
+  // Format args as pretty JSON, truncated for readability
+  let argsText = '';
+  try {
+    argsText = JSON.stringify(args || {}, null, 2);
+    if (argsText.length > 300) {
+      argsText = argsText.substring(0, 300) + '\n...}';
+    }
+  } catch {
+    argsText = String(args || '{}');
+  }
+
+  const div = document.createElement('div');
+  div.className = `msg msg-tool-call${extraClass}`;
+  div.innerHTML = `
+    <div class="msg-tool-call-header">
+      <span class="msg-tool-call-icon">${isExit ? '⛔' : '⚙'}</span>
+      <span class="msg-tool-call-name">${escapeHtml(name)}</span>
+      <span class="msg-tool-call-label">${isExit ? 'Conversation Ending Tool' : 'MCP Tool Call'}</span>
+    </div>
+    <pre class="msg-tool-call-args">${escapeHtml(argsText)}</pre>
+  `;
+
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
 }
 
 function addSecurityLog(_type, _message) {
@@ -1647,8 +1706,8 @@ function renderMindViewerContent(instance) {
     <div class="mind-section mind-section-memory">
       <h4>Short-Term Memory <span class="mind-section-badge">${shortMem.length}</span></h4>
       ${shortMem.length > 0
-        ? `<div class="memory-list">${renderMemories(shortMem)}</div>`
-        : '<p class="memory-empty">No short-term memories — end a session to create one</p>'}
+      ? `<div class="memory-list">${renderMemories(shortMem)}</div>`
+      : '<p class="memory-empty">No short-term memories — end a session to create one</p>'}
     </div>
   `;
 
@@ -1657,8 +1716,8 @@ function renderMindViewerContent(instance) {
     <div class="mind-section mind-section-memory">
       <h4>Long-Term Memory <span class="mind-section-badge">${longMem.length}</span></h4>
       ${longMem.length > 0
-        ? `<div class="memory-list">${renderMemories(longMem)}</div>`
-        : '<p class="memory-empty">No long-term memories — run Weekly Whisper to promote memories</p>'}
+      ? `<div class="memory-list">${renderMemories(longMem)}</div>`
+      : '<p class="memory-empty">No long-term memories — run Weekly Whisper to promote memories</p>'}
     </div>
   `;
 

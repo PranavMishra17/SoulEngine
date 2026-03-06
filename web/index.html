@@ -626,6 +626,57 @@
         </div>
       </div>
       
+      <!-- Usage & Transcripts Section (loaded async) -->
+      <div class="dashboard-usage" id="usage-section" style="display:none;">
+        <h2 class="stats-title">Usage &amp; Transcripts</h2>
+        <div class="stats-grid usage-stats-grid">
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-conv">&#128172;</div>
+            <div class="stat-content">
+              <span class="stat-value" id="usage-total-convos">0</span>
+              <span class="stat-label">Total Conversations</span>
+            </div>
+          </div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-instances">&#128196;</div>
+            <div class="stat-content">
+              <span class="stat-value" id="usage-text-in">0</span>
+              <span class="stat-label">Text Input Tokens (est.)</span>
+            </div>
+          </div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-entries">&#128196;</div>
+            <div class="stat-content">
+              <span class="stat-value" id="usage-text-out">0</span>
+              <span class="stat-label">Text Output Tokens (est.)</span>
+            </div>
+          </div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-conv">&#127908;</div>
+            <div class="stat-content">
+              <span class="stat-value" id="usage-voice-in">0</span>
+              <span class="stat-label">Voice Input Chars (STT)</span>
+            </div>
+          </div>
+          <div class="stat-card stat-card-sm">
+            <div class="stat-icon stat-icon-game">&#128265;</div>
+            <div class="stat-content">
+              <span class="stat-value" id="usage-voice-out">0</span>
+              <span class="stat-label">Voice Output Chars (TTS)</span>
+            </div>
+          </div>
+        </div>
+        <div class="transcripts-panel">
+          <div class="transcripts-header">
+            <h3 class="transcripts-title">Recent Conversations</h3>
+            <span class="transcripts-subtitle" id="transcripts-count">No transcripts yet</span>
+          </div>
+          <div class="transcripts-list" id="transcripts-list">
+            <div class="transcripts-empty">No conversations recorded yet. Start a session in the playground!</div>
+          </div>
+        </div>
+      </div>
+      
       <!-- Structure Flowchart -->
       <div class="dashboard-flowchart">
         <h2 class="flowchart-title">Project Structure</h2>

@@ -606,23 +606,38 @@ async function handleEndMessage(connection: VoiceConnection, llmProvider: LLMPro
 }
 
 /**
- * Clean up a connection on close
+ * Clean up a connection on close.
+ * Ends the pipeline and the session so transcripts/usage are always saved,
+ * even when the browser tab is closed abruptly.
  */
-async function cleanupConnection(connection: VoiceConnection, _llmProvider: LLMProvider): Promise<void> {
+async function cleanupConnection(connection: VoiceConnection, llmProvider: LLMProvider): Promise<void> {
   const { sessionId, pipeline } = connection;
 
-  if (pipeline && pipeline.active) {
-    try {
+  try {
+    // End the voice pipeline first
+    if (pipeline && pipeline.active) {
       await pipeline.end();
       logger.debug({ sessionId }, 'Pipeline cleaned up on connection close');
-    } catch (error) {
-      logger.warn({ sessionId, error: String(error) }, 'Error cleaning up pipeline');
+    }
+
+    // Auto-end session if it's still alive (saves transcript + usage).
+    // This runs when the WS closes for any reason (tab close, network drop, explicit 'end').
+    // endSession is idempotent — if already ended it throws SESSION_NOT_FOUND which we catch.
+    const sessionStillActive = sessionStore.get(sessionId);
+    if (sessionStillActive) {
+      const exitConvoUsed = pipeline?.wasExitConvoUsed() ?? false;
+      await endSession(sessionId, llmProvider, exitConvoUsed);
+      logger.info({ sessionId }, 'Session auto-ended on WebSocket close');
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    // SESSION_NOT_FOUND is expected if the session was already ended via the 'end' message
+    if (!msg.includes('SESSION_NOT_FOUND') && !msg.includes('not found')) {
+      logger.warn({ sessionId, error: msg }, 'Error during connection cleanup (non-fatal)');
     }
   }
-
-  // Note: We don't automatically end the session on WebSocket close
-  // The session might be reconnected, or ended via REST API
 }
+
 
 /**
  * Send a message to the WebSocket client

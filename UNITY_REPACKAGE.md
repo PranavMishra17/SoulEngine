@@ -627,7 +627,93 @@ public class MyGameToolHandler : GameToolHandler
 
 ---
 
+## MCP Tool Calls in Practice
+
+### How Tool Calls Work (3-Script Flow)
+
+When an NPC decides to invoke a tool, the flow is:
+
+1. LLM generates a function/tool call in its response
+2. **SoulEngine SDK** intercepts the call, validates arguments
+3. `NPCCharacter.OnToolCall` Unity Event fires with `(toolName, args)`
+4. If `GameToolHandler` has a registered handler → it executes and returns a result
+5. If no handler → call is forwarded to the game client (your Unity code) via `OnToolCall`
+6. Execution result is fed back to LLM to complete the turn
+
+```csharp
+// Wire in Awake or Inspector — fires for every tool the NPC calls
+npc.OnToolCall.AddListener((toolName, args) => {
+    GameHUD.ShowNPCAction($"{npc.Name} → {toolName}");
+    Debug.Log($"[MCP] NPC used tool: {toolName}");
+});
+```
+
+### Tool Types and When They Fire
+
+| Tool Type | When it fires | Ends conversation? |
+|-----------|--------------|-------------------|
+| `conversation_tools` | Mid-conversation, before NPC response text | **No** — NPC continues speaking |
+| `game_event_tools` | Mid-conversation, alongside or instead of text | **No** — game action only |
+| `exit_convo` | When NPC needs to end the conversation | **Yes** — session auto-ends |
+
+### Handling exit_convo
+
+`exit_convo` is a built-in tool the NPC uses to end a conversation (moderation boundary, story moment, or voluntary exit). Handle cleanup via `OnConversationEnd`:
+
+```csharp
+void Awake() {
+    // Regular game action tools
+    npc.OnToolCall.AddListener((toolName, args) => {
+        if (toolName == "call_guards") SpawnGuards(args);
+        else if (toolName == "lock_door") LockDoor(args["door_id"].ToString());
+    });
+
+    // Conversation ended — fires whether player ended it, NPC used exit_convo, or timeout
+    npc.OnConversationEnd.AddListener(() => {
+        dialogueUI.Hide();
+        playerController.ExitDialogueMode();
+        // State is already saved server-side; no extra action needed here
+    });
+}
+```
+
+### Best Practices for the 3-Script Scene
+
+**SoulEngineManager** — manages sessions and providers only. Do not call tool APIs on it.
+
+**NPCCharacter** — wire `OnToolCall` here for NPC-specific reactions (e.g., different NPCs flee to different waypoints).
+
+**GameToolHandler** — register **shared/global** tool handlers here for tools that always have the same effect regardless of which NPC calls them (`give_item`, `update_quest`, etc.).
+
+```csharp
+// GameToolHandler: global effects
+protected override void RegisterTools() {
+    Register("give_item", async (args) => {
+        string itemId = args["item_id"].ToString();
+        int qty = args.ContainsKey("quantity") ? Convert.ToInt32(args["quantity"]) : 1;
+        await Inventory.GiveItem(itemId, qty);
+        return ToolResult.Success();
+    });
+
+    Register("update_quest", async (args) => {
+        QuestManager.Update(args["quest_id"].ToString(), args["action"].ToString());
+        return ToolResult.Success();
+    });
+}
+
+// NPCCharacter.OnToolCall: NPC-specific reactions
+npc.OnToolCall.AddListener((toolName, args) => {
+    if (toolName == "flee_to") {
+        // Each NPC has its own waypoint mapping
+        GetComponent<NavMeshAgent>().SetDestination(npcWaypoints[args["location"].ToString()]);
+    }
+});
+```
+
+---
+
 ## State Synchronization
+
 
 ### SyncManager
 

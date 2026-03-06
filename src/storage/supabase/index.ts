@@ -13,6 +13,7 @@ export * from './knowledge.js';
 export * from './mcp-tools.js';
 export * from './secrets.js';
 export * from './images.js';
+export * from './usage.js';
 
 // Export client utilities
 export { getSupabaseAdmin, createUserClient, verifyToken, isSupabaseEnabled } from './client.js';

@@ -85,13 +85,13 @@ function getCachedStats(projectId) {
   try {
     const cached = sessionStorage.getItem(`${STATS_CACHE_KEY}_${projectId}`);
     if (!cached) return null;
-    
+
     const { data, timestamp } = JSON.parse(cached);
     if (Date.now() - timestamp > STATS_CACHE_TTL) {
       sessionStorage.removeItem(`${STATS_CACHE_KEY}_${projectId}`);
       return null;
     }
-    
+
     return data;
   } catch {
     return null;
@@ -116,7 +116,7 @@ async function loadProjectData(projectId) {
   try {
     // Check cache first
     let stats = getCachedStats(projectId);
-    
+
     if (!stats) {
       // Fetch fresh stats
       stats = await projects.getStats(projectId);
@@ -150,12 +150,15 @@ async function loadProjectData(projectId) {
     // Update flowchart
     updateFlowchart(stats);
 
+    // Load usage data async (non-blocking — never throws to user)
+    loadUsageData(projectId).catch(() => { });
+
     // Show/hide starter pack section based on content
     const starterSection = document.getElementById('starter-pack-section');
     if (starterSection) {
       const hasContent = (stats.npcs?.total > 0) ||
-                         (stats.knowledge?.categories > 0) ||
-                         (stats.tools?.total > 0);
+        (stats.knowledge?.categories > 0) ||
+        (stats.tools?.total > 0);
       if (hasContent) {
         starterSection.style.display = 'none';
       } else {
@@ -167,6 +170,67 @@ async function loadProjectData(projectId) {
   } catch (error) {
     toast.error('Failed to Load Project', error.message);
     router.navigate('/projects');
+  }
+}
+
+/**
+ * Load project usage totals and recent transcripts.
+ * Non-blocking and fully graceful — never throws.
+ */
+async function loadUsageData(projectId) {
+  try {
+    const [usageRes, transcriptsRes] = await Promise.all([
+      projects.getUsage(projectId).catch(() => null),
+      projects.listTranscripts(projectId, 20).catch(() => null),
+    ]);
+
+    const section = document.getElementById('usage-section');
+    if (!section) return;
+
+    // Update usage stats
+    if (usageRes) {
+      section.style.display = 'block';
+      const fmt = (n) => Number(n || 0).toLocaleString();
+      document.getElementById('usage-total-convos').textContent = fmt(usageRes.total_conversations);
+      document.getElementById('usage-text-in').textContent = fmt(usageRes.text_input_tokens);
+      document.getElementById('usage-text-out').textContent = fmt(usageRes.text_output_tokens);
+      document.getElementById('usage-voice-in').textContent = fmt(usageRes.voice_input_chars);
+      document.getElementById('usage-voice-out').textContent = fmt(usageRes.voice_output_chars);
+    }
+
+    // Render transcript list
+    const transcripts = transcriptsRes?.transcripts || [];
+    const countEl = document.getElementById('transcripts-count');
+    const listEl = document.getElementById('transcripts-list');
+    if (!countEl || !listEl) return;
+
+    if (transcripts.length > 0) {
+      section.style.display = 'block';
+      countEl.textContent = `${transcripts.length} conversation${transcripts.length !== 1 ? 's' : ''}`;
+      const rows = transcripts.map(t => {
+        const date = new Date(t.started_at).toLocaleString();
+        const textTok = Number(t.token_usage?.text_input_tokens || 0) + Number(t.token_usage?.text_output_tokens || 0);
+        const voiceCh = Number(t.token_usage?.voice_input_chars || 0) + Number(t.token_usage?.voice_output_chars || 0);
+        const modeLabel = t.mode || 'text-text';
+        return `<div class="transcript-row">
+          <div class="transcript-meta">
+            <span class="transcript-npc">${t.npc_id || 'NPC'}</span>
+            <span class="transcript-mode badge-mode badge-mode-${modeLabel.startsWith('voice') ? 'voice' : 'text'}">${modeLabel}</span>
+            <span class="transcript-msgs">${t.message_count} msg${t.message_count !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="transcript-tokens">
+            ${textTok > 0 ? `<span title="Text tokens (est.)">&#128196; ${textTok.toLocaleString()} tok</span>` : ''}
+            ${voiceCh > 0 ? `<span title="Voice chars">&#127908; ${voiceCh.toLocaleString()} ch</span>` : ''}
+          </div>
+          <span class="transcript-date">${date}</span>
+        </div>`;
+      }).join('');
+      listEl.innerHTML = rows;
+    } else {
+      countEl.textContent = 'No transcripts yet';
+    }
+  } catch {
+    // Silently fail — usage section is optional
   }
 }
 
@@ -198,13 +262,13 @@ function updateApiStatus(configured) {
 function populateNpcBoard(npcsData) {
   const countEl = document.getElementById('npc-count');
   const gridEl = document.getElementById('npc-grid');
-  
+
   if (countEl) countEl.textContent = npcsData?.total || 0;
-  
+
   if (!gridEl) return;
 
   const definitions = npcsData?.definitions || [];
-  
+
   if (definitions.length === 0) {
     gridEl.innerHTML = '<div class="board-empty">No NPCs created yet</div>';
     return;
@@ -223,7 +287,7 @@ function populateNpcBoard(npcsData) {
       }
       avatarHtml = `<div class="board-item-avatar"><img src="${avatarSrc}" alt="${escapeHtml(npc.name)}" onerror="this.parentElement.innerHTML='&#9671;'"></div>`;
     }
-    
+
     return `
       <div class="board-item board-item-npc">
         ${avatarHtml}
@@ -248,13 +312,13 @@ function populateNpcBoard(npcsData) {
 function populateKnowledgeBoard(knowledgeData) {
   const countEl = document.getElementById('knowledge-count');
   const gridEl = document.getElementById('knowledge-grid');
-  
+
   if (countEl) countEl.textContent = knowledgeData?.categories || 0;
-  
+
   if (!gridEl) return;
 
   const categoryNames = knowledgeData?.categoryNames || [];
-  
+
   if (categoryNames.length === 0) {
     gridEl.innerHTML = '<div class="board-empty">No categories defined</div>';
     return;
@@ -283,10 +347,10 @@ function populateKnowledgeBoard(knowledgeData) {
 function populateMcpBoard(toolsData) {
   const countEl = document.getElementById('mcp-count');
   const contentEl = document.getElementById('mcp-content');
-  
+
   const total = (toolsData?.conversation || 0) + (toolsData?.gameEvent || 0);
   if (countEl) countEl.textContent = total;
-  
+
   if (!contentEl) return;
 
   if (total === 0) {
@@ -351,7 +415,7 @@ function updateFlowchart(stats) {
         <span class="npc-placeholder-label">${escapeHtml(npc.name.substring(0, 8))}</span>
       </div>
     `).join('');
-    
+
     // Add "more" placeholder if there are more NPCs
     if (stats.npcs.total > 5) {
       gridHtml += `
@@ -372,7 +436,7 @@ function updateFlowchart(stats) {
         </div>
       `;
     }
-    
+
     npcGrid.innerHTML = gridHtml;
   }
 }

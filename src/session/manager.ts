@@ -17,6 +17,8 @@ import type { KnowledgeBase } from '../types/knowledge.js';
 import type { Project } from '../types/project.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
 import { resolveProjectLlmProvider } from '../providers/llm/factory.js';
+import { emptyTokenUsage } from '../types/usage.js';
+import type { SessionTokenUsage, ConversationTranscript } from '../types/usage.js';
 
 const logger = createLogger('session-manager');
 
@@ -142,6 +144,7 @@ export async function startSession(
       player_id: playerId,
       player_info: effectivePlayerInfo,
       mode: effectiveMode,
+      token_usage: emptyTokenUsage(),
     };
 
     // Cache the original anchor for integrity checking later
@@ -231,37 +234,45 @@ export async function endSession(
 
     // Summarize conversation and create memory (unless exit_convo was used)
     if (!exitConvoUsed && state.conversation_history.length > 0) {
-      const npcPerspective: NPCPerspective = {
-        name: definition.name,
-        backstory: definition.core_anchor.backstory,
-        principles: definition.core_anchor.principles,
-        salienceThreshold: definition.salience_threshold,
-      };
+      try {
+        const npcPerspective: NPCPerspective = {
+          name: definition.name,
+          backstory: definition.core_anchor.backstory,
+          principles: definition.core_anchor.principles,
+          salienceThreshold: definition.salience_threshold,
+        };
 
-      const summaryResult = activeProvider
-        ? await summarizeConversation(activeProvider, state.conversation_history, npcPerspective)
-        : { success: false, summary: null };
+        const summaryResult = activeProvider
+          ? await summarizeConversation(activeProvider, state.conversation_history, npcPerspective)
+          : { success: false, summary: null };
 
-      if (summaryResult.success && summaryResult.summary) {
-        // Calculate salience based on conversation
-        const salience = calculateSalience({
-          emotionalIntensity: estimateEmotionalIntensity(state.conversation_history),
-          playerInvolvement: 0.8,
-          novelty: 0.5,
-          actionTaken: 0,
-          currentMood: instance.current_mood,
-        });
+        if (summaryResult.success && summaryResult.summary) {
+          // Calculate salience based on conversation
+          const salience = calculateSalience({
+            emotionalIntensity: estimateEmotionalIntensity(state.conversation_history),
+            playerInvolvement: 0.8,
+            novelty: 0.5,
+            actionTaken: 0,
+            currentMood: instance.current_mood,
+          });
 
-        // Create memory
-        const memory = createMemory(summaryResult.summary, 'short_term', salience);
-        instance.short_term_memory.push(memory);
+          // Create memory
+          const memory = createMemory(summaryResult.summary, 'short_term', salience);
+          instance.short_term_memory.push(memory);
 
-        // Prune STM if over limit
-        const pruneResult = pruneSTM(instance.short_term_memory);
-        instance.short_term_memory = pruneResult.kept;
+          // Prune STM if over limit
+          const pruneResult = pruneSTM(instance.short_term_memory);
+          instance.short_term_memory = pruneResult.kept;
 
-        memorySaved = true;
-        logger.debug({ sessionId, memorySalience: salience }, 'Conversation memory created');
+          memorySaved = true;
+          logger.debug({ sessionId, memorySalience: salience }, 'Conversation memory created');
+        }
+      } catch (summaryErr) {
+        // Summarization failure must not block instance save or session cleanup
+        logger.warn(
+          { sessionId, error: summaryErr instanceof Error ? summaryErr.message : 'Unknown' },
+          'Summarization failed (non-fatal) — session will end without memory update'
+        );
       }
     }
 
@@ -278,6 +289,41 @@ export async function endSession(
 
     // Save instance state
     const saveResult = await storage.saveInstance(instance);
+
+    // Save usage and transcript — wrapped in try/catch, must never throw
+    try {
+      const endedAt = new Date().toISOString();
+      const transcriptId = `tr_${sessionId}_${Date.now()}`;
+      const modeStr = `${state.mode?.input ?? 'text'}-${state.mode?.output ?? 'text'}`;
+
+      const transcript: ConversationTranscript = {
+        id: transcriptId,
+        project_id: state.project_id,
+        npc_id: state.definition_id,
+        player_id: state.player_id,
+        session_id: sessionId,
+        started_at: state.created_at,
+        ended_at: endedAt,
+        mode: modeStr,
+        messages: state.conversation_history
+          .filter(m => m.role !== 'system')
+          .map(m => ({ role: m.role, content: m.content })),
+        token_usage: state.token_usage,
+      };
+
+      await Promise.all([
+        storage.appendProjectUsage(state.project_id, state.token_usage),
+        storage.saveConversationTranscript(transcript),
+      ]);
+
+      logger.debug({ sessionId, tokenUsage: state.token_usage }, 'Usage and transcript saved');
+    } catch (usageErr) {
+      // Non-fatal: usage tracking failure must not prevent session cleanup
+      logger.warn(
+        { sessionId, error: usageErr instanceof Error ? usageErr.message : 'Unknown' },
+        'Failed to save usage/transcript (non-fatal)'
+      );
+    }
 
     // Remove session from store
     sessionStore.delete(sessionId);
@@ -368,9 +414,34 @@ export function addMessageToSession(sessionId: SessionID, message: Message): boo
 }
 
 /**
+ * Accumulate token/character usage for an active session.
+ * Wrapped in try/catch — a failure must never break the conversation flow.
+ */
+export function addTokensToSession(
+  sessionId: SessionID,
+  usage: Partial<SessionTokenUsage>
+): void {
+  try {
+    const stored = sessionStore.get(sessionId);
+    if (!stored) return;
+
+    const tu = stored.state.token_usage;
+    if (usage.text_input_tokens) tu.text_input_tokens += usage.text_input_tokens;
+    if (usage.text_output_tokens) tu.text_output_tokens += usage.text_output_tokens;
+    if (usage.voice_input_chars) tu.voice_input_chars += usage.voice_input_chars;
+    if (usage.voice_output_chars) tu.voice_output_chars += usage.voice_output_chars;
+
+    stored.state.last_activity = new Date().toISOString();
+  } catch {
+    // Never let token tracking break the conversation
+  }
+}
+
+/**
  * Update the instance state within a session
  */
 export function updateSessionInstance(sessionId: SessionID, instance: NPCInstance): boolean {
+
   const stored = sessionStore.get(sessionId);
   if (!stored) {
     logger.warn({ sessionId }, 'Cannot update instance in non-existent session');

@@ -6,6 +6,7 @@ import {
   getSessionContext,
   addMessageToSession,
   updateSessionInstance,
+  addTokensToSession,
   endSession,
   SessionContext,
   SessionError,
@@ -237,7 +238,7 @@ export class VoicePipeline {
     } catch (ttsError) {
       const errorMessage = ttsError instanceof Error ? ttsError.message : String(ttsError);
       logger.error({ sessionId: this.sessionId, error: errorMessage }, 'TTS session creation failed');
-      
+
       // Clean up STT session if TTS fails (if it was initialized)
       if (this.sttSession) {
         try {
@@ -750,7 +751,7 @@ export class VoicePipeline {
         // Handle text
         if (chunk.text) {
           fullResponse += chunk.text;
-          
+
           // Always emit text chunks (for UI display in all modes)
           this.events.onTextChunk(chunk.text);
 
@@ -789,6 +790,16 @@ export class VoicePipeline {
       if (fullResponse.trim().length > 0) {
         const assistantMessage: Message = { role: 'assistant', content: fullResponse };
         addMessageToSession(this.sessionId, assistantMessage);
+      }
+
+      // Gracefully track voice char counts (input = STT transcript, output = TTS text)
+      try {
+        addTokensToSession(this.sessionId, {
+          voice_input_chars: _userInput.length,   // characters transcribed by STT
+          voice_output_chars: fullResponse.length, // characters synthesized by TTS
+        });
+      } catch {
+        // Never break the voice pipeline for token tracking
       }
 
       // Update instance state if needed

@@ -989,3 +989,73 @@ projectRoutes.get('/:projectId/api-key/status', async (c) => {
     return c.json({ error: 'Failed to get API key status', details: errorMessage }, 500);
   }
 });
+
+/**
+ * GET /api/projects/:projectId/usage - Get cumulative token/char usage totals
+ */
+projectRoutes.get('/:projectId/usage', async (c) => {
+  const projectId = c.req.param('projectId');
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+    // Verify project exists
+    await storage.getProject(projectId);
+    const usage = await storage.getProjectUsage(projectId);
+    return c.json(usage);
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage }, 'Failed to get project usage');
+    return c.json({ error: 'Failed to get usage', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/transcripts - List conversation transcripts (most recent first)
+ */
+projectRoutes.get('/:projectId/transcripts', async (c) => {
+  const projectId = c.req.param('projectId');
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+    await storage.getProject(projectId);
+    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100);
+    const transcripts = await storage.listConversationTranscripts(projectId, limit);
+    return c.json({ transcripts });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    // Graceful fallback — don't fail the project if transcripts fail to load
+    logger.warn({ projectId, error: error instanceof Error ? error.message : 'Unknown' }, 'Failed to list transcripts');
+    return c.json({ transcripts: [] });
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/transcripts/:transcriptId - Get a full transcript
+ */
+projectRoutes.get('/:projectId/transcripts/:transcriptId', async (c) => {
+  const projectId = c.req.param('projectId');
+  const transcriptId = c.req.param('transcriptId');
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+    await storage.getProject(projectId);
+    const transcript = await storage.getConversationTranscript(projectId, transcriptId);
+    if (!transcript) {
+      return c.json({ error: 'Transcript not found' }, 404);
+    }
+    return c.json(transcript);
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, transcriptId, error: errorMessage }, 'Failed to get transcript');
+    return c.json({ error: 'Failed to get transcript', details: errorMessage }, 500);
+  }
+});
+

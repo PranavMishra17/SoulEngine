@@ -130,7 +130,17 @@ export const projects = {
   }),
 
   getApiKeyStatus: (projectId) => request(`/projects/${projectId}/api-key/status`),
+
+  /** Get cumulative token/char usage totals for a project */
+  getUsage: (projectId) => request(`/projects/${projectId}/usage`),
+
+  /** List recent conversation transcripts for a project */
+  listTranscripts: (projectId, limit = 50) => request(`/projects/${projectId}/transcripts?limit=${limit}`),
+
+  /** Get a single full conversation transcript */
+  getTranscript: (projectId, transcriptId) => request(`/projects/${projectId}/transcripts/${transcriptId}`),
 };
+
 
 export const starterPacks = {
   list: () => request('/starter-packs'),

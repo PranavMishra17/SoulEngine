@@ -12,6 +12,7 @@ export * from './instances.js';
 export * from './knowledge.js';
 export * from './mcp-tools.js';
 export * from './secrets.js';
+export * from './usage.js';
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -47,7 +48,7 @@ export async function uploadNpcImage(
     const files = await fs.readdir(npcDir);
     for (const file of files) {
       if (file.startsWith(`${npcId}_profile.`) && file !== filename) {
-        await fs.unlink(path.join(npcDir, file)).catch(() => {});
+        await fs.unlink(path.join(npcDir, file)).catch(() => { });
       }
     }
   } catch {
@@ -66,12 +67,12 @@ export async function deleteNpcImage(
   npcId: string
 ): Promise<void> {
   const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
-  
+
   try {
     const files = await fs.readdir(npcDir);
     for (const file of files) {
       if (file.startsWith(`${npcId}_profile.`)) {
-        await fs.unlink(path.join(npcDir, file)).catch(() => {});
+        await fs.unlink(path.join(npcDir, file)).catch(() => { });
       }
     }
   } catch {
@@ -84,7 +85,7 @@ export async function getNpcImageUrl(
   npcId: string
 ): Promise<string | null> {
   const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
-  
+
   try {
     const files = await fs.readdir(npcDir);
     const imageFile = files.find(f => f.startsWith(`${npcId}_profile.`));
@@ -94,18 +95,18 @@ export async function getNpcImageUrl(
   } catch {
     // Directory may not exist
   }
-  
+
   return null;
 }
 
 export async function deleteProjectImages(projectId: string): Promise<void> {
   const npcDir = path.join(DATA_DIR, 'projects', projectId, 'npcs');
-  
+
   try {
     const files = await fs.readdir(npcDir);
     for (const file of files) {
       if (file.includes('_profile.')) {
-        await fs.unlink(path.join(npcDir, file)).catch(() => {});
+        await fs.unlink(path.join(npcDir, file)).catch(() => { });
       }
     }
   } catch {

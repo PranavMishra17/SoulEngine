@@ -1,5 +1,6 @@
 import { NPCInstance } from './npc.js';
 import type { ConversationMode } from './voice.js';
+import type { SessionTokenUsage } from './usage.js';
 
 export type SessionID = string;
 
@@ -35,6 +36,8 @@ export interface SessionState {
   player_info: PlayerInfo | null;
   /** Conversation mode for this session */
   mode: ConversationMode;
+  /** Accumulated token/char usage for this session */
+  token_usage: SessionTokenUsage;
 }
 
 export interface SessionInitRequest {

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
-import { getSession, getSessionContext, addMessageToSession, updateSessionInstance, SessionError } from '../session/manager.js';
+import { getSession, getSessionContext, addMessageToSession, updateSessionInstance, addTokensToSession, SessionError } from '../session/manager.js';
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
@@ -196,6 +196,21 @@ export function createConversationRoutes(
         if (chunk.toolCalls.length > 0) {
           toolCalls.push(...chunk.toolCalls);
         }
+      }
+
+      // Gracefully estimate token usage from this LLM turn.
+      // We approximate 1 token ≈ 4 characters (standard heuristic for English text).
+      // If we ever get real token counts from providers, they'd override this.
+      try {
+        const inputText = systemPrompt + conversationHistory.map(m => m.content).join('') + playerInput;
+        const estimatedInput = Math.ceil(inputText.length / 4);
+        const estimatedOutput = Math.ceil(responseText.length / 4);
+        addTokensToSession(sessionId, {
+          text_input_tokens: estimatedInput,
+          text_output_tokens: estimatedOutput,
+        });
+      } catch {
+        // Never block the conversation for token estimation failures
       }
 
       // 13. Handle tool calls

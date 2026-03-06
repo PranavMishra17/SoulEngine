@@ -15,6 +15,11 @@ export interface LLMStreamChunk {
   toolCalls: ToolCall[];
   /** Whether this is the final chunk in the stream */
   done: boolean;
+  /** Token usage — only set on the final chunk (done: true). Undefined if provider doesn't return usage. */
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+  };
 }
 
 /**
