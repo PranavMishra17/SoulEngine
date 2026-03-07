@@ -255,3 +255,130 @@ export function validateToolArguments(
     errors,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Recall tools (built-in, always available to Mind instances)
+// ---------------------------------------------------------------------------
+
+export const RECALL_NPC_TOOL: Tool = {
+  name: 'recall_npc',
+  description: 'Recall detailed information about someone the NPC knows. Use when the conversation references another character and you need their full profile (backstory, personality, schedule, etc.).',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: {
+        type: 'string',
+        description: 'Name of the NPC to recall information about',
+      },
+    },
+    required: ['name'],
+  },
+};
+
+export const RECALL_KNOWLEDGE_TOOL: Tool = {
+  name: 'recall_knowledge',
+  description: 'Recall world knowledge about a specific topic or category. Use when the conversation touches on a subject the NPC might know about (history, locations, factions, lore, etc.).',
+  parameters: {
+    type: 'object',
+    properties: {
+      category: {
+        type: 'string',
+        description: 'Knowledge category to recall (e.g., "history", "politics", "geography")',
+      },
+    },
+    required: ['category'],
+  },
+};
+
+export const RECALL_MEMORIES_TOOL: Tool = {
+  name: 'recall_memories',
+  description: 'Recall past interactions and memories about the current player or a topic. Use when the conversation references past events or the NPC needs to remember previous encounters.',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'What to search memories for (e.g., player name, topic, event)',
+      },
+    },
+    required: ['query'],
+  },
+};
+
+export const RECALL_TOOLS: Record<string, Tool> = {
+  recall_npc: RECALL_NPC_TOOL,
+  recall_knowledge: RECALL_KNOWLEDGE_TOOL,
+  recall_memories: RECALL_MEMORIES_TOOL,
+};
+
+/**
+ * Check if a tool name is a built-in recall tool
+ */
+export function isRecallTool(toolName: string): boolean {
+  return toolName in RECALL_TOOLS;
+}
+
+/**
+ * Get available tools for the Mind instance.
+ * Combines recall tools (always available) with conversation tools from the NPC's permissions.
+ * Game-event tools are NOT included (they're triggered by game code, not Mind).
+ *
+ * @param definition - The NPC's definition with MCP permissions
+ * @param securityContext - Current security context
+ * @param projectToolRegistry - The project's MCP tool registry
+ * @returns Array of Tool objects for the Mind instance
+ */
+export function getMindAvailableTools(
+  definition: NPCDefinition,
+  securityContext: SecurityContext,
+  projectToolRegistry: Record<string, Tool>
+): Tool[] {
+  const tools: Tool[] = [];
+
+  // 1. Always include recall tools
+  tools.push(...Object.values(RECALL_TOOLS));
+
+  // 2. Include conversation tools from NPC permissions (same logic as getAvailableTools)
+  const permissions = definition.mcp_permissions;
+  const conversationToolNames = permissions.conversation_tools.filter(
+    (name) => !permissions.denied.includes(name)
+  );
+
+  for (const name of conversationToolNames) {
+    // Skip recall tools (already added) and built-in tools handled separately
+    if (name in RECALL_TOOLS) continue;
+
+    if (isBuiltinTool(name) && name !== 'exit_convo') {
+      tools.push(BUILTIN_TOOLS[name]);
+      continue;
+    }
+
+    const tool = projectToolRegistry[name];
+    if (tool) {
+      tools.push(tool);
+    } else {
+      logger.warn({ toolName: name, npcId: definition.id }, 'Mind tool not found in project registry');
+    }
+  }
+
+  // 3. Always include exit_convo for Mind (security escape hatch)
+  if (!tools.some((t) => t.name === 'exit_convo')) {
+    tools.push(EXIT_CONVO_TOOL);
+  }
+
+  // 4. Force-elevate exit_convo if security context demands it
+  if (securityContext.exitRequested) {
+    logger.debug({ npcId: definition.id }, 'exit_convo force-added to Mind tools due to security context');
+  }
+
+  logger.debug(
+    {
+      npcId: definition.id,
+      mindToolCount: tools.length,
+      mindToolNames: tools.map((t) => t.name),
+    },
+    'Mind tools assembled'
+  );
+
+  return tools;
+}

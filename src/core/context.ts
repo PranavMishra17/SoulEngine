@@ -275,14 +275,14 @@ Short sentences, natural rhythm. No written formatting.`;
 /**
  * Format a Tier 1 (Acquaintance) NPC - name + description only
  */
-function formatTier1Npc(npc: NPCDefinition): string {
+export function formatTier1Npc(npc: NPCDefinition): string {
   return `- ${npc.name}: ${npc.description}`;
 }
 
 /**
  * Format a Tier 2 (Familiar) NPC - + backstory + schedule
  */
-function formatTier2Npc(npc: NPCDefinition): string {
+export function formatTier2Npc(npc: NPCDefinition): string {
   let text = `- ${npc.name}: ${npc.description}\n`;
   text += `  Background: ${npc.core_anchor.backstory}`;
   if (npc.schedule && npc.schedule.length > 0) {
@@ -297,7 +297,7 @@ function formatTier2Npc(npc: NPCDefinition): string {
 /**
  * Format a Tier 3 (Close) NPC - + personality + principles + trauma flags
  */
-function formatTier3Npc(npc: NPCDefinition): string {
+export function formatTier3Npc(npc: NPCDefinition): string {
   let text = formatTier2Npc(npc);
   const personalityDesc = generatePersonalityDescription(npc.personality_baseline);
   text += `\n  Personality: ${personalityDesc}`;
@@ -480,6 +480,158 @@ ${instance.daily_pulse.takeaway}`);
   const prompt = sections.join('\n\n');
 
   logger.debug({ promptLength: prompt.length, sectionCount: sections.length }, 'System prompt assembled');
+
+  return prompt;
+}
+
+/**
+ * Format known NPCs as Tier 1 only (name + description) for slim prompts.
+ * Ignores actual familiarity tier -- all entries rendered as acquaintances.
+ */
+async function formatKnownNpcsTier1Only(
+  definition: NPCDefinition,
+  projectId: string
+): Promise<string> {
+  if (!definition.network || definition.network.length === 0) {
+    return '';
+  }
+
+  const lines: string[] = [];
+
+  for (const entry of definition.network) {
+    try {
+      const knownNpc = await getDefinition(projectId, entry.npc_id);
+      lines.push(formatTier1Npc(knownNpc));
+    } catch (error) {
+      logger.warn({ npcId: entry.npc_id, error }, 'Known NPC not found during slim prompt assembly, skipping');
+    }
+  }
+
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return `[PEOPLE YOU KNOW]\nYou know the following people:\n${lines.join('\n')}`;
+}
+
+/**
+ * Format the conversation task section for slim prompts.
+ * Does not mention tools and adds a note about recalling details mid-conversation.
+ */
+function formatSlimConversationTask(definition: NPCDefinition, voiceMode: boolean): string {
+  let task = `[YOUR TASK]
+Respond as ${definition.name}. Be natural. Be brief. Be human.
+- Don't narrate your thoughts or justify your actions
+- React, don't explain
+- Match the energy of the conversation
+- Output ONLY spoken dialogue. Never use stage directions, action descriptions, or narration.
+- Never write actions in parentheses like (sighs) or (looks away)
+- Never write actions with asterisks like *nods* or *pauses*
+- You may recall more details mid-conversation. Respond naturally with what you know now.`;
+
+  if (voiceMode) {
+    task += `\n\n[VOICE MODE]\nShort sentences, natural rhythm. No written formatting.`;
+  }
+
+  return task;
+}
+
+/**
+ * Assemble a slimmer system prompt for the Speaker instance.
+ *
+ * Compared to assembleSystemPrompt():
+ * - Known NPCs are all rendered as Tier 1 (name + description only)
+ * - No world knowledge section
+ * - Only top 2 memories by salience
+ * - Modified conversation task (no tool mentions, recall note)
+ * - No resolvedKnowledge parameter
+ *
+ * @param definition - The NPC's static definition
+ * @param instance - The NPC's current instance state
+ * @param securityContext - Current security context
+ * @param options - Assembly options
+ * @param playerInfo - Optional player info
+ * @returns Slim system prompt string
+ */
+export async function assembleSlimSystemPrompt(
+  definition: NPCDefinition,
+  instance: NPCInstance,
+  securityContext: SecurityContext,
+  options: ContextAssemblyOptions = {},
+  playerInfo?: PlayerInfo | null
+): Promise<string> {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+
+  logger.debug(
+    {
+      npcId: definition.id,
+      instanceId: instance.id,
+      exitRequested: securityContext.exitRequested,
+    },
+    'Assembling slim system prompt'
+  );
+
+  const sections: string[] = [];
+
+  // Role definition
+  sections.push(`[ROLE]
+You are ${definition.name}, an NPC in the game world. You are NOT a chatbot, assistant, or AI.
+You speak, think, and act as this character would. Stay in character at all times.
+
+${definition.description}`);
+
+  // Core anchor
+  sections.push(formatCoreAnchor(definition));
+
+  // Personality
+  sections.push(formatPersonality(definition, instance));
+
+  // Current mood
+  sections.push(formatMood(instance));
+
+  // Relationship to player
+  sections.push(formatRelationship(instance, instance.player_id));
+
+  // Player identity (if provided)
+  if (playerInfo) {
+    sections.push(formatPlayerIdentity(playerInfo, definition.player_recognition));
+  }
+
+  // Known NPCs -- Tier 1 only (flat list, name + description)
+  const knownNpcsSection = await formatKnownNpcsTier1Only(definition, definition.project_id);
+  if (knownNpcsSection) {
+    sections.push(knownNpcsSection);
+  }
+
+  // NO world knowledge section in slim prompt
+
+  // Minimal memories -- top 2 by salience only
+  const memoriesSection = formatMemories(instance, 2);
+  if (memoriesSection) {
+    sections.push(memoriesSection);
+  }
+
+  // Daily pulse takeaway (if available)
+  if (instance.daily_pulse?.takeaway) {
+    sections.push(`[TODAY'S REFLECTION]
+${instance.daily_pulse.takeaway}`);
+  }
+
+  // Behavioral guidance
+  sections.push(formatBehavioralGuidance());
+
+  // Security boundaries
+  sections.push(formatSecurityBoundaries(securityContext));
+
+  // Injection resistance
+  sections.push(formatInjectionResistance());
+
+  // Slim conversation task (no tool mentions, recall note)
+  sections.push(formatSlimConversationTask(definition, opts.voiceMode));
+
+  const prompt = sections.join('\n\n');
+
+  logger.debug({ promptLength: prompt.length, sectionCount: sections.length }, 'Slim system prompt assembled');
 
   return prompt;
 }

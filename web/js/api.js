@@ -300,6 +300,8 @@ export class VoiceClient {
       onAudioChunk: () => { },
       onToolCall: () => { },
       onGenerationEnd: () => { },
+      onMindActivity: () => { },
+      onFollowupStart: () => { },
       onExitConvo: () => { },
       onSync: () => { },
       onError: () => { },
@@ -392,7 +394,13 @@ export class VoiceClient {
         this.callbacks.onToolCall(message.name, message.args);
         break;
       case 'generation_end':
-        this.callbacks.onGenerationEnd();
+        this.callbacks.onGenerationEnd(message.phase);
+        break;
+      case 'mind_activity':
+        this.callbacks.onMindActivity(message.tools_called, message.duration_ms, message.completed);
+        break;
+      case 'followup_start':
+        this.callbacks.onFollowupStart();
         break;
       case 'exit_convo':
         this.callbacks.onExitConvo(message.reason, message.cooldown_seconds);

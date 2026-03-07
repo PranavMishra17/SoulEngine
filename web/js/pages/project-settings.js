@@ -83,6 +83,17 @@ async function loadSettings(projectId) {
     // Update model dropdown based on LLM provider
     updateModelOptions(settings.llm_provider || 'gemini', settings.llm_model);
 
+    // Mind settings
+    const mindProviderEl = document.getElementById('settings-mind-provider');
+    if (mindProviderEl) {
+      mindProviderEl.value = settings.mind_provider || '';
+      updateMindModelOptions(settings.mind_provider || settings.llm_provider || 'gemini', settings.mind_model);
+    }
+    const mindTimeoutEl = document.getElementById('settings-mind-timeout');
+    if (mindTimeoutEl) {
+      mindTimeoutEl.value = settings.mind_timeout_ms || 5000;
+    }
+
     // Fetch and display API key status
     await loadKeyStatus(projectId);
 
@@ -162,10 +173,26 @@ function updateModelOptions(provider, selectedModel) {
   ).join('');
 }
 
+function updateMindModelOptions(provider, selectedModel) {
+  const modelSelect = document.getElementById('settings-mind-model');
+  if (!modelSelect) return;
+  const models = LLM_MODELS[provider] || [];
+  modelSelect.innerHTML = '<option value="">Same as Speaker</option>' +
+    models.map(m =>
+      `<option value="${m.id}" ${m.id === selectedModel ? 'selected' : ''}>${m.name}</option>`
+    ).join('');
+}
+
 function bindEventHandlers(projectId) {
   // LLM provider change -> update model options
   document.getElementById('settings-llm-provider')?.addEventListener('change', (e) => {
     updateModelOptions(e.target.value, null);
+  });
+
+  // Mind provider change -> update mind model options
+  document.getElementById('settings-mind-provider')?.addEventListener('change', (e) => {
+    const provider = e.target.value || document.getElementById('settings-llm-provider').value;
+    updateMindModelOptions(provider, null);
   });
 
   // Copy project ID
@@ -231,6 +258,11 @@ async function saveSettings() {
     const ttsProvider = document.getElementById('settings-tts-provider').value;
     const sttProvider = document.getElementById('settings-stt-provider').value;
 
+    // Gather Mind settings
+    const mindProvider = document.getElementById('settings-mind-provider')?.value || '';
+    const mindModel = document.getElementById('settings-mind-model')?.value || '';
+    const mindTimeout = parseInt(document.getElementById('settings-mind-timeout')?.value) || 5000;
+
     // Update project settings
     await projects.update(currentProjectId, {
       name,
@@ -239,6 +271,9 @@ async function saveSettings() {
         llm_model: llmModel,
         tts_provider: ttsProvider,
         stt_provider: sttProvider,
+        mind_provider: mindProvider || undefined,
+        mind_model: mindModel || undefined,
+        mind_timeout_ms: mindTimeout,
       },
     });
 

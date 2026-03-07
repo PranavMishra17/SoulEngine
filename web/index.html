@@ -1522,6 +1522,39 @@
           </div>
         </section>
 
+        <!-- Mind Configuration -->
+        <section class="settings-card">
+          <div class="settings-card-header">
+            <h2>Mind Configuration</h2>
+            <p class="settings-card-desc">Configure the NPC Mind (background cognitive process). The Mind analyzes conversations and decides on tool calls in parallel with the Speaker.</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label for="settings-mind-provider">Mind LLM Provider</label>
+              <select id="settings-mind-provider" class="input select">
+                <option value="">Same as Speaker</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="grok">xAI Grok</option>
+              </select>
+              <span class="input-hint">Uses a separate LLM for the Mind. Defaults to the Speaker's provider if not set.</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-mind-model">Mind Model</label>
+              <select id="settings-mind-model" class="input select">
+                <option value="">Same as Speaker</option>
+              </select>
+              <span class="input-hint">Choose a fast/cheap model for the Mind to minimize overhead.</span>
+            </div>
+            <div class="form-group">
+              <label for="settings-mind-timeout">Mind Timeout (ms)</label>
+              <input type="number" id="settings-mind-timeout" class="input" min="1000" max="30000" step="500" value="5000">
+              <span class="input-hint">Maximum time the Mind can run before being aborted (default: 5000ms).</span>
+            </div>
+          </div>
+        </section>
+
         <!-- LLM API Keys -->
         <section class="settings-card">
           <div class="settings-card-header settings-card-header-row">

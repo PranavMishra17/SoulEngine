@@ -22,6 +22,7 @@ const UpdateProjectSchema = z.object({
   settings: z
     .object({
       llm_provider: z.string().optional(),
+      llm_model: z.string().optional(),
       stt_provider: z.string().optional(),
       tts_provider: z.string().optional(),
       default_voice_id: z.string().optional(),
@@ -34,6 +35,10 @@ const UpdateProjectSchema = z.object({
           tts: z.number().positive().optional(),
         })
         .optional(),
+      // Mind configuration
+      mind_provider: z.string().optional(),
+      mind_model: z.string().optional(),
+      mind_timeout_ms: z.number().int().min(1000).max(30000).optional(),
     })
     .optional(),
   limits: z

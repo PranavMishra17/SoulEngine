@@ -5,8 +5,8 @@ import { getSession, getSessionContext, addMessageToSession, updateSessionInstan
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
-import { assembleSystemPrompt, assembleConversationHistory } from '../core/context.js';
-import { getAvailableTools, isExitConvoTool, validateToolArguments } from '../core/tools.js';
+import { assembleSlimSystemPrompt, assembleConversationHistory } from '../core/context.js';
+import { runMindAgentLoop } from '../core/mind.js';
 import { blendMoods } from '../core/personality.js';
 import type { LLMProvider, LLMMessage, LLMProviderType } from '../providers/llm/interface.js';
 import { createLlmProvider, getDefaultModel, getDefaultLlmProviderType, isLlmProviderSupported } from '../providers/llm/factory.js';
@@ -16,6 +16,7 @@ import type { ToolCall, ToolResult } from '../types/mcp.js';
 import type { MoodVector } from '../types/npc.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, ExitConvoResult } from '../mcp/exit-handler.js';
+import type { MindResult, MindActivity } from '../types/mind.js';
 
 const logger = createLogger('routes-conversation');
 
@@ -47,7 +48,10 @@ const SendMessageSchema = z.object({
  * Response from sending a message
  */
 export interface ConversationResponse {
-  response: string;
+  response: string;                    // Combined: speaker + followup
+  speaker_response?: string;           // Speaker-only text (when mind has follow-up)
+  followup_response?: string;          // Mind follow-up text (if any)
+  mind?: MindActivity;                 // Mind activity metadata
   tool_calls?: ToolCall[];
   tool_results?: ToolResult[];
   exit_convo?: ExitConvoResult;
@@ -132,36 +136,31 @@ export function createConversationRoutes(
 
       // 6. Load session context (definition, knowledge, API keys)
       const sessionContext = await getSessionContext(sessionId);
-      const { definition, instance, resolvedKnowledge } = sessionContext;
+      const { definition, instance } = sessionContext;
 
-      // 7. Get available tools from project registry
-      const projectTools = toolRegistry.getProjectTools(state.project_id);
-      const availableTools = getAvailableTools(definition, securityContext, projectTools);
-
-      // 8. Assemble system prompt (with player info from session state)
-      const systemPrompt = await assembleSystemPrompt(
+      // 7. Assemble slim system prompt for Speaker (no knowledge, no tools)
+      const systemPrompt = await assembleSlimSystemPrompt(
         definition,
         instance,
-        resolvedKnowledge,
         securityContext,
         {},
         state.player_info
       );
 
-      // 9. Add player message to history
+      // 8. Add player message to history
       const playerMessage: Message = {
         role: 'user',
         content: playerInput,
       };
       addMessageToSession(sessionId, playerMessage);
 
-      // 10. Assemble conversation history for LLM
+      // 9. Assemble conversation history for LLM
       const conversationHistory = assembleConversationHistory(
         state.conversation_history,
         20
       );
 
-      // 11. Resolve per-project LLM provider (overrides the global default)
+      // 10. Resolve per-project LLM provider for Speaker (overrides the global default)
       const projectSettings = sessionContext.project.settings;
       const defaultProviderType = getDefaultLlmProviderType();
       const rawProviderType = projectSettings.llm_provider || defaultProviderType;
@@ -179,31 +178,83 @@ export function createConversationRoutes(
         return c.json({ error: 'No LLM provider configured' }, 503);
       }
 
-      // 12. Call LLM
-      let responseText = '';
-      const toolCalls: ToolCall[] = [];
-      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+      // Mind provider resolution (can use different model/provider)
+      const mindProviderType = projectSettings.mind_provider
+        ? (isLlmProviderSupported(projectSettings.mind_provider) ? projectSettings.mind_provider : providerType)
+        : providerType;
+      const mindModelId = projectSettings.mind_model || getDefaultModel(mindProviderType as LLMProviderType);
+      const mindApiKey = sessionContext.apiKeys[mindProviderType as keyof typeof sessionContext.apiKeys];
 
+      const mindProvider = mindApiKey
+        ? createLlmProvider({ provider: mindProviderType as LLMProviderType, apiKey: mindApiKey, model: mindModelId })
+        : activeProvider;  // fall back to same provider if no separate key
+
+      // 11. Parallel Speaker + Mind execution
+      const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 5000;
       const llmMessages: LLMMessage[] = conversationHistory;
 
-      for await (const chunk of activeProvider.streamChat({
-        systemPrompt,
-        messages: llmMessages,
-        tools: availableTools.length > 0 ? availableTools : undefined,
-      })) {
-        if (chunk.text) {
-          responseText += chunk.text;
-        }
-        if (chunk.toolCalls.length > 0) {
-          toolCalls.push(...chunk.toolCalls);
-        }
-        if (chunk.done && chunk.usage) {
-          providerUsage = chunk.usage;
-        }
-      }
+      // Speaker: stream LLM with NO tools
+      const speakerPromise = (async () => {
+        let text = '';
+        let usage: { input_tokens: number; output_tokens: number } | undefined;
 
-      // Track token usage — prefer real counts from the provider, fall back to chars/4 estimate.
+        for await (const chunk of activeProvider.streamChat({
+          systemPrompt,
+          messages: llmMessages,
+          // NO tools -- Speaker is pure voice
+        })) {
+          if (chunk.text) text += chunk.text;
+          if (chunk.done && chunk.usage) usage = chunk.usage;
+        }
+
+        return { text, usage };
+      })();
+
+      // Mind: agent loop with ALL tools (recall + conversation + exit_convo)
+      const mindAbortController = new AbortController();
+      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+
+      const projectTools = toolRegistry.getProjectTools(state.project_id);
+
+      const mindPromise = (async (): Promise<MindResult | null> => {
+        try {
+          // Start Mind immediately -- it sees conversation history + user message.
+          // The speakerResponse param will be empty string since we don't have it yet.
+          // This is fine -- the Mind makes decisions based on the user's message and history,
+          // not the Speaker's response.
+          const result = await runMindAgentLoop(
+            definition,
+            instance,
+            playerInput,
+            '',  // Speaker response not available yet (parallel execution)
+            conversationHistory,
+            mindProvider,
+            state.project_id,
+            sessionContext.knowledgeBase,
+            toolRegistry,
+            securityContext,
+            projectTools,
+            mindAbortController.signal,
+          );
+          return result;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
+          return null;
+        } finally {
+          clearTimeout(mindTimeout);
+        }
+      })();
+
+      // Wait for both
+      const [speakerResult, mindResult] = await Promise.all([speakerPromise, mindPromise]);
+
+      let responseText = speakerResult.text;
+      const providerUsage = speakerResult.usage;
+
+      // Track token usage -- prefer real counts from the provider, fall back to chars/4 estimate.
       try {
+        // Speaker tokens
         if (providerUsage) {
           addTokensToSession(sessionId, {
             text_input_tokens: providerUsage.input_tokens,
@@ -217,76 +268,51 @@ export function createConversationRoutes(
             text_output_tokens: Math.ceil(responseText.length / 4),
           });
         }
+        // Mind tokens
+        if (mindResult?.usage) {
+          addTokensToSession(sessionId, {
+            text_input_tokens: mindResult.usage.input_tokens,
+            text_output_tokens: mindResult.usage.output_tokens,
+          });
+        }
       } catch {
         // Never block the conversation for token tracking failures
       }
 
-      // 13. Handle tool calls
+      // 12. Handle Mind result
+      const toolCalls: ToolCall[] = mindResult?.raw_tool_calls ?? [];
       const toolResults: ToolResult[] = [];
       let exitConvoResult: ExitConvoResult | undefined;
 
-      for (const toolCall of toolCalls) {
-        // Check for exit_convo
-        if (isExitConvoTool(toolCall.name)) {
-          exitConvoResult = handleExitConvo(
-            sessionId,
-            toolCall.arguments as { reason: string },
-            securityContext
-          );
+      // Process Mind tool results for response
+      if (mindResult && mindResult.tools_called.length > 0) {
+        for (const tr of mindResult.tools_called) {
           toolResults.push({
-            tool_call_id: toolCall.id ?? toolCall.name,
-            result: exitConvoResult,
-          });
-          continue;
-        }
-
-        // Validate tool arguments
-        const tool = projectTools[toolCall.name];
-        if (!tool) {
-          logger.warn({ sessionId, toolName: toolCall.name }, 'Tool not found in registry');
-          toolResults.push({
-            tool_call_id: toolCall.id ?? toolCall.name,
-            result: null,
-            error: `Tool not found: ${toolCall.name}`,
-          });
-          continue;
-        }
-
-        const validation = validateToolArguments(tool, toolCall.arguments);
-        if (!validation.valid) {
-          logger.warn({ sessionId, toolName: toolCall.name, errors: validation.errors }, 'Tool argument validation failed');
-          toolResults.push({
-            tool_call_id: toolCall.id ?? toolCall.name,
-            result: null,
-            error: `Invalid arguments: ${validation.errors.join(', ')}`,
-          });
-          continue;
-        }
-
-        // Execute tool via registry (or log for later game handling)
-        try {
-          const result = await toolRegistry.executeTool(
-            state.project_id,
-            toolCall.name,
-            toolCall.arguments
-          );
-          toolResults.push({
-            tool_call_id: toolCall.id ?? toolCall.name,
-            result,
-          });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          logger.error({ sessionId, toolName: toolCall.name, error: errorMessage }, 'Tool execution failed');
-          toolResults.push({
-            tool_call_id: toolCall.id ?? toolCall.name,
-            result: null,
-            error: errorMessage,
+            tool_call_id: tr.tool_name,
+            result: tr.status === 'success' ? tr.result_content : null,
+            error: tr.status === 'error' ? tr.error : undefined,
           });
         }
       }
 
-      // 14. Strip stage directions / narration from response before storing
+      // Handle exit_convo from Mind
+      if (mindResult?.exit_convo_used) {
+        exitConvoResult = handleExitConvo(
+          sessionId,
+          { reason: mindResult.exit_convo_reason ?? 'Mind decided to end conversation' },
+          securityContext
+        );
+      }
+
+      // 13. Strip narration and combine responses
       responseText = stripNarration(responseText);
+      const speakerResponse = responseText;
+      const followupResponse = mindResult?.follow_up_text || '';
+
+      // Combine for storage: speaker + follow-up as single assistant message
+      if (followupResponse) {
+        responseText = `${responseText}\n\n${followupResponse}`;
+      }
 
       const assistantMessage: Message = {
         role: 'assistant',
@@ -294,7 +320,7 @@ export function createConversationRoutes(
       };
       addMessageToSession(sessionId, assistantMessage);
 
-      // 15. Update mood based on conversation (subtle drift)
+      // 14. Update mood based on conversation (subtle drift)
       const instance_updated = { ...instance };
       if (moderationResult.action === 'warn') {
         // Negative mood shift if moderation warned
@@ -307,13 +333,29 @@ export function createConversationRoutes(
       }
       updateSessionInstance(sessionId, instance_updated);
 
-      // 16. Build response
+      // 15. Build response
       const response: ConversationResponse = {
         response: responseText,
         mood: instance_updated.current_mood,
       };
 
-      if (toolCalls.length > 0) {
+      // Include speaker/followup split if Mind generated follow-up
+      if (followupResponse) {
+        response.speaker_response = speakerResponse;
+        response.followup_response = followupResponse;
+      }
+
+      // Include Mind activity metadata
+      if (mindResult && mindResult.tools_called.length > 0) {
+        response.mind = {
+          tools_called: mindResult.tools_called.map(tc => ({
+            name: tc.tool_name,
+            args: tc.arguments,
+            status: tc.status,
+          })),
+          duration_ms: mindResult.duration_ms,
+          completed: mindResult.completed,
+        };
         response.tool_calls = toolCalls;
         response.tool_results = toolResults;
       }
@@ -329,7 +371,10 @@ export function createConversationRoutes(
           duration,
           inputLength: playerInput.length,
           responseLength: responseText.length,
-          toolCallCount: toolCalls.length,
+          mindToolCount: mindResult?.tools_called.length ?? 0,
+          mindCompleted: mindResult?.completed ?? false,
+          mindDuration: mindResult?.duration_ms,
+          hasFollowup: !!followupResponse,
           exitConvo: !!exitConvoResult,
         },
         'Message processed'

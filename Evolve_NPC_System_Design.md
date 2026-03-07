@@ -143,11 +143,13 @@ Networks support **bidirectional awareness**: "You know them, and they know you 
 
 ### 6. MCP Action Layer
 
-NPCs don't just talk. They act. Through Model Context Protocol tools, characters execute world actions with real consequences. Two distinct tool categories:
+NPCs don't just talk. They act. Through Model Context Protocol tools, characters execute world actions with real consequences. Three distinct tool categories with two decision authorities:
 
-**Conversation Tools**: The LLM decides to invoke based on dialogue context. A player threatens the barista. The LLM decides to call the police. The decision emerges from the character's personality, current mood, and relationship with the player.
+**Conversation Tools** (project-defined): Decided by the **Mind instance** (see Section 7) during its parallel agent loop. A player threatens the barista. The Mind decides to call the police. The decision emerges from the character's personality, current mood, and relationship with the player. The Speaker never sees or invokes these tools.
 
-**Game-Event Tools**: Game logic invokes directly, bypassing LLM. An explosion triggers a flee response. Same tool interface, different decision authority.
+**Game-Event Tools**: Game logic invokes directly, bypassing LLM entirely. An explosion triggers a flee response. Same tool interface, different decision authority. These remain unchanged by the dual-instance architecture.
+
+**`exit_convo`**: A special built-in tool handled by the **Mind instance**. Injected only when moderation flags inappropriate content, allowing the NPC to end conversation gracefully while staying in character.
 
 ```
 mcp_registry: {
@@ -156,11 +158,92 @@ mcp_registry: {
   flee_to: { params: { location_id: string } },
   lock_door: { params: { door_id: string } },
   alert_guards: { params: { threat_level: number } },
-  exit_convo: { params: { reason: string } }  // Security escape hatch
+  exit_convo: { params: { reason: string } }  // Security escape hatch (Mind-only)
 }
 ```
 
-The `exit_convo` tool is special — injected only when moderation flags inappropriate content, allowing the NPC to end conversation gracefully while staying in character.
+### 7. The NPC Mind (Dual-Instance Architecture)
+
+Every conversation turn spawns two parallel LLM instances: a **Speaker** that responds immediately, and a **Mind** that thinks in parallel with full tool access. This separation keeps response latency low while preserving the NPC's ability to reason, recall, and act.
+
+#### Speaker
+
+The Speaker is the NPC's conversational voice. It receives a **slim context window** containing only:
+- Core Anchor (backstory, principles)
+- Tier 1 network entries (acquaintance-level: names and brief descriptions only)
+- Current mood vector and daily pulse
+- Conversation history
+- Player identity (if configured)
+
+The Speaker has **no tools**. It cannot recall knowledge, search memories, or trigger game actions. Its sole job is to produce a fast, in-character conversational response. This slim context keeps the prompt around ~3,500 tokens, enabling rapid first-token latency.
+
+#### Mind
+
+The Mind runs **in parallel** with the Speaker on every turn. It operates as a full agent loop: the LLM decides which tools to call, the server executes them, results are fed back, and the Mind generates a follow-up response if warranted.
+
+The Mind has access to **all tools**, organized into two categories:
+
+**Recall Tools** (built-in, always available):
+- `recall_npc` -- Retrieve another NPC's information from the social network (tiers 2-3 details)
+- `recall_knowledge` -- Search the project's knowledge base by category and depth
+- `recall_memories` -- Search STM and LTM for relevant memories by keyword/topic
+
+Recall tools always trigger a follow-up response, since the retrieved information is meant to inform the NPC's next utterance.
+
+**Conversation Tools** (project-defined):
+- All tools from the project's `mcp_registry` (e.g., `warn_player`, `call_police`, `refuse_service`)
+- `exit_convo` -- End the conversation (injected when moderation flags content)
+
+Conversation tools trigger a follow-up response only when verbal delivery is needed (e.g., the Mind calls `warn_player` and needs to say "I'm calling the guards"). Some actions are silent (e.g., `lock_door` may not require dialogue).
+
+**Game-Event Tools** remain unchanged -- they are triggered by game code, not by the Mind.
+
+#### Agent Loop
+
+```
+Player says something
+    |
+    +---> [SPEAKER] Slim context, no tools -> Immediate response streamed to client
+    |
+    +---> [MIND] Full context + all tools -> Agent loop:
+              |
+              v
+          LLM decides: call tool(s) or return empty
+              |
+              v
+          Server executes tool(s), returns results
+              |
+              v
+          LLM generates follow-up (or returns empty if no action needed)
+              |
+              v
+          Follow-up streamed to client after Speaker finishes
+```
+
+#### Always On
+
+The Mind runs on **every turn**, not selectively. When there is nothing to act on (no relevant memories to recall, no tools to invoke), it returns empty at a cost of approximately 500 tokens. This "always on" design avoids the complexity of a routing layer that would need to predict when the Mind is needed.
+
+The `mind_model` configuration allows using a cheaper or faster model for the Mind instance (e.g., `gemini-2.0-flash` or `gpt-4o-mini`), keeping per-turn cost low even with dual instances.
+
+#### Graceful Degradation
+
+If the Mind times out (`mind_timeout_ms`, default 5000ms) or encounters an error, the Speaker's response stands alone. The conversation continues normally. Mind failures are logged but never block or degrade the player-facing response.
+
+#### Follow-up Merging
+
+After the Speaker finishes streaming, the Mind's follow-up (if any) is streamed through the same TTS pipeline. From the player's perspective, it sounds like the NPC paused briefly and then continued speaking. Both the Speaker's response and the Mind's follow-up are stored as a **single combined assistant message** in conversation history, preserving a clean dialogue record.
+
+#### Token Cost Estimates
+
+| Component | Tokens | Notes |
+|-----------|--------|-------|
+| Speaker prompt | ~3,500 | Slim context: anchor, Tier 1 network, mood, history |
+| Mind (no action) | ~500 | Returns empty, minimal overhead |
+| Mind (with tools) | ~2,000-3,000 | Agent loop with recall or conversation tools |
+| **Per-turn total** | ~4,000-6,500 | Compared to ~7,000+ for single-instance with full context |
+
+Estimated savings vs single-instance architecture: **29-57% per turn** depending on Mind activity, since the Speaker avoids paying for tool definitions, full network context, and knowledge retrieval on every call.
 
 ---
 
@@ -175,7 +258,9 @@ When a conversation begins, the NPC's JSON state is "hydrated" into an ephemeral
 ```
 Session Lifecycle:
 1. START  -> Client requests NPC -> Server loads from storage, caches in RAM with SessionID
-2. CHAT   -> SessionID -> Server appends to RAM state
+2. CHAT   -> SessionID -> Speaker responds (slim context, no tools)
+                       -> Mind runs parallel (agent loop with all tools)
+                       -> Follow-up streamed after Speaker
 3. END    -> Server summarizes, updates state -> Writes to storage -> Archives version -> Dumps RAM
 ```
 
@@ -391,13 +476,16 @@ Player Input
 [4. CONTEXT ASSEMBLY]
     |
     v
-[5. LLM CALL]
+[5. LLM CALL - SPEAKER]     <- Slim context, no tools
     |
     v
-[6. NARRATION STRIP]        <- Remove stage directions from response
+[5b. MIND AGENT LOOP]      <- Parallel: all tools (recall + conversation + exit_convo)
     |
     v
-[7. TOOL VALIDATION]        <- Permission check, exit_convo handling
+[6. NARRATION STRIP]        <- Remove stage directions from Speaker + Mind follow-up
+    |
+    v
+[7. TOOL VALIDATION]        <- Permission check on Mind tool calls, exit_convo handling
     |
     v
 [8. RESPONSE STREAMING]
@@ -712,6 +800,19 @@ const llmProvider = createLlmProvider({
 | **STT** | Deepgram | Deepgram Nova-2 | `@deepgram/sdk` |
 | **TTS** | Cartesia, ElevenLabs | Cartesia Sonic | Native WebSocket |
 
+#### Mind Instance Configuration
+
+The NPC Mind (Section 7) can use a separate provider/model from the Speaker, allowing cost optimization:
+
+```typescript
+// Project-level Mind configuration
+mind_provider: string    // LLM provider for Mind instance (defaults to project provider)
+mind_model: string       // Model for Mind instance (defaults to project model)
+mind_timeout_ms: number  // Mind timeout in ms (default: 5000)
+```
+
+Typical configuration: Speaker uses the project's primary model for quality, Mind uses a cheaper/faster model (e.g., `gemini-2.0-flash` or `gpt-4o-mini`) since its output is shorter and more structured.
+
 #### LLM Providers
 
 | Provider | Default Model | Other Models | Notes |
@@ -906,6 +1007,14 @@ Pre-built NPC templates that can be loaded into a project as a starting point. I
 
 **WebSocket**: `ws://host:port+1/ws/voice?session_id=xxx`
 
+**WebSocket Outbound Messages (Mind-related):**
+
+| Message Type | Payload | Description |
+|--------------|---------|-------------|
+| `mind_activity` | `{ tools: string[], results: object[] }` | Tools called by the Mind during this turn (for UI display) |
+| `followup_start` | `{}` | Mind follow-up response is beginning to stream |
+| `generation_end` | `{ phase: 'speaker' \| 'followup' }` | Generation complete; `phase` field distinguishes Speaker finish from follow-up finish |
+
 ---
 
 ## Design Principles
@@ -925,7 +1034,8 @@ Pre-built NPC templates that can be loaded into a project as a starting point. I
 | Per-NPC memory | Configurable memory retention per character |
 | Player awareness | NPCs can recognize players before conversation |
 | Explicit cycle triggers | Host controls all update cycles |
-| Two tool types | Conversation (LLM decides) vs Game-event (game decides) |
+| Two tool types | Conversation (Mind decides) vs Game-event (game decides) |
+| Dual-instance Mind | Speaker responds immediately, Mind thinks in parallel with tools |
 | Comprehensive logging | Structured, traceable, no PII |
 | Graceful degradation | Failures reduce features, not availability |
 | Security by design | Multiple pipeline layers, no raw player input stored |

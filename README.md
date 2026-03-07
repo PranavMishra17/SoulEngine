@@ -8,7 +8,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-SoulEngine-181717?style=for-the-badge&logo=github)](https://github.com/PranavMishra17/SoulEngine)
 [![License](https://img.shields.io/badge/License-ISC-green?style=for-the-badge)](LICENSE)
 
-*Stateless NPC intelligence with layered memory cycles, personality evolution, multi-modal voice interaction, social networks, tiered knowledge-base and MCP-based agency.*
+*Stateless NPC intelligence with layered memory cycles, personality evolution, dual-instance mind, multi-modal voice interaction, social networks, tiered knowledge-base and MCP-based agency.*
 
 </div>
 
@@ -16,7 +16,7 @@
 
 ## What is SoulEngine?
 
-SoulEngine transforms static game NPCs into genuinely evolving entities. Characters remember player interactions, develop personalities over time, speak with their own voices, and take autonomous actions in the game world.
+SoulEngine transforms static game NPCs into genuinely evolving entities. Characters remember player interactions, develop personalities over time, speak with their own voices, and take autonomous actions in the game world. A **dual-instance Mind** lets the Speaker respond instantly while a parallel thinker reasons with tools in the background.
 
 <div align="center">
 
@@ -111,14 +111,36 @@ Every state change creates a versioned snapshot — rollback is always available
 
 ### MCP Tool System
 
-Two tool types for different decision authorities:
+Three tool types for different decision authorities:
 
 | Tool Type | Who Decides | Example |
 |-----------|------------|---------|
-| Conversation Tool | LLM (from dialogue context) | call_police when threatened |
-| Game-Event Tool | Game code (bypasses LLM) | flee_to on explosion event |
+| Recall Tool | Mind (built-in) | `recall_npc` to fetch NPC details |
+| Conversation Tool | Mind (from dialogue context) | `warn_player` when threatened |
+| Game-Event Tool | Game code (bypasses Mind) | `flee_to` on explosion event |
 
 Define tools once in the web UI, assign permissions per NPC, implement handlers in your game client.
+
+### NPC Mind (Dual-Instance Architecture)
+
+Every conversation turn runs two parallel LLM instances:
+
+| Instance | Role | Tools | Context |
+|----------|------|-------|---------|
+| **Speaker** | Immediate conversational voice | None | Slim context (Tier 1 network, no knowledge) |
+| **Mind** | Parallel thinker with agent loop | All | Full tool access via recall + conversation tools |
+
+**How it works:**
+- Speaker generates the instant reply -- pure voice, no tool overhead.
+- Mind evaluates whether tools are needed and runs an agent loop if so.
+- When Mind retrieves useful results (e.g., recalled knowledge or NPC details), it generates a follow-up response injected into the conversation.
+- Always on. No feature flag -- every turn benefits from the split.
+
+**Tool ownership:**
+- **Recall Tools** (built-in): `recall_npc`, `recall_knowledge`, `recall_memories` -- Mind fetches context on demand instead of stuffing it into the prompt.
+- **Conversation Tools** (project-defined): `warn_player`, `call_police`, etc. -- Mind decides when to invoke them based on dialogue.
+
+**Cost control:** Mind LLM provider and model are configurable per project (defaults to the project LLM). The slim Speaker context achieves 29-57% token savings vs the previous full-context approach.
 
 ---
 
@@ -166,6 +188,7 @@ Full management and testing interface — no build step required.
 ### Project Settings
 
 - LLM/TTS/STT provider configuration
+- Mind LLM provider, model, and timeout configuration (defaults to project LLM)
 - Per-project API key management (encrypted)
 - Game Client API Key generation and revocation
 - Import API keys from another project
@@ -230,7 +253,7 @@ src/
 |   +-- stt/              # Speech-to-text (Deepgram)
 |   +-- tts/              # Text-to-speech (Cartesia, ElevenLabs)
 +-- storage/              # Dual-backend storage (local filesystem + Supabase)
-+-- core/                 # NPC cognition (memory, personality, cycles, summarizer)
++-- core/                 # NPC cognition (memory, personality, cycles, summarizer, mind)
 +-- session/              # In-memory session management
 +-- mcp/                  # MCP tool registry and execution
 +-- voice/                # Multi-modal voice pipeline

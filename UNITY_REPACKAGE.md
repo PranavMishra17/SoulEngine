@@ -170,6 +170,10 @@ Everything else — memory, personalities, voice, cycles, tools — is handled b
 | Player identity | `player_info` at session start | `session.StartConversation(playerInfo)` | Name, description, role, context |
 | Conversation history | `assembleConversationHistory()` | `ContextBuilder.AssembleHistory()` | Last N messages, token-bounded |
 | Mood drift | `blendMoods()` | `PersonalityEngine.BlendMoods()` | After moderation actions |
+| Mind agent loop | `runMindAgentLoop()` | `MindManager.RunAgentLoop()` | Parallel with Speaker |
+| Recall tools | `recall_npc`, `recall_knowledge`, `recall_memories` | `RecallTools.Execute()` | Built-in, always available |
+| Mind follow-up | Follow-up streamed after Speaker | `OnNPCFollowUp` Unity Event | Additional response after mind processes |
+| Mind tool activity | `mind_activity` WS event | `OnMindActivity` Unity Event | UI hook for tool call display |
 
 ### Security Features
 
@@ -262,6 +266,8 @@ Attach to each NPC GameObject. Handles the conversation lifecycle for that speci
 | `OnConversationStart` | Conversation begins | — |
 | `OnConversationEnd` | Conversation ends | — |
 | `OnToolCall` | NPC invokes a game tool | `string` toolName, `object` args |
+| `OnNPCFollowUp` | Mind generates a follow-up response | `string` text |
+| `OnMindActivity` | Mind called tools | `MindActivityData` |
 | `OnMoodChange` | NPC mood updates | `MoodVector` |
 
 **Trigger conversation from any script:**
@@ -471,6 +477,11 @@ Assets/
     |   |   +-- CloudClient.cs             # SoulEngine REST API client
     |   |   +-- ConflictResolver.cs        # Local-wins merge strategy
     |   |
+    |   +-- Mind/
+    |   |   +-- MindManager.cs             # Mind agent loop orchestration
+    |   |   +-- MindToolExecutor.cs        # Execute recall + conversation tools
+    |   |   +-- RecallTools.cs             # Built-in recall_npc, recall_knowledge, recall_memories
+    |   |
     |   +-- MCP/
     |   |   +-- ToolRegistry.cs            # Register + resolve available tools
     |   |   +-- ToolExecutor.cs            # Execute tool calls with validation
@@ -512,6 +523,11 @@ namespace SoulEngine
 
         [Header("Project")]
         public SoulEngineSettings settings;   // ScriptableObject with all API keys
+
+        [Header("Mind Configuration")]
+        public string mindProvider;     // Defaults to LLM provider
+        public string mindModel;        // Defaults to LLM model
+        public int mindTimeoutMs = 5000;
 
         // PUBLIC API
 
@@ -562,6 +578,8 @@ namespace SoulEngine
         public UnityEvent OnConversationStart;
         public UnityEvent OnConversationEnd;
         public UnityEvent<string, object> OnToolCall;  // tool name + args
+        public UnityEvent<string> OnNPCFollowUp;       // mind follow-up text
+        public UnityEvent<MindActivityData> OnMindActivity; // mind tool calls
 
         // Call from your trigger/interaction logic
         public async Task StartConversation(PlayerInfo playerInfo = null)
@@ -631,30 +649,42 @@ public class MyGameToolHandler : GameToolHandler
 
 ### How Tool Calls Work (3-Script Flow)
 
-When an NPC decides to invoke a tool, the flow is:
+The Mind handles all tool decisions. The Speaker generates text only (no tools). Tool execution flows through the Mind's agent loop:
 
-1. LLM generates a function/tool call in its response
-2. **SoulEngine SDK** intercepts the call, validates arguments
-3. `NPCCharacter.OnToolCall` Unity Event fires with `(toolName, args)`
-4. If `GameToolHandler` has a registered handler → it executes and returns a result
-5. If no handler → call is forwarded to the game client (your Unity code) via `OnToolCall`
-6. Execution result is fed back to LLM to complete the turn
+1. **Speaker** generates a text response (no tools) -- streamed immediately
+2. **Mind** runs in parallel with its own agent loop
+3. Mind decides tool calls (recall tools + conversation tools)
+4. Server executes recall tools (`recall_npc`, `recall_knowledge`, `recall_memories`) directly; forwards conversation tools to `GameToolHandler`
+5. Mind generates a follow-up response incorporating tool results
+6. `NPCCharacter.OnToolCall` fires for each tool the Mind invoked
+7. `NPCCharacter.OnNPCFollowUp` fires with the follow-up text
 
 ```csharp
-// Wire in Awake or Inspector — fires for every tool the NPC calls
+// Wire in Awake or Inspector -- fires for every tool the Mind calls
 npc.OnToolCall.AddListener((toolName, args) => {
-    GameHUD.ShowNPCAction($"{npc.Name} → {toolName}");
-    Debug.Log($"[MCP] NPC used tool: {toolName}");
+    GameHUD.ShowNPCAction($"{npc.Name} -> {toolName}");
+    Debug.Log($"[MCP] Mind used tool: {toolName}");
+});
+
+// Mind follow-up arrives after Speaker finishes
+npc.OnNPCFollowUp.AddListener(text => {
+    dialogueUI.AppendNPCText(text);
+});
+
+// Mind activity -- useful for showing "thinking" indicators in UI
+npc.OnMindActivity.AddListener(activity => {
+    GameHUD.ShowThinkingIndicator(activity.ToolsCalled);
 });
 ```
 
 ### Tool Types and When They Fire
 
-| Tool Type | When it fires | Ends conversation? |
-|-----------|--------------|-------------------|
-| `conversation_tools` | Mid-conversation, before NPC response text | **No** — NPC continues speaking |
-| `game_event_tools` | Mid-conversation, alongside or instead of text | **No** — game action only |
-| `exit_convo` | When NPC needs to end the conversation | **Yes** — session auto-ends |
+| Tool Type | When it fires | Decided by | Ends conversation? |
+|-----------|--------------|-----------|-------------------|
+| `recall_tools` | Mid-conversation, parallel with Speaker | Mind | **No** -- triggers follow-up |
+| `conversation_tools` | Mid-conversation, via Mind agent loop | Mind | **No** -- may trigger follow-up |
+| `game_event_tools` | Game code triggers directly | Game code | **No** |
+| `exit_convo` | When Mind needs to end conversation | Mind | **Yes** -- session auto-ends |
 
 ### Handling exit_convo
 
@@ -771,8 +801,34 @@ public class VoicePipeline
             });
     }
 
-    // Full turn: input -> security -> LLM -> narration strip -> TTS (if voice out)
+    // Full turn: Speaker + Mind run in parallel
+    // Speaker: immediate text/voice response (no tools, slim context)
+    // Mind: agent loop with recall + conversation tools, may produce follow-up
     private async Task ProcessTurn(string input)
+    {
+        // Speaker: immediate response with slim context (no tools)
+        var speakerTask = StreamSpeakerResponse(input);
+
+        // Mind: parallel agent loop with all tools
+        var mindTask = MindManager.RunAgentLoop(input, session);
+
+        // Wait for Speaker
+        await speakerTask;
+        OnGenerationEnd?.Invoke("speaker");
+
+        // Wait for Mind
+        var mindResult = await mindTask;
+        if (mindResult.HasFollowUp)
+        {
+            OnMindActivity?.Invoke(mindResult.ToolsCalled);
+            OnFollowupStart?.Invoke();
+            // Stream follow-up through same TTS pipeline
+            await StreamFollowUp(mindResult.FollowUpText);
+            OnGenerationEnd?.Invoke("followup");
+        }
+    }
+
+    private async Task StreamSpeakerResponse(string input)
     {
         var systemPrompt = ContextBuilder.Build(session.Definition, session.Instance);
 
@@ -790,7 +846,6 @@ public class VoicePipeline
                     foreach (var s in sentences) await ttsSession.Synthesize(s);
                 }
             }
-            if (chunk.ToolCall != null) OnToolCall?.Invoke(chunk.ToolCall.Name, chunk.ToolCall.Arguments);
         }
     }
 }
@@ -943,6 +998,7 @@ public class GameTimeManager : MonoBehaviour
 | `src/core/personality.ts` | `Memory/PersonalityEngine.cs` |
 | `src/core/knowledge.ts` | `Context/KnowledgeResolver.cs` |
 | `src/core/tools.ts` | `MCP/ToolRegistry.cs` |
+| `src/core/mind.ts` | `Mind/MindManager.cs` + `Mind/RecallTools.cs` |
 | `src/session/manager.ts` | `Core/SessionManager.cs` |
 | `src/security/sanitizer.ts` | `Security/InputSanitizer.cs` |
 | `src/security/moderator.ts` | `Security/ContentModerator.cs` |

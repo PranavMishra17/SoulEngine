@@ -7,7 +7,7 @@ const logger = createLogger('knowledge-resolver');
  * Resolve knowledge content for a single category up to the specified depth level.
  * Returns all depth tiers from 1 up to and including the access level.
  */
-function resolveCategoryKnowledge(category: KnowledgeCategory, accessLevel: number): string {
+export function resolveCategoryKnowledge(category: KnowledgeCategory, accessLevel: number): string {
   const lines: string[] = [];
 
   // Get all depth keys and sort numerically

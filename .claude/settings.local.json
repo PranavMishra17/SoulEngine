@@ -18,7 +18,15 @@
       "Bash(xargs grep -l \"avatar\")",
       "Bash(xargs grep -l \"avatar\\\\|npcRoutes\")",
       "Bash(npm run build)",
-      "Bash(curl -s -X GET \"https://api.cartesia.ai/voices\" -H \"X-API-Key: sk_car_A1tDhxA9P59rCQnNV1u2mv\" -H \"Cartesia-Version: 2024-06-10\")"
+      "Bash(curl -s -X GET \"https://api.cartesia.ai/voices\" -H \"X-API-Key: sk_car_A1tDhxA9P59rCQnNV1u2mv\" -H \"Cartesia-Version: 2024-06-10\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(node -e \"try { require\\(''fs''\\).readFileSync\\(''web/js/api.js'', ''utf8''\\); console.log\\(''api.js: OK''\\); } catch\\(e\\) { console.error\\(''api.js:'', e.message\\); }\")",
+      "Bash(node -e \"try { require\\(''fs''\\).readFileSync\\(''web/js/pages/playground.js'', ''utf8''\\); console.log\\(''playground.js: OK''\\); } catch\\(e\\) { console.error\\(''playground.js:'', e.message\\); }\")",
+      "Bash(node -e \"try { require\\(''fs''\\).readFileSync\\(''web/js/pages/project-settings.js'', ''utf8''\\); console.log\\(''project-settings.js: OK''\\); } catch\\(e\\) { console.error\\(''project-settings.js:'', e.message\\); }\")",
+      "Bash(node --input-type=module -e \"import\\(''fs''\\).then\\(fs => { const code = fs.readFileSync\\(''web/js/api.js'', ''utf8''\\); new Function\\(code\\); console.log\\(''api.js: parses OK''\\); }\\).catch\\(e => console.error\\(''api.js:'', e.message\\)\\)\")",
+      "Bash(node -c web/js/api.js)",
+      "Bash(node -c web/js/pages/playground.js)",
+      "Bash(node -c web/js/pages/project-settings.js)"
     ]
   }
 }

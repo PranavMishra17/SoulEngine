@@ -12,21 +12,20 @@ import {
   SessionError,
 } from '../session/manager.js';
 import { sessionStore } from '../session/store.js';
-import { assembleSystemPrompt, assembleConversationHistory } from '../core/context.js';
-import { getAvailableTools, isExitConvoTool } from '../core/tools.js';
+import { assembleSlimSystemPrompt, assembleConversationHistory } from '../core/context.js';
+import { runMindAgentLoop } from '../core/mind.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, processExitResult } from '../mcp/exit-handler.js';
-import { validateToolCall, sanitizeToolArguments } from '../mcp/validator.js';
 import { SentenceDetector } from './sentence-detector.js';
 import { encodeTtsAudio } from './audio.js';
 
 import type { SessionID, Message } from '../types/session.js';
 import type { SecurityContext } from '../types/security.js';
 import type { TranscriptEvent, TTSChunk, VoiceConfig, ConversationMode } from '../types/voice.js';
-import type { ToolCall, Tool } from '../types/mcp.js';
+import type { MindResult, MindActivity } from '../types/mind.js';
 import type { STTProvider, STTSession, STTSessionConfig, STTSessionEvents } from '../providers/stt/interface.js';
 import type { TTSProvider, TTSSession, TTSSessionConfig, TTSSessionEvents } from '../providers/tts/interface.js';
-import type { LLMProvider, LLMChatRequest } from '../providers/llm/interface.js';
+import type { LLMProvider } from '../providers/llm/interface.js';
 
 const logger = createLogger('voice-pipeline');
 
@@ -40,14 +39,18 @@ export interface VoicePipelineEvents {
   onTextChunk: (text: string) => void;
   /** Called when TTS produces audio */
   onAudioChunk: (audioBase64: string) => void;
-  /** Called when LLM triggers a tool call */
+  /** Called when LLM triggers a tool call (kept for backward compat; Mind reports via onMindActivity) */
   onToolCall: (name: string, args: Record<string, unknown>) => void;
-  /** Called when the NPC's turn is complete */
-  onGenerationEnd: () => void;
+  /** Called when the NPC's turn is complete. Optional phase param indicates speaker vs followup. */
+  onGenerationEnd: (phase?: 'speaker' | 'followup') => void;
   /** Called on error */
   onError: (code: string, message: string) => void;
   /** Called when exit_convo is triggered */
   onExitConvo: (reason: string, cooldownSeconds?: number) => void;
+  /** Called when Mind completes with tool activity */
+  onMindActivity: (activity: MindActivity) => void;
+  /** Called when Mind follow-up speech begins */
+  onFollowupStart: () => void;
 }
 
 /**
@@ -58,6 +61,7 @@ export interface VoicePipelineConfig {
   sttProvider: STTProvider;
   ttsProvider: TTSProvider;
   llmProvider: LLMProvider;
+  mindProvider: LLMProvider;
   voiceConfig: VoiceConfig;
   events: VoicePipelineEvents;
   /** Conversation mode - determines which providers to initialize */
@@ -90,6 +94,7 @@ export class VoicePipeline {
   private readonly sttProvider: STTProvider;
   private readonly ttsProvider: TTSProvider;
   private readonly llmProvider: LLMProvider;
+  private readonly mindProvider: LLMProvider;
   private readonly voiceConfig: VoiceConfig;
   private readonly events: VoicePipelineEvents;
   private readonly mode: ConversationMode;
@@ -129,6 +134,7 @@ export class VoicePipeline {
     this.sttProvider = config.sttProvider;
     this.ttsProvider = config.ttsProvider;
     this.llmProvider = config.llmProvider;
+    this.mindProvider = config.mindProvider;
     this.voiceConfig = config.voiceConfig;
     this.events = config.events;
     this.mode = config.mode;
@@ -720,14 +726,13 @@ export class VoicePipeline {
   }
 
   /**
-   * Process an NPC turn - LLM generation and TTS
+   * Process an NPC turn - parallel Speaker (LLM) + Mind (agent loop), then follow-up TTS
    */
   private async processTurn(
     _userInput: string,
     context: SessionContext,
     securityContext: SecurityContext
   ): Promise<void> {
-    // Create turn state
     this.turnState = {
       abortController: new AbortController(),
       isProcessing: true,
@@ -735,116 +740,225 @@ export class VoicePipeline {
     };
 
     try {
-      // Get player_info from session state
       const storedForPlayerInfo = sessionStore.get(this.sessionId);
       const playerInfo = storedForPlayerInfo?.state.player_info || null;
 
-      // Assemble system prompt with voice mode enabled
-      const systemPrompt = await assembleSystemPrompt(
+      // Use slim system prompt (no knowledge, no tools) for the Speaker
+      const systemPrompt = await assembleSlimSystemPrompt(
         context.definition,
         context.instance,
-        context.resolvedKnowledge,
         securityContext,
-        { voiceMode: true },
+        { voiceMode: this.mode.output === 'voice' },
         playerInfo
       );
-
-      // Get available tools
-      const projectTools = mcpToolRegistry.getProjectTools(context.project.id);
-      const tools = getAvailableTools(context.definition, securityContext, projectTools);
 
       // Assemble conversation history
       const stored = sessionStore.get(this.sessionId);
       const history = stored?.state.conversation_history ?? [];
       const llmMessages = assembleConversationHistory(history);
 
-      // Create LLM request
-      const request: LLMChatRequest = {
-        systemPrompt,
-        messages: llmMessages,
-        tools: tools.length > 0 ? tools : undefined,
-        signal: this.turnState.abortController.signal,
-      };
+      // --- PARALLEL: Speaker + Mind ---
+      const mindTimeoutMs = context.project.settings.mind_timeout_ms ?? 5000;
 
-      // Stream LLM response
-      let fullResponse = '';
-      const pendingToolCalls: ToolCall[] = [];
-      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+      // Speaker: stream LLM with NO tools (pure voice)
+      const speakerPromise = (async () => {
+        let fullResponse = '';
+        let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
 
-      for await (const chunk of this.llmProvider.streamChat(request)) {
-        if (this.turnState.abortController.signal.aborted) {
-          logger.debug({ sessionId: this.sessionId }, 'LLM stream aborted');
-          break;
-        }
+        for await (const chunk of this.llmProvider.streamChat({
+          systemPrompt,
+          messages: llmMessages,
+          signal: this.turnState!.abortController.signal,
+          // NO tools -- Speaker is pure voice
+        })) {
+          if (this.turnState!.abortController.signal.aborted) {
+            logger.debug({ sessionId: this.sessionId }, 'Speaker LLM stream aborted');
+            break;
+          }
 
-        // Handle text
-        if (chunk.text) {
-          fullResponse += chunk.text;
+          if (chunk.text) {
+            fullResponse += chunk.text;
+            this.events.onTextChunk(chunk.text);
 
-          // Always emit text chunks (for UI display in all modes)
-          this.events.onTextChunk(chunk.text);
-
-          // Only synthesize to audio if output mode is voice
-          if (this.mode.output === 'voice') {
-            const sentences = this.sentenceDetector.addChunk(chunk.text);
-            for (const sentence of sentences) {
-              await this.synthesizeSentence(sentence);
+            if (this.mode.output === 'voice') {
+              const sentences = this.sentenceDetector.addChunk(chunk.text);
+              for (const sentence of sentences) {
+                await this.synthesizeSentence(sentence);
+              }
             }
+          }
+
+          if (chunk.done && chunk.usage) {
+            providerUsage = chunk.usage;
           }
         }
 
-        // Collect tool calls
-        if (chunk.toolCalls.length > 0) {
-          pendingToolCalls.push(...chunk.toolCalls);
+        // Flush remaining Speaker text to TTS
+        if (this.mode.output === 'voice') {
+          const remaining = this.sentenceDetector.flush();
+          if (remaining) {
+            await this.synthesizeSentence(remaining);
+          }
+          if (this.ttsSession) {
+            await this.ttsSession.flush();
+          }
         }
 
-        // Capture real token counts from the provider's final chunk
-        if (chunk.done && chunk.usage) {
-          providerUsage = chunk.usage;
+        return { text: fullResponse, usage: providerUsage };
+      })();
+
+      // Mind: agent loop with ALL tools (recall + conversation + exit_convo)
+      const mindAbortController = new AbortController();
+      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+      const projectTools = mcpToolRegistry.getProjectTools(context.project.id);
+
+      const mindPromise = (async (): Promise<MindResult | null> => {
+        try {
+          const result = await runMindAgentLoop(
+            context.definition,
+            context.instance,
+            _userInput,
+            '',  // Speaker response not available (parallel execution)
+            llmMessages,
+            this.mindProvider,
+            context.project.id,
+            context.knowledgeBase,
+            mcpToolRegistry,
+            securityContext,
+            projectTools,
+            mindAbortController.signal,
+          );
+          return result;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          logger.error({ sessionId: this.sessionId, error: msg }, 'Mind agent loop failed in voice pipeline');
+          return null;
+        } finally {
+          clearTimeout(mindTimeout);
         }
+      })();
+
+      // Wait for both
+      const [speakerResult, mindResult] = await Promise.all([speakerPromise, mindPromise]);
+
+      // Determine if Mind has useful output
+      const hasFollowup = !!(mindResult?.follow_up_text);
+      const hasMindActivity = !!(mindResult && mindResult.tools_called.length > 0);
+
+      // Emit generation_end for Speaker phase when Mind has something to add
+      if (hasFollowup || hasMindActivity) {
+        this.events.onGenerationEnd('speaker');
       }
 
-      // Flush remaining text to TTS (only if voice output)
-      if (this.mode.output === 'voice') {
-        const remaining = this.sentenceDetector.flush();
-        if (remaining) {
-          logger.info({ sessionId: this.sessionId, textLength: remaining.length }, 'Flushing remaining text to TTS');
-          await this.synthesizeSentence(remaining);
-        }
-        if (this.ttsSession) {
-          logger.info({ sessionId: this.sessionId }, 'Flushing TTS session');
-          await this.ttsSession.flush();
-        }
+      // Emit Mind activity (tool call chips for UI)
+      if (hasMindActivity && mindResult) {
+        this.events.onMindActivity({
+          tools_called: mindResult.tools_called.map(tc => ({
+            name: tc.tool_name,
+            args: tc.arguments,
+            status: tc.status,
+          })),
+          duration_ms: mindResult.duration_ms,
+          completed: mindResult.completed,
+        });
       }
 
-      // Handle tool calls
-      await this.handleToolCalls(pendingToolCalls, context, securityContext, projectTools);
+      // Stream follow-up through TTS if Mind generated one
+      if (hasFollowup && mindResult) {
+        this.events.onFollowupStart();
 
-      // Add assistant message to session history
-      if (fullResponse.trim().length > 0) {
-        const assistantMessage: Message = { role: 'assistant', content: fullResponse };
+        // Emit follow-up text for UI
+        this.events.onTextChunk(mindResult.follow_up_text);
+
+        // Synthesize follow-up through TTS
+        if (this.mode.output === 'voice') {
+          const followupSentences = this.sentenceDetector.addChunk(mindResult.follow_up_text);
+          for (const sentence of followupSentences) {
+            await this.synthesizeSentence(sentence);
+          }
+          const remaining = this.sentenceDetector.flush();
+          if (remaining) {
+            await this.synthesizeSentence(remaining);
+          }
+          if (this.ttsSession) {
+            await this.ttsSession.flush();
+          }
+        }
+
+        this.events.onGenerationEnd('followup');
+      } else if (!hasMindActivity) {
+        // No Mind activity at all -- emit plain generation_end (backward compatible)
+        this.events.onGenerationEnd();
+      } else {
+        // Mind had activity but no follow-up -- emit plain generation_end after mind_activity
+        this.events.onGenerationEnd();
+      }
+
+      // Handle exit_convo from Mind
+      if (mindResult?.exit_convo_used) {
+        if (this.turnState) {
+          this.turnState.exitConvoUsed = true;
+        }
+
+        const exitResult = handleExitConvo(
+          this.sessionId,
+          { reason: mindResult.exit_convo_reason ?? 'Mind decided to end conversation' },
+          securityContext
+        );
+
+        processExitResult(
+          exitResult,
+          context.project.id,
+          sessionStore.get(this.sessionId)?.state.player_id || '',
+          context.definition.id
+        );
+
+        try {
+          await endSession(this.sessionId, this.llmProvider, true);
+          logger.info({ sessionId: this.sessionId }, 'Session ended by Mind exit_convo');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          logger.error({ sessionId: this.sessionId, error: errorMessage }, 'Failed to end session after Mind exit_convo');
+        }
+
+        this.isActive = false;
+        this.events.onExitConvo(exitResult.reason, exitResult.cooldownSeconds);
+        return;
+      }
+
+      // Store combined response (speaker + follow-up)
+      const combinedResponse = hasFollowup && mindResult
+        ? `${speakerResult.text}\n\n${mindResult.follow_up_text}`
+        : speakerResult.text;
+
+      if (combinedResponse.trim().length > 0) {
+        const assistantMessage: Message = { role: 'assistant', content: combinedResponse };
         addMessageToSession(this.sessionId, assistantMessage);
       }
 
-      // Track token usage — voice chars always, plus real LLM token counts when available
+      // Track token usage
       try {
         addTokensToSession(this.sessionId, {
           voice_input_chars: _userInput.length,
-          voice_output_chars: fullResponse.length,
-          ...(providerUsage && {
-            text_input_tokens: providerUsage.input_tokens,
-            text_output_tokens: providerUsage.output_tokens,
+          voice_output_chars: combinedResponse.length,
+          ...(speakerResult.usage && {
+            text_input_tokens: speakerResult.usage.input_tokens,
+            text_output_tokens: speakerResult.usage.output_tokens,
           }),
         });
+        // Mind tokens
+        if (mindResult?.usage) {
+          addTokensToSession(this.sessionId, {
+            text_input_tokens: mindResult.usage.input_tokens,
+            text_output_tokens: mindResult.usage.output_tokens,
+          });
+        }
       } catch {
         // Never break the voice pipeline for token tracking
       }
 
-      // Update instance state if needed
+      // Update instance state
       updateSessionInstance(this.sessionId, context.instance);
-
-      // Signal end of generation
-      this.events.onGenerationEnd();
 
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -876,84 +990,6 @@ export class VoicePipeline {
       const message = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ sessionId: this.sessionId, error: message }, 'TTS synthesis failed');
       // Don't throw - continue without audio
-    }
-  }
-
-  /**
-   * Handle tool calls from LLM
-   */
-  private async handleToolCalls(
-    toolCalls: ToolCall[],
-    context: SessionContext,
-    securityContext: SecurityContext,
-    projectTools: Record<string, Tool>
-  ): Promise<void> {
-    for (const toolCall of toolCalls) {
-      logger.info({ sessionId: this.sessionId, toolName: toolCall.name }, 'Handling tool call');
-
-      // Check for exit_convo
-      if (isExitConvoTool(toolCall.name)) {
-        const exitResult = handleExitConvo(
-          this.sessionId,
-          { reason: String(toolCall.arguments.reason || 'Conversation ended') },
-          securityContext
-        );
-
-        if (this.turnState) {
-          this.turnState.exitConvoUsed = true;
-        }
-
-        processExitResult(
-          exitResult,
-          context.project.id,
-          sessionStore.get(this.sessionId)?.state.player_id || '',
-          context.definition.id
-        );
-
-        // Forcefully end the session (same as "End Session" button)
-        // Pass exitConvoUsed=true to skip memory creation
-        try {
-          await endSession(this.sessionId, this.llmProvider, true);
-          logger.info({ sessionId: this.sessionId }, 'Session ended by exit_convo');
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          logger.error({ sessionId: this.sessionId, error: errorMessage }, 'Failed to end session after exit_convo');
-        }
-
-        // Signal pipeline to stop
-        this.isActive = false;
-
-        this.events.onExitConvo(exitResult.reason, exitResult.cooldownSeconds);
-        return;
-      }
-
-      // Validate tool call
-      const tool = projectTools[toolCall.name];
-      if (!tool) {
-        logger.warn({ sessionId: this.sessionId, toolName: toolCall.name }, 'Tool not found');
-        continue;
-      }
-
-      const validation = validateToolCall(tool, toolCall);
-      if (!validation.valid) {
-        logger.warn({ sessionId: this.sessionId, errors: validation.errors }, 'Tool call validation failed');
-        continue;
-      }
-
-      // Sanitize arguments
-      const sanitizedArgs = sanitizeToolArguments(toolCall.arguments);
-
-      // Emit tool call event
-      this.events.onToolCall(toolCall.name, sanitizedArgs);
-
-      // Execute tool if handler exists
-      try {
-        await mcpToolRegistry.executeTool(context.project.id, toolCall.name, sanitizedArgs);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.error({ sessionId: this.sessionId, toolName: toolCall.name, error: message }, 'Tool execution failed');
-        // Continue - tool failures are logged but don't break the conversation
-      }
     }
   }
 }

@@ -6,6 +6,62 @@ import { npcs, projects, knowledge, mcpTools, session, conversation, cycles, Voi
 import { toast, renderTemplate, updateNav, getMoodEmoji, getMoodLabel, modal } from '../components.js';
 import { router } from '../router.js';
 
+// Inject Mind activity CSS once
+if (!document.getElementById('mind-activity-styles')) {
+  const style = document.createElement('style');
+  style.id = 'mind-activity-styles';
+  style.textContent = `
+    .msg-mind-activity {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.5rem 0.75rem;
+      margin: 0.25rem 0;
+      background: var(--color-surface-2, #1a1a2e);
+      border-left: 3px solid var(--color-primary, #6366f1);
+      border-radius: 0.375rem;
+      font-size: var(--text-xs, 0.75rem);
+    }
+    .mind-activity-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .mind-activity-label {
+      color: var(--color-text-secondary, #94a3b8);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .mind-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+    }
+    .mind-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 1rem;
+      font-size: var(--text-xs, 0.75rem);
+      font-family: monospace;
+      white-space: nowrap;
+    }
+    .mind-chip.chip-success {
+      background: var(--color-success-bg, rgba(34, 197, 94, 0.15));
+      color: var(--color-success, #22c55e);
+      border: 1px solid var(--color-success, #22c55e);
+    }
+    .mind-chip.chip-error {
+      background: var(--color-error-bg, rgba(239, 68, 68, 0.15));
+      color: var(--color-error, #ef4444);
+      border: 1px solid var(--color-error, #ef4444);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 let currentProjectId = null;
 let currentNpcId = null;
 let currentSessionId = null;
@@ -19,6 +75,8 @@ let messageCount = 0;
 let responseBuffer = '';
 let currentNpcInfo = null; // Store {name, profile_image, id} for chat bubbles and header
 let voiceUserTranscript = ''; // Accumulates STT final segments for one utterance
+let followupBuffer = ''; // Accumulates Mind follow-up text chunks
+let isInFollowup = false; // True between followup_start and generation_end(followup)
 
 // Audio playback state
 let audioContext = null;
@@ -603,47 +661,48 @@ async function handleSendMessage() {
     // Otherwise, use REST API for text response
     const response = await conversation.sendMessage(currentSessionId, content);
 
-    // Update pipeline
     updatePipelineStep('security', 'complete');
     updatePipelineStep('context', 'complete');
     updatePipelineStep('llm', 'complete');
 
-    // Add response
-    addChatMessage('assistant', response.response);
+    // Add speaker response (or combined if no follow-up)
+    if (response.speaker_response) {
+      addChatMessage('assistant', response.speaker_response);
+    } else {
+      addChatMessage('assistant', response.response);
+    }
     messageCount++;
     updateMessageCount();
+
+    // Show Mind activity (tool call chips) between speaker and follow-up
+    if (response.mind?.tools_called?.length > 0) {
+      addMindActivityDisplay(response.mind);
+    }
+
+    // Show follow-up response if Mind generated one
+    if (response.followup_response) {
+      addChatMessage('assistant', response.followup_response);
+      messageCount++;
+      updateMessageCount();
+    }
 
     // Update mood
     if (response.mood) {
       updateMoodDisplay(response.mood.valence, response.mood.arousal, response.mood.dominance);
     }
 
-    // Log tool calls
-    if (response.tool_calls?.length > 0) {
-      response.tool_calls.forEach((tc) => {
-        addToolCallLog(tc.name, tc.arguments);
-      });
-    }
-
-    // Handle exit_convo
+    // Handle exit_convo (now via Mind)
     if (response.exit_convo) {
-      // Show exit reason as NPC dialogue (not system message)
-      addChatMessage('assistant', response.exit_convo.reason);
-
-      // Add system notification about session ending
-      addChatMessage('system', 'NPC has ended the conversation. Saving state...');
-
-      // Automatically end the session
+      addChatMessage('system', `NPC ended conversation: ${response.exit_convo.reason}`);
       setTimeout(async () => {
         try {
-          await handleEndSession(true); // Pass true to indicate exitConvoUsed
+          await handleEndSession(true);
         } catch (error) {
           console.error('Auto-end session failed:', error);
         }
-      }, 1000); // Small delay so user can see the message
+      }, 1000);
     }
 
-    // Reset pipeline
     resetPipelineTrace();
   } catch (error) {
     toast.error('Failed to Send Message', error.message);
@@ -709,7 +768,11 @@ async function connectVoice() {
       })
       .on('textChunk', (text) => {
         updatePipelineStep('llm', 'active');
-        responseBuffer += text;
+        if (isInFollowup) {
+          followupBuffer += text;
+        } else {
+          responseBuffer += text;
+        }
       })
       .on('audioChunk', (data) => {
         updatePipelineStep('tts', 'active');
@@ -719,15 +782,54 @@ async function connectVoice() {
         console.log('[ToolCall] Received tool call:', name, args);
         addToolCallLog(name, args);
       })
-      .on('generationEnd', () => {
-        // Flush accumulated user transcript as a single message
+      .on('mindActivity', (toolsCalled, durationMs, completed) => {
+        console.log('[MindActivity] Tools called:', toolsCalled, 'Duration:', durationMs, 'Completed:', completed);
+        addMindActivityDisplay({ tools_called: toolsCalled, duration_ms: durationMs, completed });
+      })
+      .on('followupStart', () => {
+        console.log('[FollowupStart] Mind follow-up beginning');
+        isInFollowup = true;
+        followupBuffer = '';
+      })
+      .on('generationEnd', (phase) => {
+        if (phase === 'speaker') {
+          // Speaker done -- flush speaker transcript as message
+          if (voiceUserTranscript) {
+            addChatMessage('user', voiceUserTranscript);
+            messageCount++;
+            updateMessageCount();
+            voiceUserTranscript = '';
+          }
+          if (responseBuffer) {
+            addChatMessage('assistant', responseBuffer);
+            messageCount++;
+            updateMessageCount();
+            responseBuffer = '';
+          }
+          // Don't reset pipeline -- Mind may still be working
+          return;
+        }
+
+        if (phase === 'followup') {
+          // Follow-up done -- flush follow-up buffer
+          if (followupBuffer) {
+            addChatMessage('assistant', followupBuffer);
+            messageCount++;
+            updateMessageCount();
+            followupBuffer = '';
+          }
+          isInFollowup = false;
+          resetPipelineTrace();
+          return;
+        }
+
+        // No phase (backward compatible / Mind had no output)
         if (voiceUserTranscript) {
           addChatMessage('user', voiceUserTranscript);
           messageCount++;
           updateMessageCount();
           voiceUserTranscript = '';
         }
-
         if (responseBuffer) {
           addChatMessage('assistant', responseBuffer);
           messageCount++;
@@ -1292,6 +1394,42 @@ function addToolCallLog(name, args) {
       <span class="msg-tool-call-label">${isExit ? 'Conversation Ending Tool' : 'MCP Tool Call'}</span>
     </div>
     <pre class="msg-tool-call-args">${escapeHtml(argsText)}</pre>
+  `;
+
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+/**
+ * Display Mind activity as tool call chips between speaker and follow-up.
+ * Shows all tools the Mind called in a compact horizontal layout.
+ * @param {Object} mindActivity - { tools_called: [{name, args, status}], duration_ms, completed }
+ */
+function addMindActivityDisplay(mindActivity) {
+  const messages = document.getElementById('chat-messages');
+  if (!messages || !mindActivity?.tools_called?.length) return;
+
+  const div = document.createElement('div');
+  div.className = 'msg msg-mind-activity';
+
+  const chips = mindActivity.tools_called.map(tc => {
+    const statusClass = tc.status === 'error' ? 'chip-error' : 'chip-success';
+    const isExit = tc.name === 'exit_convo';
+    const icon = isExit ? '&#x26D4;' : '&#x2699;';
+    // Show first arg value as label, truncated
+    const argValues = Object.values(tc.args || {});
+    const argLabel = argValues.length > 0 ? `: ${String(argValues[0]).substring(0, 30)}` : '';
+    return `<span class="mind-chip ${statusClass}" title="${escapeHtml(JSON.stringify(tc.args))}">${icon} ${escapeHtml(tc.name)}${escapeHtml(argLabel)}</span>`;
+  }).join('');
+
+  const durationLabel = mindActivity.duration_ms ? ` (${mindActivity.duration_ms}ms)` : '';
+  const completedLabel = mindActivity.completed === false ? ' [timeout]' : '';
+
+  div.innerHTML = `
+    <div class="mind-activity-header">
+      <span class="mind-activity-label">Mind${durationLabel}${completedLabel}</span>
+    </div>
+    <div class="mind-chips">${chips}</div>
   `;
 
   messages.appendChild(div);

@@ -13,6 +13,12 @@ export interface ProjectSettings {
     stt?: number;
     tts?: number;
   };
+  /** LLM provider for the Mind instance (defaults to llm_provider if not set) */
+  mind_provider?: string;
+  /** LLM model for the Mind instance (defaults to llm_model if not set) */
+  mind_model?: string;
+  /** Timeout for the Mind agent loop in milliseconds (default: 5000) */
+  mind_timeout_ms?: number;
 }
 
 export interface ProjectLimits {

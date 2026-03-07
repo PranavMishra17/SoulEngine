@@ -13,6 +13,7 @@ import type { LLMProviderType, LLMProvider } from '../providers/llm/interface.js
 import { getConfig } from '../config.js';
 import type { VoiceConfig, ConversationMode } from '../types/voice.js';
 import { CONVERSATION_MODES } from '../types/voice.js';
+import type { MindActivity } from '../types/mind.js';
 
 const logger = createLogger('ws-handler');
 
@@ -89,6 +90,22 @@ interface ToolCallMessage {
 
 interface GenerationEndMessage {
   type: 'generation_end';
+  phase?: 'speaker' | 'followup';
+}
+
+interface MindActivityMessage {
+  type: 'mind_activity';
+  tools_called: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    status: 'success' | 'error';
+  }>;
+  duration_ms: number;
+  completed: boolean;
+}
+
+interface FollowupStartMessage {
+  type: 'followup_start';
 }
 
 interface ErrorMessage {
@@ -118,7 +135,9 @@ type OutboundMessage =
   | GenerationEndMessage
   | ErrorMessage
   | SyncMessage
-  | ExitConvoMessage;
+  | ExitConvoMessage
+  | MindActivityMessage
+  | FollowupStartMessage;
 
 /**
  * Active voice connection state
@@ -383,9 +402,22 @@ async function handleInitMessage(
         logger.info({ sessionId, toolName: name }, 'Pipeline event: tool_call');
         sendMessage(ws, { type: 'tool_call', name, args });
       },
-      onGenerationEnd: () => {
-        logger.info({ sessionId }, 'Pipeline event: generation_end');
-        sendMessage(ws, { type: 'generation_end' });
+      onGenerationEnd: (phase?: 'speaker' | 'followup') => {
+        logger.info({ sessionId, phase }, 'Pipeline event: generation_end');
+        sendMessage(ws, { type: 'generation_end', phase });
+      },
+      onMindActivity: (activity: MindActivity) => {
+        logger.info({ sessionId, toolCount: activity.tools_called.length }, 'Pipeline event: mind_activity');
+        sendMessage(ws, {
+          type: 'mind_activity',
+          tools_called: activity.tools_called,
+          duration_ms: activity.duration_ms,
+          completed: activity.completed,
+        });
+      },
+      onFollowupStart: () => {
+        logger.info({ sessionId }, 'Pipeline event: followup_start');
+        sendMessage(ws, { type: 'followup_start' });
       },
       onError: (code, message) => {
         logger.error({ sessionId, code, message }, 'Pipeline event: error');
@@ -450,6 +482,29 @@ async function handleInitMessage(
 
     logger.info({ sessionId, ttsProviderType, voiceId: voiceConfig.voice_id, llmProvider: resolvedProviderType, llmModel: resolvedModelId }, 'handleInitMessage: providers created');
 
+    // Mind provider resolution (can use different model/provider per project settings)
+    const mindRawProviderType = projectSettings.mind_provider || resolvedProviderType;
+    const mindProviderType: LLMProviderType = isLlmProviderSupported(mindRawProviderType)
+      ? mindRawProviderType
+      : resolvedProviderType;
+    const mindModelId = projectSettings.mind_model || getDefaultModel(mindProviderType);
+    const mindApiKeyForProvider = context.apiKeys[mindProviderType as keyof typeof context.apiKeys]
+      || (() => {
+        switch (mindProviderType) {
+          case 'gemini': return serverConfig.providers.geminiApiKey;
+          case 'openai': return serverConfig.providers.openaiApiKey;
+          case 'anthropic': return serverConfig.providers.anthropicApiKey;
+          case 'grok': return serverConfig.providers.grokApiKey;
+          default: return undefined;
+        }
+      })();
+
+    const mindLlmProvider: LLMProvider = mindApiKeyForProvider
+      ? createLlmProvider({ provider: mindProviderType, apiKey: mindApiKeyForProvider, model: mindModelId })
+      : llmProvider;  // fall back to same provider
+
+    logger.info({ sessionId, mindProvider: mindProviderType, mindModel: mindModelId }, 'handleInitMessage: Mind provider created');
+
     // Get mode from message or default to voice-voice for WebSocket
     const mode = msg.mode || CONVERSATION_MODES.VOICE_VOICE;
     logger.info({ sessionId, mode }, 'handleInitMessage: mode selected');
@@ -460,6 +515,7 @@ async function handleInitMessage(
       sttProvider,
       ttsProvider,
       llmProvider,
+      mindProvider: mindLlmProvider,
       voiceConfig,
       events,
       mode,
