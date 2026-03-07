@@ -782,3 +782,75 @@ npcRoutes.post('/:npcId/rollback', async (c) => {
     return c.json({ error: 'Failed to rollback' }, 500);
   }
 });
+
+/**
+ * POST /api/projects/:projectId/npcs/:npcId/reset
+ * Reset an NPC to its base state: neutral mood, no memories, no relationships.
+ * All player instances for this NPC are reset. History is preserved for audit.
+ *
+ * Body (optional): { "delete_transcripts": true }
+ */
+npcRoutes.post('/:npcId/reset', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+  const npcId = c.req.param('npcId');
+
+  if (!projectId || !npcId) {
+    return c.json({ error: 'Project ID and NPC ID are required' }, 400);
+  }
+
+  let deleteTranscripts = false;
+  try {
+    const raw = await c.req.json();
+    deleteTranscripts = raw?.delete_transcripts === true;
+  } catch {
+    // No body or invalid JSON — that's fine, use defaults
+  }
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorageForUser(userId);
+
+    // Validate NPC exists
+    await storage.getDefinition(projectId, npcId);
+
+    // Find all instances for this NPC
+    const instances = await storage.listInstancesForNpc(projectId, npcId);
+
+    // Reset each instance
+    let resetCount = 0;
+    for (const inst of instances) {
+      await storage.resetInstance(projectId, inst.id);
+      resetCount++;
+    }
+
+    // Optionally delete transcripts
+    let transcriptsDeleted = 0;
+    if (deleteTranscripts) {
+      transcriptsDeleted = await storage.deleteTranscriptsByNpc(projectId, npcId);
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info(
+      { projectId, npcId, resetCount, transcriptsDeleted, duration },
+      'NPC reset to base state'
+    );
+
+    return c.json({
+      message: 'NPC reset to base state',
+      instances_reset: resetCount,
+      transcripts_deleted: transcriptsDeleted,
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof StorageNotFoundError) {
+      logger.warn({ projectId, npcId, duration }, 'NPC not found for reset');
+      return c.json({ error: 'NPC not found' }, 404);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage, duration }, 'Failed to reset NPC');
+    return c.json({ error: 'Failed to reset NPC', details: errorMessage }, 500);
+  }
+});

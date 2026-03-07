@@ -174,3 +174,33 @@ export async function getConversationTranscript(
         return null;
     }
 }
+
+export async function deleteTranscriptsByNpc(
+    projectId: string,
+    npcId: string
+): Promise<number> {
+    try {
+        const supabase = getSupabaseAdmin();
+        const { data, error } = await supabase
+            .from('conversation_transcripts')
+            .delete()
+            .eq('project_id', projectId)
+            .eq('npc_id', npcId)
+            .select('id');
+
+        if (error) {
+            logger.warn({ projectId, npcId, error: error.message }, 'Failed to delete transcripts');
+            return 0;
+        }
+
+        const deleted = data?.length ?? 0;
+        logger.info({ projectId, npcId, deleted }, 'Transcripts deleted for NPC');
+        return deleted;
+    } catch (error) {
+        logger.warn(
+            { projectId, npcId, error: error instanceof Error ? error.message : 'Unknown' },
+            'Failed to delete transcripts (non-fatal)'
+        );
+        return 0;
+    }
+}

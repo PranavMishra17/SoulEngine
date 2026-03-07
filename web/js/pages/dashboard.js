@@ -2,8 +2,8 @@
  * Project Dashboard Page Handler
  */
 
-import { projects, mcpTools, starterPacks, ApiError } from '../api.js';
-import { toast, modal, renderTemplate, updateNav } from '../components.js';
+import { projects, npcs, mcpTools, starterPacks, ApiError } from '../api.js';
+import { toast, modal, loading, renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
 
 let currentProject = null;
@@ -292,9 +292,29 @@ function populateNpcBoard(npcsData) {
       <div class="board-item board-item-npc">
         ${avatarHtml}
         <div class="board-item-name">${escapeHtml(npc.name)}</div>
+        <button class="btn-reset-npc-card" data-npc-id="${escapeHtml(npc.id)}" data-npc-name="${escapeHtml(npc.name)}" title="Reset memory and state to base level" style="position:absolute; top:4px; right:4px; background:none; border:none; cursor:pointer; color:var(--color-text-secondary, #94a3b8); font-size:0.75rem; padding:2px 5px; border-radius:4px; opacity:0; transition:opacity 0.15s;" onmouseenter="this.style.opacity=1;this.style.color='var(--color-error, #ef4444)'" onmouseleave="this.style.opacity=0;this.style.color='var(--color-text-secondary, #94a3b8)'">&crarr; Reset</button>
       </div>
     `;
   }).join('');
+
+  // Make NPC cards show reset button on hover
+  gridEl.querySelectorAll('.board-item-npc').forEach(card => {
+    card.style.position = 'relative';
+    const resetBtn = card.querySelector('.btn-reset-npc-card');
+    card.addEventListener('mouseenter', () => { if (resetBtn) resetBtn.style.opacity = '0.7'; });
+    card.addEventListener('mouseleave', () => { if (resetBtn) resetBtn.style.opacity = '0'; });
+  });
+
+  // Bind reset button clicks (stop propagation so board-level click doesn't fire)
+  gridEl.querySelectorAll('.btn-reset-npc-card').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const npcId = btn.dataset.npcId;
+      const npcName = btn.dataset.npcName;
+      await handleDashboardResetNpc(npcId, npcName);
+    });
+  });
 
   // Add "+N more" if there are more than displayed
   if (npcsData.total > definitions.length) {
@@ -596,6 +616,33 @@ async function doLoadPack(projectId, packId, packName) {
 /**
  * Escape HTML to prevent XSS
  */
+/**
+ * Handle NPC reset from dashboard card
+ */
+async function handleDashboardResetNpc(npcId, npcName) {
+  if (!currentProjectId || !npcId) return;
+
+  const confirmed = await modal.confirm(
+    'Reset NPC Memory',
+    `Reset "${npcName}" to base state? This erases all memories, mood changes, relationships, and personality drift for every player instance.\n\nConversation transcripts will also be deleted.`,
+    { confirmText: 'Reset to Base', danger: true }
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const result = await npcs.reset(currentProjectId, npcId, {
+      delete_transcripts: true,
+    });
+    toast.success(
+      'NPC Reset',
+      `"${npcName}" reset to base state. ${result.instances_reset} instance(s) cleared.`
+    );
+  } catch (error) {
+    toast.error('Reset Failed', error.message);
+  }
+}
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;

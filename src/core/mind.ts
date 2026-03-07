@@ -322,6 +322,8 @@ export async function runMindAgentLoop(
     // 2. Get available mind tools
     const mindTools = getMindAvailableTools(definition, securityContext, projectTools);
 
+    logger.info({ npcId: definition.id, toolCount: mindTools.length }, 'Mind agent loop started');
+
     // 3. LLM call 1: Decide what to do
     let responseText = '';
     let call1ToolCalls: ToolCall[] = [];
@@ -353,6 +355,7 @@ export async function runMindAgentLoop(
 
     // 4. Check for NO_ACTION or no tool calls
     const trimmedResponse = responseText.trim();
+    logger.info({ npcId: definition.id, toolCallCount: call1ToolCalls.length, noAction: trimmedResponse === 'NO_ACTION' }, 'Mind LLM call 1 complete');
     if (call1ToolCalls.length === 0 || trimmedResponse === 'NO_ACTION') {
       return {
         follow_up_text: '',
@@ -384,6 +387,7 @@ export async function runMindAgentLoop(
         exitConvoReason = String(tc.arguments.reason ?? 'No reason provided');
       }
 
+      const toolStart = Date.now();
       const toolResult = await executeMindTool(
         tc,
         definition,
@@ -392,6 +396,7 @@ export async function runMindAgentLoop(
         knowledgeBase,
         toolRegistry,
       );
+      logger.info({ tool: tc.name, status: toolResult.status, durationMs: Date.now() - toolStart }, 'Mind tool executed');
       toolsCalled.push(toolResult);
     }
 
@@ -424,6 +429,7 @@ export async function runMindAgentLoop(
     const toolResultMessage = `[Tool Results]\n${toolResultLines.join('\n')}\n\n[Instructions]\nBased on these results, generate a brief follow-up (1-3 sentences) that ${definition.name} will speak next. Do not repeat what was already said. Stay in character. Output ONLY spoken dialogue. If the results don't add value, respond with NO_FOLLOWUP.`;
 
     // 7. LLM call 2: Generate follow-up
+    logger.info({ npcId: definition.id, toolResultCount: toolsCalled.length }, 'Mind generating follow-up');
     const assistantContent = responseText || '[Used tools]';
     const messages: LLMMessage[] = [
       { role: 'model', content: assistantContent, toolCalls: call1ToolCalls },
@@ -455,6 +461,7 @@ export async function runMindAgentLoop(
 
     // 8. Check for NO_FOLLOWUP
     const trimmedFollowUp = followUpText.trim();
+    logger.info({ npcId: definition.id, textLength: followUpText.length, isNoFollowup: trimmedFollowUp === 'NO_FOLLOWUP' || !trimmedFollowUp }, 'Mind follow-up generated');
     if (trimmedFollowUp === 'NO_FOLLOWUP' || !trimmedFollowUp) {
       return {
         follow_up_text: '',
@@ -475,6 +482,8 @@ export async function runMindAgentLoop(
     const cleanedFollowUp = stripNarration(trimmedFollowUp);
 
     // 10. Return full MindResult
+    const duration_ms = Date.now() - startTime;
+    logger.info({ npcId: definition.id, totalDurationMs: duration_ms, toolsCalled: toolsCalled.length, hasFollowup: !!cleanedFollowUp }, 'Mind agent loop complete');
     return {
       follow_up_text: cleanedFollowUp,
       tools_called: toolsCalled,
@@ -486,7 +495,7 @@ export async function runMindAgentLoop(
       completed: true,
       exit_convo_used: exitConvoUsed,
       exit_convo_reason: exitConvoReason,
-      duration_ms: Date.now() - startTime,
+      duration_ms,
     };
 
   } catch (err) {

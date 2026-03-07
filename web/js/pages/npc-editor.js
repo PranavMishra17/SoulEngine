@@ -236,6 +236,13 @@ export async function initNpcEditorPage(params) {
   document.getElementById('btn-export-npc')?.addEventListener('click', handleExportNpc);
   document.getElementById('btn-download-template')?.addEventListener('click', handleDownloadTemplate);
   document.getElementById('btn-edit-npc-json')?.addEventListener('click', handleEditNpcJson);
+  document.getElementById('btn-reset-npc')?.addEventListener('click', handleResetNpc);
+
+  // Show reset button only when editing an existing NPC
+  if (currentNpcId) {
+    const resetBtn = document.getElementById('btn-reset-npc');
+    if (resetBtn) resetBtn.style.display = '';
+  }
 
   // LLM Generation buttons
   document.getElementById('btn-generate-backstory')?.addEventListener('click', () => openLlmGenerationModal('backstory'));
@@ -1339,6 +1346,35 @@ function applyPersonalityPreset(presetId) {
   // Update preview and summary
   updatePreview();
   updatePersonalitySummary();
+}
+
+async function handleResetNpc() {
+  if (!currentProjectId || !currentNpcId) return;
+
+  const confirmed = await modal.confirm(
+    'Reset NPC Memory',
+    `This will erase ALL evolved state for "${currentDefinition?.name || 'this NPC'}" -- memories, mood changes, relationships, and personality drift. All player instances will be reset to base level.\n\nHistory snapshots are preserved for rollback.\n\nAlso delete conversation transcripts?`,
+    { confirmText: 'Reset to Base', danger: true }
+  );
+
+  if (!confirmed) return;
+
+  const resetBtn = document.getElementById('btn-reset-npc');
+  loading.button(resetBtn, true);
+
+  try {
+    const result = await npcs.reset(currentProjectId, currentNpcId, {
+      delete_transcripts: true,
+    });
+    toast.success(
+      'NPC Reset',
+      `${currentDefinition?.name || 'NPC'} reset to base state. ${result.instances_reset} instance(s) cleared.`
+    );
+  } catch (error) {
+    toast.error('Reset Failed', error.message);
+  } finally {
+    loading.button(resetBtn, false);
+  }
 }
 
 async function handleSaveNpc() {

@@ -203,6 +203,12 @@ export const npcs = {
       method: 'POST',
       body: JSON.stringify({ version }),
     }),
+
+  reset: (projectId, npcId, options = {}) =>
+    request(`/projects/${projectId}/npcs/${npcId}/reset`, {
+      method: 'POST',
+      body: JSON.stringify(options),
+    }),
 };
 
 /**

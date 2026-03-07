@@ -26,7 +26,9 @@
       "Bash(node --input-type=module -e \"import\\(''fs''\\).then\\(fs => { const code = fs.readFileSync\\(''web/js/api.js'', ''utf8''\\); new Function\\(code\\); console.log\\(''api.js: parses OK''\\); }\\).catch\\(e => console.error\\(''api.js:'', e.message\\)\\)\")",
       "Bash(node -c web/js/api.js)",
       "Bash(node -c web/js/pages/playground.js)",
-      "Bash(node -c web/js/pages/project-settings.js)"
+      "Bash(node -c web/js/pages/project-settings.js)",
+      "Bash(node -c web/js/pages/dashboard.js)",
+      "Bash(node -c web/js/pages/npc-editor.js)"
     ]
   }
 }

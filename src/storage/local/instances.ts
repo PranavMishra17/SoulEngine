@@ -488,3 +488,40 @@ export async function instanceExists(projectId: string, instanceId: string): Pro
     throw error;
   }
 }
+
+/**
+ * Reset an instance to base state (neutral mood, no memories, no relationships)
+ * Archives the current state to history before resetting.
+ */
+export async function resetInstance(
+  projectId: string,
+  instanceId: string
+): Promise<NPCInstance> {
+  const instance = await getInstance(projectId, instanceId);
+
+  const neutralMood: MoodVector = {
+    valence: 0.5,
+    arousal: 0.5,
+    dominance: 0.5,
+  };
+
+  const resetState: NPCInstance = {
+    ...instance,
+    current_mood: neutralMood,
+    trait_modifiers: {},
+    short_term_memory: [],
+    long_term_memory: [],
+    relationships: {},
+    daily_pulse: null,
+    cycle_metadata: {
+      last_weekly: null,
+      last_persona_shift: null,
+    },
+  };
+
+  // saveInstance auto-archives current state before overwriting
+  await saveInstance(resetState);
+
+  logger.info({ projectId, instanceId }, 'Instance reset to base state');
+  return resetState;
+}

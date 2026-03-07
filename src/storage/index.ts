@@ -129,6 +129,10 @@ export const instanceExists = useSupabase
   ? (await import('./supabase/instances.js')).instanceExists
   : (await import('./local/instances.js')).instanceExists;
 
+export const resetInstance = useSupabase
+  ? (await import('./supabase/instances.js')).resetInstance
+  : (await import('./local/instances.js')).resetInstance;
+
 // Knowledge
 export const getKnowledgeBase = useSupabase
   ? (await import('./supabase/knowledge.js')).getKnowledgeBase
@@ -209,6 +213,31 @@ export const isSupabaseEnabled = useSupabase
 export const verifyToken = useSupabase
   ? (await import('./supabase/client.js')).verifyToken
   : (await import('./local/index.js')).verifyToken;
+
+// Usage
+export const getProjectUsage = useSupabase
+  ? (await import('./supabase/usage.js')).getProjectUsage
+  : (await import('./local/usage.js')).getProjectUsage;
+
+export const appendProjectUsage = useSupabase
+  ? (await import('./supabase/usage.js')).appendProjectUsage
+  : (await import('./local/usage.js')).appendProjectUsage;
+
+export const saveConversationTranscript = useSupabase
+  ? (await import('./supabase/usage.js')).saveConversationTranscript
+  : (await import('./local/usage.js')).saveConversationTranscript;
+
+export const listConversationTranscripts = useSupabase
+  ? (await import('./supabase/usage.js')).listConversationTranscripts
+  : (await import('./local/usage.js')).listConversationTranscripts;
+
+export const getConversationTranscript = useSupabase
+  ? (await import('./supabase/usage.js')).getConversationTranscript
+  : (await import('./local/usage.js')).getConversationTranscript;
+
+export const deleteTranscriptsByNpc = useSupabase
+  ? (await import('./supabase/usage.js')).deleteTranscriptsByNpc
+  : (await import('./local/usage.js')).deleteTranscriptsByNpc;
 
 // Re-export types and errors
 export * from './interface.js';

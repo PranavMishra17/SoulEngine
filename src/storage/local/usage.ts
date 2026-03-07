@@ -146,3 +146,33 @@ export async function getConversationTranscript(
         return null;
     }
 }
+
+export async function deleteTranscriptsByNpc(
+    projectId: string,
+    npcId: string
+): Promise<number> {
+    const dir = getTranscriptsDir(projectId);
+    let files: string[];
+    try {
+        files = await fs.readdir(dir);
+    } catch {
+        return 0;
+    }
+
+    let deleted = 0;
+    for (const file of files.filter(f => f.endsWith('.json'))) {
+        try {
+            const content = await fs.readFile(path.join(dir, file), 'utf-8');
+            const t = JSON.parse(content);
+            if (t.npc_id === npcId) {
+                await fs.unlink(path.join(dir, file));
+                deleted++;
+            }
+        } catch {
+            // Skip unreadable files
+        }
+    }
+
+    logger.info({ projectId, npcId, deleted }, 'Transcripts deleted for NPC');
+    return deleted;
+}
