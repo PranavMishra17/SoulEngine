@@ -30,6 +30,12 @@ class DeepgramSession implements STTSession {
   private readonly config: Required<STTSessionConfig>;
   private readonly providerConfig: STTProviderConfig;
 
+  // Accumulate finalized segments within an utterance so emitted transcripts
+  // always contain the FULL text, not just the latest segment.
+  // Deepgram's `is_final` fires per-segment; `speech_final` fires once per utterance.
+  // Without accumulation, only the last segment reaches the pipeline.
+  private finalizedSegments: string[] = [];
+
   constructor(
     providerConfig: STTProviderConfig,
     sessionConfig: STTSessionConfig,
@@ -226,24 +232,41 @@ class DeepgramSession implements STTSession {
       return null;
     }
 
-    // is_final: true means this transcript chunk is final for its audio segment (can fire multiple times)
-    // speech_final: true means the speaker has finished their complete utterance (fires once per turn)
-    // ONLY use speech_final to trigger processing - using OR causes duplicate LLM calls and overlapping audio
-    const isFinal = transcriptData.speech_final === true;
+    const isSegmentFinal = transcriptData.is_final === true;
+    const isSpeechFinal = transcriptData.speech_final === true;
+
+    // Build full utterance text: all previously finalized segments + current transcript.
+    // This ensures every emitted event carries the complete accumulated text, not just
+    // the latest segment. Without this, the pipeline only sees the last segment.
+    const fullText = this.finalizedSegments.length > 0
+      ? [...this.finalizedSegments, transcript].join(' ')
+      : transcript;
+
+    // When a segment is finalized but the utterance continues, store it
+    if (isSegmentFinal && !isSpeechFinal) {
+      this.finalizedSegments.push(transcript);
+    }
+
+    // When the full utterance is complete, clear the accumulator
+    if (isSpeechFinal) {
+      this.finalizedSegments = [];
+    }
 
     logger.debug(
       {
         transcript: transcript.substring(0, 50),
-        isFinal,
+        fullText: fullText.substring(0, 80),
+        isFinal: isSpeechFinal,
         is_final: transcriptData.is_final,
-        speech_final: transcriptData.speech_final
+        speech_final: transcriptData.speech_final,
+        segmentCount: this.finalizedSegments.length
       },
       'Parsed Deepgram transcript'
     );
 
     return {
-      text: transcript,
-      isFinal,
+      text: fullText,
+      isFinal: isSpeechFinal,
       timestamp: Date.now(),
     };
   }
