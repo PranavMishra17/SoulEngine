@@ -323,20 +323,66 @@ export function isRecallTool(toolName: string): boolean {
  * Combines recall tools (always available) with conversation tools from the NPC's permissions.
  * Game-event tools are NOT included (they're triggered by game code, not Mind).
  *
+ * Recall tools are constrained to the NPC's actual known values so the LLM cannot
+ * hallucinate invalid names or categories:
+ *   - recall_npc: enum of resolved network NPC names
+ *   - recall_knowledge: enum of accessible knowledge category IDs
+ *   - recall_memories: free-form query (memories are dynamic text, cannot be enumerated)
+ *
  * @param definition - The NPC's definition with MCP permissions
  * @param securityContext - Current security context
  * @param projectToolRegistry - The project's MCP tool registry
+ * @param networkNames - Resolved names of NPCs in this NPC's network (for recall_npc enum)
  * @returns Array of Tool objects for the Mind instance
  */
 export function getMindAvailableTools(
   definition: NPCDefinition,
   securityContext: SecurityContext,
-  projectToolRegistry: Record<string, Tool>
+  projectToolRegistry: Record<string, Tool>,
+  networkNames: string[] = [],
 ): Tool[] {
   const tools: Tool[] = [];
 
-  // 1. Always include recall tools
-  tools.push(...Object.values(RECALL_TOOLS));
+  // 1. Build constrained recall tools using known enum values where possible
+  const accessibleCategories = Object.entries(definition.knowledge_access ?? {})
+    .filter(([, level]) => level > 0)
+    .map(([id]) => id);
+
+  const recallNpcTool: Tool = networkNames.length > 0
+    ? {
+        ...RECALL_NPC_TOOL,
+        parameters: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Name of the NPC to recall. Must be one of the known NPCs.',
+              enum: networkNames,
+            },
+          },
+          required: ['name'],
+        },
+      }
+    : RECALL_NPC_TOOL;
+
+  const recallKnowledgeTool: Tool = accessibleCategories.length > 0
+    ? {
+        ...RECALL_KNOWLEDGE_TOOL,
+        parameters: {
+          type: 'object',
+          properties: {
+            category: {
+              type: 'string',
+              description: 'Knowledge category to recall. Must be one of the accessible categories.',
+              enum: accessibleCategories,
+            },
+          },
+          required: ['category'],
+        },
+      }
+    : RECALL_KNOWLEDGE_TOOL;
+
+  tools.push(recallNpcTool, recallKnowledgeTool, RECALL_MEMORIES_TOOL);
 
   // 2. Include conversation tools from NPC permissions (same logic as getAvailableTools)
   const permissions = definition.mcp_permissions;

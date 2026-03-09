@@ -6,61 +6,9 @@ import { npcs, projects, knowledge, mcpTools, session, conversation, cycles, Voi
 import { toast, renderTemplate, updateNav, getMoodEmoji, getMoodLabel, modal } from '../components.js';
 import { router } from '../router.js';
 
-// Inject Mind activity CSS once
-if (!document.getElementById('mind-activity-styles')) {
-  const style = document.createElement('style');
-  style.id = 'mind-activity-styles';
-  style.textContent = `
-    .msg-mind-activity {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      padding: 0.5rem 0.75rem;
-      margin: 0.25rem 0;
-      background: var(--color-surface-2, #1a1a2e);
-      border-left: 3px solid var(--color-primary, #6366f1);
-      border-radius: 0.375rem;
-      font-size: var(--text-xs, 0.75rem);
-    }
-    .mind-activity-header {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .mind-activity-label {
-      color: var(--color-text-secondary, #94a3b8);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .mind-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.375rem;
-    }
-    .mind-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 1rem;
-      font-size: var(--text-xs, 0.75rem);
-      font-family: monospace;
-      white-space: nowrap;
-    }
-    .mind-chip.chip-success {
-      background: var(--color-success-bg, rgba(34, 197, 94, 0.15));
-      color: var(--color-success, #22c55e);
-      border: 1px solid var(--color-success, #22c55e);
-    }
-    .mind-chip.chip-error {
-      background: var(--color-error-bg, rgba(239, 68, 68, 0.15));
-      color: var(--color-error, #ef4444);
-      border: 1px solid var(--color-error, #ef4444);
-    }
-  `;
-  document.head.appendChild(style);
-}
+// Mind tab state
+let activeChatTab = 'chat'; // 'chat' | 'mind'
+let mindTurnCount = 0;
 
 let currentProjectId = null;
 let currentNpcId = null;
@@ -413,6 +361,12 @@ async function handleStartSession() {
     btnEndHeader.replaceWith(btnEndHeader.cloneNode(true));
     document.getElementById('btn-end-session-header').addEventListener('click', () => handleEndSession());
 
+    // Reset Mind panel for new session
+    resetMindPanel();
+
+    // Wire Chat / Mind tab switching
+    wireChatTabs();
+
     // Add system message with context
     const taskLabel = taskSelect === 'custom' ? customTask : taskSelect.replace('_', ' ');
     addChatMessage('system', `Session started. You are now chatting with ${result.npc_name}. (Mood: ${moodPreset.label}, Task: ${taskLabel})`);
@@ -479,9 +433,13 @@ async function handleEndSession(exitConvoUsed = false) {
     document.getElementById('npc-info-panel').style.display = 'block';
     document.getElementById('chat-input-area').style.display = 'none';
 
-    // Hide chat NPC header
+    // Hide chat NPC header and mind panel
     const chatHeader = document.getElementById('chat-npc-header');
     if (chatHeader) chatHeader.style.display = 'none';
+    const mindPanel = document.getElementById('mind-panel');
+    if (mindPanel) mindPanel.style.display = 'none';
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) chatMessages.style.display = 'flex';
 
     // Clear stored NPC info
     currentNpcInfo = null;
@@ -790,11 +748,12 @@ async function connectVoice() {
         console.log('[FollowupStart] Mind follow-up beginning');
         isInFollowup = true;
         followupBuffer = '';
+        liveFollowupBubble = null;
       })
       .on('generationEnd', (phase) => {
         if (phase === 'speaker') {
-          // Speaker done -- flush speaker transcript as message
-          if (voiceUserTranscript) {
+          // Flush user transcript only in voice-input mode — text input already showed it
+          if (voiceUserTranscript && currentConversationMode.input === 'voice') {
             addChatMessage('user', voiceUserTranscript);
             messageCount++;
             updateMessageCount();
@@ -824,7 +783,7 @@ async function connectVoice() {
         }
 
         // No phase (backward compatible / Mind had no output)
-        if (voiceUserTranscript) {
+        if (voiceUserTranscript && currentConversationMode.input === 'voice') {
           addChatMessage('user', voiceUserTranscript);
           messageCount++;
           updateMessageCount();
@@ -1401,39 +1360,150 @@ function addToolCallLog(name, args) {
 }
 
 /**
- * Display Mind activity as tool call chips between speaker and follow-up.
- * Shows all tools the Mind called in a compact horizontal layout.
+ * Add a Mind turn entry to the Mind panel tab.
+ * Replaces the old inline chat-bubble approach.
  * @param {Object} mindActivity - { tools_called: [{name, args, status}], duration_ms, completed }
  */
 function addMindActivityDisplay(mindActivity) {
-  const messages = document.getElementById('chat-messages');
-  if (!messages || !mindActivity?.tools_called?.length) return;
+  if (!mindActivity?.tools_called?.length) return;
 
-  const div = document.createElement('div');
-  div.className = 'msg msg-mind-activity';
+  const entriesEl = document.getElementById('mind-panel-entries');
+  const emptyEl = document.getElementById('mind-panel-empty');
+  const badge = document.getElementById('mind-tab-badge');
+  if (!entriesEl) return;
 
-  const chips = mindActivity.tools_called.map(tc => {
-    const statusClass = tc.status === 'error' ? 'chip-error' : 'chip-success';
+  // Hide empty state
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  mindTurnCount++;
+
+  // Update badge (only show when on Chat tab so user knows Mind fired)
+  if (badge) {
+    badge.textContent = mindTurnCount;
+    badge.style.display = activeChatTab === 'chat' ? 'inline-block' : 'none';
+  }
+
+  const isCompleted = mindActivity.completed !== false;
+  const durationLabel = mindActivity.duration_ms ? `${mindActivity.duration_ms}ms` : '';
+  const statusClass = isCompleted ? 'status-ok' : 'status-partial';
+  const statusLabel = isCompleted ? 'ok' : 'partial';
+
+  const toolRows = mindActivity.tools_called.map(tc => {
     const isExit = tc.name === 'exit_convo';
-    const icon = isExit ? '&#x26D4;' : '&#x2699;';
-    // Show first arg value as label, truncated
-    const argValues = Object.values(tc.args || {});
-    const argLabel = argValues.length > 0 ? `: ${String(argValues[0]).substring(0, 30)}` : '';
-    return `<span class="mind-chip ${statusClass}" title="${escapeHtml(JSON.stringify(tc.args))}">${icon} ${escapeHtml(tc.name)}${escapeHtml(argLabel)}</span>`;
+    const hasError = tc.status === 'error';
+    const icon = isExit ? '&#x26D4;' : (hasError ? '&#x26A0;' : '&#x2713;');
+    const nameClass = hasError ? 'mind-tool-name tool-error' : 'mind-tool-name';
+
+    // Show arg key: value pairs, truncated
+    const args = tc.args || {};
+    const argParts = Object.entries(args).map(([k, v]) =>
+      `${escapeHtml(k)}: ${escapeHtml(String(v).substring(0, 50))}`
+    );
+    const argLine = argParts.length > 0
+      ? `<div class="mind-tool-arg">${argParts.join(' &nbsp;|&nbsp; ')}</div>`
+      : '';
+    const errorLine = hasError && tc.error
+      ? `<div class="mind-tool-error-msg">${escapeHtml(tc.error)}</div>`
+      : '';
+
+    return `<div class="mind-tool-row">
+      <span class="mind-tool-icon">${icon}</span>
+      <div class="mind-tool-body">
+        <span class="${nameClass}">${escapeHtml(tc.name)}</span>
+        ${argLine}
+        ${errorLine}
+      </div>
+    </div>`;
   }).join('');
 
-  const durationLabel = mindActivity.duration_ms ? ` (${mindActivity.duration_ms}ms)` : '';
-  const completedLabel = mindActivity.completed === false ? ' [timeout]' : '';
-
-  div.innerHTML = `
-    <div class="mind-activity-header">
-      <span class="mind-activity-label">Mind${durationLabel}${completedLabel}</span>
+  const entry = document.createElement('div');
+  entry.className = 'mind-entry';
+  entry.innerHTML = `
+    <div class="mind-entry-header">
+      <span class="mind-entry-label">Turn ${mindTurnCount}</span>
+      <span class="mind-entry-status ${statusClass}">${statusLabel}</span>
+      <span class="mind-entry-meta">${escapeHtml(durationLabel)}</span>
     </div>
-    <div class="mind-chips">${chips}</div>
+    <div class="mind-entry-tools">${toolRows}</div>
   `;
 
-  messages.appendChild(div);
-  messages.scrollTop = messages.scrollHeight;
+  entriesEl.appendChild(entry);
+
+  // Auto-scroll mind panel if it's visible
+  const panel = document.getElementById('mind-panel');
+  if (panel && panel.style.display !== 'none') {
+    panel.scrollTop = panel.scrollHeight;
+  }
+}
+
+/**
+ * Reset the Mind panel to empty state for a new session.
+ */
+function resetMindPanel() {
+  mindTurnCount = 0;
+  activeChatTab = 'chat';
+
+  const entriesEl = document.getElementById('mind-panel-entries');
+  const emptyEl = document.getElementById('mind-panel-empty');
+  const badge = document.getElementById('mind-tab-badge');
+  const panel = document.getElementById('mind-panel');
+  const chatMessages = document.getElementById('chat-messages');
+
+  if (entriesEl) entriesEl.innerHTML = '';
+  if (emptyEl) emptyEl.style.display = 'block';
+  if (badge) { badge.textContent = ''; badge.style.display = 'none'; }
+  if (panel) panel.style.display = 'none';
+  if (chatMessages) chatMessages.style.display = 'flex';
+
+  // Reset tab buttons
+  document.getElementById('tab-chat')?.classList.add('active');
+  document.getElementById('tab-mind')?.classList.remove('active');
+}
+
+/**
+ * Wire the Chat / Mind tab buttons.
+ * Uses replaceWith to clear any stale listeners from previous sessions.
+ */
+function wireChatTabs() {
+  ['tab-chat', 'tab-mind'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const fresh = btn.cloneNode(true);
+    btn.replaceWith(fresh);
+  });
+
+  document.getElementById('tab-chat')?.addEventListener('click', () => switchChatTab('chat'));
+  document.getElementById('tab-mind')?.addEventListener('click', () => switchChatTab('mind'));
+}
+
+/**
+ * Switch between Chat and Mind tabs.
+ * @param {'chat'|'mind'} tab
+ */
+function switchChatTab(tab) {
+  activeChatTab = tab;
+
+  const chatMessages = document.getElementById('chat-messages');
+  const chatInput = document.getElementById('chat-input-area');
+  const mindPanel = document.getElementById('mind-panel');
+  const badge = document.getElementById('mind-tab-badge');
+
+  document.getElementById('tab-chat')?.classList.toggle('active', tab === 'chat');
+  document.getElementById('tab-mind')?.classList.toggle('active', tab === 'mind');
+
+  if (tab === 'chat') {
+    if (chatMessages) chatMessages.style.display = 'flex';
+    if (chatInput) chatInput.style.display = 'block';
+    if (mindPanel) mindPanel.style.display = 'none';
+  } else {
+    if (chatMessages) chatMessages.style.display = 'none';
+    if (chatInput) chatInput.style.display = 'none';
+    if (mindPanel) mindPanel.style.display = 'flex';
+    // Clear badge when user opens Mind tab
+    if (badge) badge.style.display = 'none';
+    // Scroll to bottom of mind panel
+    if (mindPanel) mindPanel.scrollTop = mindPanel.scrollHeight;
+  }
 }
 
 function addSecurityLog(_type, _message) {

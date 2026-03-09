@@ -1832,9 +1832,18 @@
                 <span class="chat-npc-header-name" id="chat-header-name"></span>
                 <span class="chat-npc-header-mood" id="chat-header-mood"></span>
               </div>
+              <div class="chat-header-tabs">
+                <button class="chat-tab active" id="tab-chat" data-tab="chat">Chat</button>
+                <button class="chat-tab" id="tab-mind" data-tab="mind">Mind <span class="mind-tab-badge" id="mind-tab-badge" style="display:none;"></span></button>
+              </div>
               <div class="chat-npc-header-actions">
                 <button class="btn btn-sm btn-ghost" id="btn-end-session-header">End Session</button>
               </div>
+            </div>
+            <!-- Mind panel: shown when Mind tab is active -->
+            <div id="mind-panel" class="mind-panel" style="display:none;">
+              <div class="mind-panel-empty" id="mind-panel-empty">No Mind activity yet this session.</div>
+              <div class="mind-panel-entries" id="mind-panel-entries"></div>
             </div>
             <div class="chat-messages" id="chat-messages">
               <div class="chat-placeholder"><div class="placeholder-icon">&#9681;</div><p>Select an NPC and start a session to begin chatting</p></div>

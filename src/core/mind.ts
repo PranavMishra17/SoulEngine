@@ -319,12 +319,23 @@ export async function runMindAgentLoop(
       conversationHistory,
     );
 
-    // 2. Get available mind tools
-    const mindTools = getMindAvailableTools(definition, securityContext, projectTools);
+    // 2. Resolve network NPC names for constrained recall_npc enum
+    const networkNames: string[] = [];
+    for (const entry of definition.network ?? []) {
+      try {
+        const knownDef = await getDefinition(projectId, entry.npc_id);
+        networkNames.push(knownDef.name);
+      } catch {
+        // Skip unresolvable entries — they'll just be absent from the enum
+      }
+    }
+
+    // 3. Get available mind tools (recall tools constrained to known enum values)
+    const mindTools = getMindAvailableTools(definition, securityContext, projectTools, networkNames);
 
     logger.info({ npcId: definition.id, toolCount: mindTools.length }, 'Mind agent loop started');
 
-    // 3. LLM call 1: Decide what to do
+    // 4. LLM call 1: Decide what to do
     let responseText = '';
     let call1ToolCalls: ToolCall[] = [];
 

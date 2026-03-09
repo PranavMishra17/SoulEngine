@@ -145,7 +145,7 @@ async function loadProjectData(projectId) {
     updateFlowchart(stats);
 
     // Load usage data async (non-blocking — never throws to user)
-    loadUsageData(projectId).catch(() => { });
+    loadUsageData(projectId, stats.npcs?.definitions || []).catch(() => { });
 
     // Show/hide starter pack section based on content
     const starterSection = document.getElementById('starter-pack-section');
@@ -171,7 +171,7 @@ async function loadProjectData(projectId) {
  * Load project usage totals and recent transcripts.
  * Non-blocking and fully graceful — never throws.
  */
-async function loadUsageData(projectId) {
+async function loadUsageData(projectId, npcDefinitions = []) {
   try {
     const [usageRes, transcriptsRes] = await Promise.all([
       projects.getUsage(projectId).catch(() => null),
@@ -193,7 +193,9 @@ async function loadUsageData(projectId) {
     }
 
     // Render transcript list
-    const transcripts = transcriptsRes?.transcripts || [];
+    const npcNameMap = Object.fromEntries(npcDefinitions.map(n => [n.id, n.name]));
+    const allTranscripts = transcriptsRes?.transcripts || [];
+    const transcripts = allTranscripts.filter(t => t.message_count > 0);
     const countEl = document.getElementById('transcripts-count');
     const listEl = document.getElementById('transcripts-list');
     if (!countEl || !listEl) return;
@@ -206,9 +208,10 @@ async function loadUsageData(projectId) {
         const textTok = Number(t.token_usage?.text_input_tokens || 0) + Number(t.token_usage?.text_output_tokens || 0);
         const voiceCh = Number(t.token_usage?.voice_input_chars || 0) + Number(t.token_usage?.voice_output_chars || 0);
         const modeLabel = t.mode || 'text-text';
+        const npcLabel = npcNameMap[t.npc_id] || t.npc_id || 'NPC';
         return `<div class="transcript-row" data-transcript-id="${t.id}" style="cursor:pointer">
           <div class="transcript-meta">
-            <span class="transcript-npc">${t.npc_id || 'NPC'}</span>
+            <span class="transcript-npc">${npcLabel}</span>
             <span class="transcript-mode badge-mode badge-mode-${modeLabel.startsWith('voice') ? 'voice' : 'text'}">${modeLabel}</span>
             <span class="transcript-msgs">${t.message_count} msg${t.message_count !== 1 ? 's' : ''}</span>
           </div>
@@ -231,9 +234,10 @@ async function loadUsageData(projectId) {
         if (!row) return;
         const transcriptId = row.dataset.transcriptId;
         try {
-          const data = await api.projects.getTranscript(projectId, transcriptId);
+          const data = await projects.getTranscript(projectId, transcriptId);
           const transcript = data.transcript || data;
-          const meta = `NPC: ${transcript.npc_id || 'NPC'} &nbsp;|&nbsp; Mode: ${transcript.mode || 'text-text'} &nbsp;|&nbsp; ${new Date(transcript.started_at).toLocaleString()}`;
+          const npcName = npcNameMap[transcript.npc_id] || transcript.npc_id || 'NPC';
+          const meta = `NPC: ${npcName} &nbsp;|&nbsp; Mode: ${transcript.mode || 'text-text'} &nbsp;|&nbsp; ${new Date(transcript.started_at).toLocaleString()}`;
           const msgs = (transcript.messages || []).map(m => {
             const roleLabel = m.role === 'user' ? 'Player' : 'NPC';
             const safeContent = m.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
