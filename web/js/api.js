@@ -20,6 +20,8 @@ export function setAuthFailureHandler(callback) {
 /**
  * Generic fetch wrapper with error handling
  */
+const REQUEST_TIMEOUT_MS = 30000;
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
 
@@ -35,13 +37,19 @@ async function request(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Timeout via AbortController (handles Render cold starts and hung requests)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   const config = {
     headers,
+    signal: controller.signal,
     ...options,
   };
 
   try {
     const response = await fetch(url, config);
+    clearTimeout(timeoutId);
 
     // Handle 401 Unauthorized
     if (response.status === 401) {
@@ -59,8 +67,12 @@ async function request(endpoint, options = {}) {
 
     return await response.json();
   } catch (error) {
+    clearTimeout(timeoutId);
     if (error instanceof ApiError) {
       throw error;
+    }
+    if (error.name === 'AbortError') {
+      throw new ApiError('Request timed out. The server may be starting up — please wait a moment and try again.', 0, null);
     }
     throw new ApiError(error.message || 'Network error', 0, null);
   }

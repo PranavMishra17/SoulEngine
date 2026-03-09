@@ -16,6 +16,28 @@ let currentSessionId = null;
 let currentInstanceId = null; // For cycles - stored after session or fetched
 let currentMode = 'text';
 let currentConversationMode = { input: 'text', output: 'text' }; // Current conversation mode
+
+// API key / project settings state (fetched on init, used for pre-flight checks)
+let projectSettings = null; // { llm_provider, tts_provider, stt_provider, ... }
+let keyStatus = null;       // { gemini: bool, openai: bool, deepgram: bool, cartesia: bool, ... }
+
+function getLlmKeyMissing() {
+  if (!projectSettings || !keyStatus) return false; // can't tell — don't block
+  const provider = projectSettings.llm_provider || 'gemini';
+  return !keyStatus[provider];
+}
+
+function getTtsKeyMissing() {
+  if (!projectSettings || !keyStatus) return false;
+  const provider = projectSettings.tts_provider || 'cartesia';
+  return !keyStatus[provider];
+}
+
+function getSttKeyMissing() {
+  if (!projectSettings || !keyStatus) return false;
+  const provider = projectSettings.stt_provider || 'deepgram';
+  return !keyStatus[provider];
+}
 let voiceClient = null;
 let isVoiceActive = false;
 let micVAD = null; // @ricky0123/vad-web instance
@@ -76,6 +98,16 @@ export async function initPlaygroundPage(params) {
   // Load NPCs into selector
   await loadNpcSelector(projectId);
 
+  // Fetch project settings + key status for pre-flight guardrails (non-blocking — failures degrade gracefully)
+  try {
+    [projectSettings, keyStatus] = await Promise.all([
+      projects.get(projectId),
+      projects.getKeyStatus(projectId),
+    ]);
+  } catch (e) {
+    console.warn('[Playground] Could not load key status for pre-flight checks:', e.message);
+  }
+
   // Bind event handlers
   bindEventHandlers();
 
@@ -104,6 +136,7 @@ export async function initPlaygroundPage(params) {
 
 async function loadNpcSelector(projectId) {
   const select = document.getElementById('npc-select');
+  const noNpcHint = document.getElementById('playground-no-npc-hint');
 
   try {
     const data = await npcs.list(projectId);
@@ -113,6 +146,12 @@ async function loadNpcSelector(projectId) {
       <option value="">Choose an NPC...</option>
       ${npcList.map((npc) => `<option value="${npc.id}">${escapeHtml(npc.name)}</option>`).join('')}
     `;
+
+    if (noNpcHint) {
+      noNpcHint.style.display = npcList.length === 0 ? 'block' : 'none';
+      const noNpcLink = document.getElementById('playground-no-npc-link');
+      if (noNpcLink) noNpcLink.href = `/projects/${projectId}/npcs`;
+    }
   } catch (error) {
     toast.error('Failed to Load NPCs', error.message);
   }
@@ -165,6 +204,16 @@ function bindEventHandlers() {
       const inputVal = document.querySelector('.mode-btn[data-mode-type="input"].active')?.dataset.modeValue || 'text';
       const outputVal = document.querySelector('.mode-btn[data-mode-type="output"].active')?.dataset.modeValue || 'text';
       setConversationMode(inputVal, outputVal);
+
+      // Warn (non-blocking) if voice is selected but the required key is not set
+      if (outputVal === 'voice' && getTtsKeyMissing()) {
+        const provider = projectSettings?.tts_provider || 'Cartesia/ElevenLabs';
+        toast.warning('TTS Key Missing', `Voice output requires a ${provider} API key. Add it in Settings \u2192 API Keys, or use text output mode.`);
+      }
+      if (inputVal === 'voice' && getSttKeyMissing()) {
+        const provider = projectSettings?.stt_provider || 'Deepgram';
+        toast.warning('STT Key Missing', `Voice input requires a ${provider} API key. Add it in Settings \u2192 API Keys, or use text input mode.`);
+      }
     });
   });
 
@@ -269,12 +318,107 @@ async function loadNpcInfo(npcId) {
   }
 }
 
+/**
+ * Show a blocking modal when a required API key is missing.
+ * type: 'llm' | 'tts' | 'stt'
+ */
+function showApiKeyBanner(type) {
+  const settingsUrl = `/projects/${currentProjectId}/settings`;
+
+  const configs = {
+    llm: {
+      title: 'No LLM API Key Configured',
+      providerName: projectSettings?.llm_provider
+        ? projectSettings.llm_provider.charAt(0).toUpperCase() + projectSettings.llm_provider.slice(1)
+        : 'your LLM provider',
+      body: `SoulEngine needs an API key to generate NPC responses. Go to <strong>Settings &rarr; API Keys</strong> and add your key.`,
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Go to Settings',
+      onConfirm: () => router.navigate(settingsUrl),
+    },
+    tts: {
+      title: 'No TTS API Key for Voice Output',
+      providerName: projectSettings?.tts_provider || 'Cartesia/ElevenLabs',
+      body: `Voice output requires a <strong>${projectSettings?.tts_provider || 'Cartesia or ElevenLabs'}</strong> API key. Add it in <strong>Settings &rarr; API Keys</strong>, or switch to text output mode.`,
+      cancelLabel: 'Use Text Output',
+      confirmLabel: 'Go to Settings',
+      onConfirm: () => router.navigate(settingsUrl),
+      onCancel: () => {
+        // Switch output back to text
+        document.querySelectorAll('.mode-btn[data-mode-type="output"]').forEach(b => b.classList.remove('active'));
+        const textBtn = document.querySelector('.mode-btn[data-mode-type="output"][data-mode-value="text"]');
+        if (textBtn) textBtn.classList.add('active');
+        const inputVal = document.querySelector('.mode-btn[data-mode-type="input"].active')?.dataset.modeValue || 'text';
+        setConversationMode(inputVal, 'text');
+      },
+    },
+    stt: {
+      title: 'No STT API Key for Voice Input',
+      providerName: projectSettings?.stt_provider || 'Deepgram',
+      body: `Voice input requires a <strong>${projectSettings?.stt_provider || 'Deepgram'}</strong> API key. Add it in <strong>Settings &rarr; API Keys</strong>, or switch to text input mode.`,
+      cancelLabel: 'Use Text Input',
+      confirmLabel: 'Go to Settings',
+      onConfirm: () => router.navigate(settingsUrl),
+      onCancel: () => {
+        document.querySelectorAll('.mode-btn[data-mode-type="input"]').forEach(b => b.classList.remove('active'));
+        const textBtn = document.querySelector('.mode-btn[data-mode-type="input"][data-mode-value="text"]');
+        if (textBtn) textBtn.classList.add('active');
+        const outputVal = document.querySelector('.mode-btn[data-mode-type="output"].active')?.dataset.modeValue || 'text';
+        setConversationMode('text', outputVal);
+      },
+    },
+  };
+
+  const cfg = configs[type];
+  if (!cfg) return;
+
+  const footer = document.createElement('div');
+  footer.innerHTML = `
+    <button class="btn btn-outline" data-action="cancel">${cfg.cancelLabel}</button>
+    <button class="btn btn-primary" data-action="confirm">${cfg.confirmLabel}</button>
+  `;
+
+  const m = modal.open({
+    title: cfg.title,
+    content: `<p style="line-height:1.6">${cfg.body}</p>`,
+    footer,
+  });
+
+  footer.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+    m.close();
+    if (cfg.onCancel) cfg.onCancel();
+  });
+
+  footer.querySelector('[data-action="confirm"]').addEventListener('click', () => {
+    m.close();
+    cfg.onConfirm();
+  });
+}
+
 async function handleStartSession() {
   const playerId = 'test-player'; // Fixed player ID for playground
   const btn = document.getElementById('btn-start-session');
 
   if (!currentNpcId) {
     toast.warning('Select NPC', 'Please select an NPC first.');
+    return;
+  }
+
+  // Pre-flight: require LLM key
+  if (getLlmKeyMissing()) {
+    showApiKeyBanner('llm');
+    return;
+  }
+
+  // Pre-flight: require TTS key for voice output
+  if (currentConversationMode.output === 'voice' && getTtsKeyMissing()) {
+    showApiKeyBanner('tts');
+    return;
+  }
+
+  // Pre-flight: require STT key for voice input
+  if (currentConversationMode.input === 'voice' && getSttKeyMissing()) {
+    showApiKeyBanner('stt');
     return;
   }
 
@@ -394,7 +538,14 @@ async function handleStartSession() {
 
     toast.success('Session Started', `Connected to ${result.npc_name}`);
   } catch (error) {
-    toast.error('Failed to Start Session', error.message);
+    const msg = error.message || '';
+    if (error.status === 0) {
+      toast.error('Connection Failed', 'Cannot reach the server. Check your internet connection and try again.');
+    } else if (/api.?key|no key|provider key|not configured/i.test(msg)) {
+      showApiKeyBanner('llm');
+    } else {
+      toast.error('Failed to Start Session', msg || 'An unexpected error occurred.');
+    }
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span class="icon">▶</span> Start Session';
@@ -827,7 +978,8 @@ async function connectVoice() {
     console.log('[Playground] voiceClient.connect() completed');
   } catch (error) {
     console.error('[Playground] connectVoice() error:', error);
-    toast.error('Voice Connection Failed', error.message);
+    const provider = projectSettings?.tts_provider || 'Cartesia/ElevenLabs';
+    toast.error('Voice Connection Failed', `Could not connect to the voice service. Check that your Deepgram and ${provider} keys are configured in Settings, then try again.`);
     updateVoiceStatus('Failed');
     voiceClient = null;
   }
@@ -1568,6 +1720,11 @@ async function handleCycle(cycleType) {
 
   if (currentSessionId) {
     toast.warning('Session Active', 'End the current session before running memory cycles.');
+    return;
+  }
+
+  if (getLlmKeyMissing()) {
+    showApiKeyBanner('llm');
     return;
   }
 

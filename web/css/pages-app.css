@@ -111,6 +111,67 @@
   font-size: var(--text-base);
 }
 
+/* Setup Banner — shown on Dashboard when no API keys are configured */
+.setup-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-error-muted);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-error);
+  margin-bottom: var(--space-4);
+}
+
+.setup-banner-icon {
+  font-weight: var(--font-bold);
+  flex-shrink: 0;
+}
+
+.setup-banner-text {
+  flex: 1;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}
+
+.setup-banner-text a {
+  color: var(--color-accent-primary);
+  text-decoration: underline;
+}
+
+.setup-banner-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-lg);
+  color: var(--color-text-secondary);
+  padding: 0 var(--space-1);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.setup-banner-close:hover {
+  color: var(--color-text-primary);
+}
+
+/* Info tooltip — small ? badge with native tooltip */
+.info-tooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  cursor: help;
+  flex-shrink: 0;
+}
+
 /* Project ID Display */
 .project-id-display {
   display: flex;

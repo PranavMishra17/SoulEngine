@@ -1136,7 +1136,7 @@
             </div>
             
             <div class="network-empty" id="network-empty" style="display: none;">
-              <p>No connections added yet.</p>
+              <p>No relationships defined. Add other NPCs to this character's social network — familiarity tiers control what information they share in conversation context.</p>
             </div>
             
             <div class="network-actions">
@@ -1528,9 +1528,9 @@
           <div class="settings-card-header settings-card-header-row">
             <div>
               <h2>LLM API Keys</h2>
-              <p class="settings-card-desc">API keys for language model providers</p>
+              <p class="settings-card-desc">API keys for language model providers. At least one is required — Gemini has a free tier. TTS/STT keys are only needed for voice modes.</p>
             </div>
-            <button class="btn btn-ghost btn-sm" id="btn-import-keys">Import from project</button>
+            <button class="btn btn-ghost btn-sm" id="btn-import-keys" title="Copy LLM API keys from another project in your workspace instead of re-entering them">Import from project</button>
           </div>
           <div class="settings-card-body">
             <div class="form-group">
@@ -1727,6 +1727,7 @@
           <div class="sidebar-section">
             <h3>Select NPC</h3>
             <select id="npc-select" class="input select"><option value="">Choose an NPC...</option></select>
+            <p id="playground-no-npc-hint" class="empty-hint" style="display:none; margin-top: var(--space-2);">No NPCs in this project yet. <a id="playground-no-npc-link" href="#">Go to NPCs</a> to create one first.</p>
           </div>
           <div class="sidebar-section" id="npc-info-panel" style="display: none;">
             <h3>NPC Info</h3>
@@ -1815,6 +1816,10 @@
                 </div>
               </div>
               <div class="player-setup">
+                <div class="player-setup-header" style="display:flex; align-items:center; gap:var(--space-1); margin-bottom:var(--space-2);">
+                  <span style="font-size:var(--text-sm); color:var(--color-text-secondary); font-weight:500;">Player Identity</span>
+                  <span class="info-tooltip" title="Set a player name so the NPC can recognize and remember this specific player across sessions. Enable the checkbox to include this info in the NPC's context at session start.">?</span>
+                </div>
                 <input type="text" id="player-name" class="input" placeholder="Player name (optional)">
                 <label class="checkbox-item">
                   <input type="checkbox" id="enable-player-recognition">

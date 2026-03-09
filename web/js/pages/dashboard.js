@@ -277,13 +277,53 @@ function updateApiStatus(configured) {
       <span class="status-icon">&#10003;</span>
       <span class="status-text">API Keys Set</span>
     `;
+    hideMissingKeysBanner();
   } else {
     statusEl.className = 'api-status api-status-warning';
+    statusEl.style.cursor = 'pointer';
+    statusEl.title = 'Go to Settings to add your API keys';
     statusEl.innerHTML = `
       <span class="status-icon">!</span>
       <span class="status-text">API Keys Not Set</span>
     `;
+    statusEl.onclick = () => router.navigate(`/projects/${currentProjectId}/settings`);
+    showMissingKeysBanner();
   }
+}
+
+const KEYS_BANNER_DISMISSED_KEY = 'soulengine_keys_banner_dismissed';
+
+function showMissingKeysBanner() {
+  // Only show once per project per browser session (not localStorage — show again next visit to remind)
+  const dismissedKey = `${KEYS_BANNER_DISMISSED_KEY}_${currentProjectId}`;
+  if (sessionStorage.getItem(dismissedKey)) return;
+
+  const existing = document.getElementById('missing-keys-banner');
+  if (existing) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'missing-keys-banner';
+  banner.className = 'setup-banner';
+  banner.innerHTML = `
+    <span class="setup-banner-icon">!</span>
+    <span class="setup-banner-text">No API keys configured. Add at least one LLM key in <a href="/projects/${currentProjectId}/settings" data-route>Settings &rarr; API Keys</a> before testing in the Playground.</span>
+    <button class="setup-banner-close" title="Dismiss" aria-label="Dismiss">&times;</button>
+  `;
+
+  banner.querySelector('.setup-banner-close').addEventListener('click', () => {
+    banner.remove();
+    sessionStorage.setItem(dismissedKey, '1');
+  });
+
+  // Insert after the page header
+  const pageHeader = document.querySelector('.page-header');
+  if (pageHeader?.parentNode) {
+    pageHeader.parentNode.insertBefore(banner, pageHeader.nextSibling);
+  }
+}
+
+function hideMissingKeysBanner() {
+  document.getElementById('missing-keys-banner')?.remove();
 }
 
 /**
