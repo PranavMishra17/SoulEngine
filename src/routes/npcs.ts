@@ -395,18 +395,16 @@ npcRoutes.put('/:npcId', async (c) => {
           return old && old.familiarity_tier !== n.familiarity_tier;
         });
 
-        // Apply reciprocal changes
-        for (const entry of added) {
-          await addToOtherNpcNetwork(storage, projectId, entry.npc_id, npcId, entry.familiarity_tier);
-        }
-
-        for (const entry of removed) {
-          await removeFromOtherNpcNetwork(storage, projectId, entry.npc_id, npcId);
-        }
-
-        for (const entry of changed) {
-          await updateOtherNpcNetworkTier(storage, projectId, entry.npc_id, npcId, entry.familiarity_tier);
-        }
+        // Apply reciprocal changes in parallel
+        await Promise.all(added.map(entry =>
+          addToOtherNpcNetwork(storage, projectId, entry.npc_id, npcId, entry.familiarity_tier)
+        ));
+        await Promise.all(removed.map(entry =>
+          removeFromOtherNpcNetwork(storage, projectId, entry.npc_id, npcId)
+        ));
+        await Promise.all(changed.map(entry =>
+          updateOtherNpcNetworkTier(storage, projectId, entry.npc_id, npcId, entry.familiarity_tier)
+        ));
 
         logger.debug(
           { projectId, npcId, added: added.length, removed: removed.length, changed: changed.length },

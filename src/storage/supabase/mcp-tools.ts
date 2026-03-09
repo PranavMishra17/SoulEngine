@@ -73,7 +73,7 @@ export async function getMCPTools(projectId: string): Promise<ProjectMCPTools> {
   try {
     const { data, error } = await supabase
       .from('mcp_tools')
-      .select('*')
+      .select('tool_id, tool_type, name, description, parameters')
       .eq('project_id', projectId);
 
     if (error) {

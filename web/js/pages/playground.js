@@ -120,23 +120,30 @@ async function loadNpcSelector(projectId) {
 
 function bindEventHandlers() {
   // NPC selection
+  let _npcSelectBusy = false;
   document.getElementById('npc-select')?.addEventListener('change', async (e) => {
+    if (_npcSelectBusy) return;
+    _npcSelectBusy = true;
     currentNpcId = e.target.value || null;
     const infoPanel = document.getElementById('npc-info-panel');
     const cyclesPanel = document.getElementById('cycles-panel');
 
-    if (currentNpcId) {
-      infoPanel.style.display = 'block';
-      cyclesPanel.style.display = 'block';
-      await loadNpcInfo(currentNpcId);
-      updateCyclesPanel(); // Enable/disable based on session state
-      await refreshMindPanel(); // Show NPC State panel with latest instance data
-      await loadContextPanel(); // Refresh context panel with NPC knowledge tiers
-    } else {
-      infoPanel.style.display = 'none';
-      cyclesPanel.style.display = 'none';
-      const mindPanel = document.getElementById('npc-mind-panel');
-      if (mindPanel) mindPanel.style.display = 'none';
+    try {
+      if (currentNpcId) {
+        infoPanel.style.display = 'block';
+        cyclesPanel.style.display = 'block';
+        await loadNpcInfo(currentNpcId);
+        updateCyclesPanel(); // Enable/disable based on session state
+        await refreshMindPanel(); // Show NPC State panel with latest instance data
+        await loadContextPanel(); // Refresh context panel with NPC knowledge tiers
+      } else {
+        infoPanel.style.display = 'none';
+        cyclesPanel.style.display = 'none';
+        const mindPanel = document.getElementById('npc-mind-panel');
+        if (mindPanel) mindPanel.style.display = 'none';
+      }
+    } finally {
+      _npcSelectBusy = false;
     }
   });
 

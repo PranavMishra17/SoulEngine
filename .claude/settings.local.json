@@ -33,7 +33,9 @@
       "Bash(for pkg in \"@cartesia/cartesia-js\" \"@deepgram/sdk\" \"@elevenlabs/elevenlabs-js\" \"@google/generative-ai\" \"@hono/node-server\" \"@supabase/supabase-js\" \"@types/js-yaml\" \"@types/ws\" \"dotenv\" \"elevenlabs\" \"hono\" \"js-yaml\" \"pino\" \"pino-pretty\" \"ws\" \"zod\")",
       "Bash(do echo -n \"$pkg: \")",
       "Bash(grep -r \"from [''\"\"]$pkg\\\\|from [''\"\"]$pkg\" /e/Evolve-NPC/src --include=\"*.ts\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(bun remove @elevenlabs/elevenlabs-js elevenlabs pino-pretty)",
+      "Bash(bun run tsc --noEmit)"
     ]
   }
 }

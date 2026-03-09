@@ -577,14 +577,20 @@ function handleAudioMessage(connection: VoiceConnection, message: AudioMessage):
  * Handle commit message - signal end of user turn
  */
 function handleCommitMessage(connection: VoiceConnection): void {
-  const { pipeline, ws } = connection;
+  const { pipeline, ws, sessionId } = connection;
 
   if (!pipeline) {
     sendMessage(ws, { type: 'error', code: 'NOT_INITIALIZED', message: 'Pipeline not initialized' });
     return;
   }
 
-  pipeline.commit();
+  try {
+    pipeline.commit();
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ sessionId, error: errorMessage }, 'Failed to commit audio');
+    sendMessage(ws, { type: 'error', code: 'COMMIT_ERROR', message: errorMessage });
+  }
 }
 
 /**

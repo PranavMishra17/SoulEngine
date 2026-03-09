@@ -16,6 +16,11 @@ let traumaInput = null;
 let voicesCache = { cartesia: null, elevenlabs: null };
 let currentVoiceLibraryUrl = '';
 let pendingProfileImage = null; // File to upload after NPC creation
+// Per-project caches — reset when project changes
+let _cachedProjectName = null;
+let _cachedProjectNameId = null;
+let _cachedKnowledgeBase = null;
+let _cachedMcpTools = null;
 
 // Personality presets (Big Five trait values)
 const PERSONALITY_PRESETS = {
@@ -82,6 +87,10 @@ const PERSONALITY_PRESETS = {
  */
 export async function initNpcListPage(params) {
   const { projectId } = params;
+  if (currentProjectId !== projectId) {
+    _cachedKnowledgeBase = null;
+    _cachedMcpTools = null;
+  }
   currentProjectId = projectId;
 
   renderTemplate('template-npc-list');
@@ -100,13 +109,15 @@ export async function initNpcListPage(params) {
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
 
-  // Fetch project name for breadcrumb
+  // Fetch project name for breadcrumb (cached per project)
   try {
-    const project = await projects.get(projectId);
-    const projectBreadcrumb = document.getElementById('breadcrumb-project');
-    if (projectBreadcrumb) {
-      projectBreadcrumb.textContent = project.name || 'Project';
+    if (_cachedProjectNameId !== projectId) {
+      const project = await projects.get(projectId);
+      _cachedProjectName = project.name || 'Project';
+      _cachedProjectNameId = projectId;
     }
+    const projectBreadcrumb = document.getElementById('breadcrumb-project');
+    if (projectBreadcrumb) projectBreadcrumb.textContent = _cachedProjectName;
   } catch (e) {
     console.warn('Could not fetch project name for breadcrumb:', e);
   }
@@ -186,6 +197,10 @@ async function loadNpcList(projectId) {
  */
 export async function initNpcEditorPage(params) {
   const { projectId, npcId } = params;
+  if (currentProjectId !== projectId) {
+    _cachedKnowledgeBase = null;
+    _cachedMcpTools = null;
+  }
   currentProjectId = projectId;
   currentNpcId = npcId === 'new' ? null : npcId;
 
@@ -206,13 +221,15 @@ export async function initNpcEditorPage(params) {
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
   document.getElementById('breadcrumb-npcs')?.setAttribute('href', `/projects/${projectId}/npcs`);
 
-  // Fetch project name for breadcrumb
+  // Fetch project name for breadcrumb (cached per project)
   try {
-    const project = await projects.get(projectId);
-    const projectBreadcrumb = document.getElementById('breadcrumb-project');
-    if (projectBreadcrumb) {
-      projectBreadcrumb.textContent = project.name || 'Project';
+    if (_cachedProjectNameId !== projectId) {
+      const project = await projects.get(projectId);
+      _cachedProjectName = project.name || 'Project';
+      _cachedProjectNameId = projectId;
     }
+    const projectBreadcrumb = document.getElementById('breadcrumb-project');
+    if (projectBreadcrumb) projectBreadcrumb.textContent = _cachedProjectName;
   } catch (e) {
     console.warn('Could not fetch project name for breadcrumb:', e);
   }
@@ -748,7 +765,10 @@ async function loadKnowledgeCategories(projectId) {
   const categoryList = document.getElementById('knowledge-category-list');
 
   try {
-    const kb = await knowledge.get(projectId);
+    if (!_cachedKnowledgeBase) {
+      _cachedKnowledgeBase = await knowledge.get(projectId);
+    }
+    const kb = _cachedKnowledgeBase;
     availableKnowledgeCategories = kb.categories || {};
     const allCategories = Object.entries(availableKnowledgeCategories);
 
@@ -905,7 +925,10 @@ async function loadMcpToolsForNpc(projectId) {
   const gamePills = document.getElementById('game-tool-pills');
 
   try {
-    const projectTools = await mcpTools.get(projectId);
+    if (!_cachedMcpTools) {
+      _cachedMcpTools = await mcpTools.get(projectId);
+    }
+    const projectTools = _cachedMcpTools;
     availableConvTools = [...BUILTIN_TOOLS, ...(projectTools.conversation_tools || [])];
     availableGameTools = projectTools.game_event_tools || [];
 
@@ -928,22 +951,36 @@ async function loadMcpToolsForNpc(projectId) {
   }
 }
 
+// Single document-level listener shared across all tool dropdowns to avoid stacking
+const _toolDropdownPrefixes = new Set();
+let _toolDropdownListenerAttached = false;
+
+function _initToolDropdownDocumentListener() {
+  if (_toolDropdownListenerAttached) return;
+  document.addEventListener('click', (e) => {
+    for (const prefix of _toolDropdownPrefixes) {
+      const addBtn = document.getElementById(`btn-add-${prefix}-tool`);
+      const dropdown = document.getElementById(`${prefix}-tool-dropdown`);
+      if (dropdown && !addBtn?.contains(e.target) && !dropdown?.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    }
+  });
+  _toolDropdownListenerAttached = true;
+}
+
 function setupToolDropdown(prefix, allTools, permissionKey) {
   const addBtn = document.getElementById(`btn-add-${prefix}-tool`);
   const dropdown = document.getElementById(`${prefix}-tool-dropdown`);
-  const list = document.getElementById(`${prefix}-tool-list`);
 
   addBtn?.addEventListener('click', () => {
     renderToolDropdown(prefix, allTools, permissionKey);
     dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
   });
 
-  // Close on outside click
-  document.addEventListener('click', (e) => {
-    if (dropdown && !addBtn?.contains(e.target) && !dropdown?.contains(e.target)) {
-      dropdown.style.display = 'none';
-    }
-  });
+  // Register prefix and ensure single shared document listener
+  _toolDropdownPrefixes.add(prefix);
+  _initToolDropdownDocumentListener();
 }
 
 function renderToolPills() {

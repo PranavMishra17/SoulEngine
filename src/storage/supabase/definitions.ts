@@ -85,7 +85,7 @@ export async function createDefinition(
     const config = getConfig();
     const { count, error: countError } = await supabase
       .from('npc_definitions')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId);
 
     if (countError) {

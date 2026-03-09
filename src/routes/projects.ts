@@ -449,6 +449,7 @@ projectRoutes.get('/:projectId/voices', async (c) => {
           'X-API-Key': apiKey,
           'Cartesia-Version': '2024-06-10',
         },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {
@@ -457,7 +458,13 @@ projectRoutes.get('/:projectId/voices', async (c) => {
         return c.json({ error: 'Failed to fetch voices from Cartesia' }, 502);
       }
 
-      const data = (await response.json()) as Array<{ id: string; name: string; description?: string; preview_file_url?: string | null }>;
+      let data: Array<{ id: string; name: string; description?: string; preview_file_url?: string | null }>;
+      try {
+        data = (await response.json()) as Array<{ id: string; name: string; description?: string; preview_file_url?: string | null }>;
+      } catch {
+        logger.error({ projectId, provider }, 'Failed to parse Cartesia voices response');
+        return c.json({ error: 'Invalid response from Cartesia' }, 502);
+      }
       voices = (data || []).map((v) => ({
         id: v.id,
         name: v.name,
@@ -475,6 +482,7 @@ projectRoutes.get('/:projectId/voices', async (c) => {
         headers: {
           'xi-api-key': apiKey,
         },
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (!response.ok) {
@@ -483,7 +491,13 @@ projectRoutes.get('/:projectId/voices', async (c) => {
         return c.json({ error: 'Failed to fetch voices from ElevenLabs' }, 502);
       }
 
-      const data = (await response.json()) as { voices: Array<{ voice_id: string; name: string; description?: string; preview_url?: string }> };
+      let data: { voices: Array<{ voice_id: string; name: string; description?: string; preview_url?: string }> };
+      try {
+        data = (await response.json()) as { voices: Array<{ voice_id: string; name: string; description?: string; preview_url?: string }> };
+      } catch {
+        logger.error({ projectId, provider }, 'Failed to parse ElevenLabs voices response');
+        return c.json({ error: 'Invalid response from ElevenLabs' }, 502);
+      }
       voices = (data.voices || []).map((v) => ({
         id: v.voice_id,
         name: v.name,
@@ -673,15 +687,22 @@ projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
           contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
           generationConfig: { temperature: 0.9, maxOutputTokens: 1024 },
         }),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
         const err = await response.text();
-        logger.error({ error: err }, 'Gemini API error');
+        logger.error({ projectId, llmProvider, status: response.status, err }, 'Gemini API error');
         throw new Error('LLM generation failed');
       }
 
-      const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+      let data: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+      try {
+        data = await response.json() as typeof data;
+      } catch {
+        logger.error({ projectId, llmProvider }, 'Failed to parse Gemini response');
+        throw new Error('LLM generation failed');
+      }
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       variations = text.split('---').map((s: string) => s.trim()).filter(Boolean);
 
@@ -700,15 +721,22 @@ projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
           ],
           temperature: 0.9,
         }),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
         const err = await response.text();
-        logger.error({ error: err }, 'OpenAI API error');
+        logger.error({ projectId, llmProvider, status: response.status, err }, 'OpenAI API error');
         throw new Error('LLM generation failed');
       }
 
-      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      let data: { choices?: Array<{ message?: { content?: string } }> };
+      try {
+        data = await response.json() as typeof data;
+      } catch {
+        logger.error({ projectId, llmProvider }, 'Failed to parse OpenAI response');
+        throw new Error('LLM generation failed');
+      }
       const text = data.choices?.[0]?.message?.content || '';
       variations = text.split('---').map((s: string) => s.trim()).filter(Boolean);
 
@@ -726,15 +754,22 @@ projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }],
         }),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
         const err = await response.text();
-        logger.error({ error: err }, 'Anthropic API error');
+        logger.error({ projectId, llmProvider, status: response.status, err }, 'Anthropic API error');
         throw new Error('LLM generation failed');
       }
 
-      const data = await response.json() as { content?: Array<{ text?: string }> };
+      let data: { content?: Array<{ text?: string }> };
+      try {
+        data = await response.json() as typeof data;
+      } catch {
+        logger.error({ projectId, llmProvider }, 'Failed to parse Anthropic response');
+        throw new Error('LLM generation failed');
+      }
       const text = data.content?.[0]?.text || '';
       variations = text.split('---').map((s: string) => s.trim()).filter(Boolean);
     }

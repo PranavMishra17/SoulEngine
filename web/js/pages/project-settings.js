@@ -348,11 +348,11 @@ function confirmDeleteProject(projectId) {
     deleteBtn.disabled = !matches;
   });
 
-  footer.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+  footer.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
     modalInstance.close();
   });
 
-  footer.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+  footer.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
     try {
       await projects.delete(projectId);
       modalInstance.close();

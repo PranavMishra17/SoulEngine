@@ -6,6 +6,14 @@ import { StorageError, StorageValidationError } from '../interface.js';
 
 const logger = createLogger('supabase-secrets');
 
+// In-memory cache for decrypted API keys (avoids repeated decrypt round-trips per request)
+const _apiKeyCache = new Map<string, { keys: ApiKeys; ts: number }>();
+const _API_KEY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function _invalidateApiKeyCache(projectId: string): void {
+  _apiKeyCache.delete(projectId);
+}
+
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const SALT_LENGTH = 32;
@@ -122,6 +130,7 @@ export async function saveApiKeys(projectId: string, keys: ApiKeys): Promise<voi
       throw new StorageError(`Database error: ${error.message}`);
     }
 
+    _invalidateApiKeyCache(projectId);
     const duration = Date.now() - startTime;
     logger.info({ projectId, duration, keyCount: Object.keys(keys).filter(k => keys[k as keyof ApiKeys]).length }, 'API keys saved');
   } catch (error) {
@@ -135,9 +144,14 @@ export async function saveApiKeys(projectId: string, keys: ApiKeys): Promise<voi
 }
 
 /**
- * Load API keys for a project (decrypted)
+ * Load API keys for a project (decrypted). Results are cached for 5 minutes.
  */
 export async function loadApiKeys(projectId: string): Promise<ApiKeys> {
+  const cached = _apiKeyCache.get(projectId);
+  if (cached && Date.now() - cached.ts < _API_KEY_CACHE_TTL) {
+    return cached.keys;
+  }
+
   const startTime = Date.now();
   const supabase = getSupabaseAdmin();
 
@@ -186,6 +200,7 @@ export async function loadApiKeys(projectId: string): Promise<ApiKeys> {
     const duration = Date.now() - startTime;
     logger.debug({ projectId, duration }, 'API keys loaded');
 
+    _apiKeyCache.set(projectId, { keys, ts: Date.now() });
     return keys;
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -247,6 +262,7 @@ export async function deleteApiKeys(projectId: string): Promise<void> {
       throw new StorageError(`Database error: ${error.message}`);
     }
 
+    _invalidateApiKeyCache(projectId);
     const duration = Date.now() - startTime;
     logger.info({ projectId, duration }, 'API keys deleted');
   } catch (error) {

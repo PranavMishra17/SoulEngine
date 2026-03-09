@@ -159,10 +159,10 @@ export async function saveInstance(
   const config = getConfig();
 
   try {
-    // Get current version
+    // Get current version and state in one query
     const { data: currentData, error: fetchError } = await supabase
       .from('npc_instances')
-      .select('version')
+      .select('version, state')
       .eq('id', instanceId)
       .single();
 
@@ -174,44 +174,29 @@ export async function saveInstance(
     const newVersion = currentVersion + 1;
 
     // Archive current state if history is enabled
-    if (config.stateHistoryEnabled && currentData) {
-      const { data: existingState } = await supabase
-        .from('npc_instances')
-        .select('state')
-        .eq('id', instanceId)
-        .single();
+    if (config.stateHistoryEnabled && currentData?.state) {
+      await supabase
+        .from('npc_instance_history')
+        .insert({
+          instance_id: instanceId,
+          version: currentVersion,
+          state: currentData.state,
+        });
 
-      if (existingState) {
+      // Prune old history: fetch all IDs once, delete oldest in one pass
+      const { data: allHistory } = await supabase
+        .from('npc_instance_history')
+        .select('id')
+        .eq('instance_id', instanceId)
+        .order('created_at', { ascending: true });
+
+      if (allHistory && allHistory.length > config.stateHistoryMaxVersions) {
+        const toDelete = allHistory.length - config.stateHistoryMaxVersions;
+        const idsToDelete = allHistory.slice(0, toDelete).map(e => e.id);
         await supabase
           .from('npc_instance_history')
-          .insert({
-            instance_id: instanceId,
-            version: currentVersion,
-            state: existingState.state,
-          });
-
-        // Prune old history
-        const { data: historyCount } = await supabase
-          .from('npc_instance_history')
-          .select('id', { count: 'exact' })
-          .eq('instance_id', instanceId);
-
-        if (historyCount && historyCount.length > config.stateHistoryMaxVersions) {
-          const toDelete = historyCount.length - config.stateHistoryMaxVersions;
-          const { data: oldEntries } = await supabase
-            .from('npc_instance_history')
-            .select('id')
-            .eq('instance_id', instanceId)
-            .order('created_at', { ascending: true })
-            .limit(toDelete);
-
-          if (oldEntries && oldEntries.length > 0) {
-            await supabase
-              .from('npc_instance_history')
-              .delete()
-              .in('id', oldEntries.map(e => e.id));
-          }
-        }
+          .delete()
+          .in('id', idsToDelete);
       }
     }
 

@@ -97,6 +97,7 @@ Your takeaway:`;
     for await (const chunk of llmProvider.streamChat({
       systemPrompt: 'You are a helpful assistant generating character reflections.',
       messages: [{ role: 'user', content: prompt }],
+      signal: AbortSignal.timeout(60_000),
     })) {
       takeaway += chunk.text;
     }
@@ -352,6 +353,7 @@ Only include traits that should change. Small, believable evolution only.`;
     for await (const chunk of llmProvider.streamChat({
       systemPrompt: 'You are a psychology expert analyzing character development. Output only valid JSON.',
       messages: [{ role: 'user', content: prompt }],
+      signal: AbortSignal.timeout(60_000),
     })) {
       responseText += chunk.text;
     }
