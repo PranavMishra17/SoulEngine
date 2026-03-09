@@ -141,12 +141,6 @@ async function loadProjectData(projectId) {
     populateKnowledgeBoard(stats.knowledge);
     populateMcpBoard(stats.tools);
 
-    // Update stats
-    document.getElementById('stat-instances').textContent = stats.instances?.total || 0;
-    document.getElementById('stat-entries').textContent = stats.knowledge?.totalEntries || 0;
-    document.getElementById('stat-conv-tools').textContent = stats.tools?.conversation || 0;
-    document.getElementById('stat-game-tools').textContent = stats.tools?.gameEvent || 0;
-
     // Update flowchart
     updateFlowchart(stats);
 
@@ -212,7 +206,7 @@ async function loadUsageData(projectId) {
         const textTok = Number(t.token_usage?.text_input_tokens || 0) + Number(t.token_usage?.text_output_tokens || 0);
         const voiceCh = Number(t.token_usage?.voice_input_chars || 0) + Number(t.token_usage?.voice_output_chars || 0);
         const modeLabel = t.mode || 'text-text';
-        return `<div class="transcript-row">
+        return `<div class="transcript-row" data-transcript-id="${t.id}" style="cursor:pointer">
           <div class="transcript-meta">
             <span class="transcript-npc">${t.npc_id || 'NPC'}</span>
             <span class="transcript-mode badge-mode badge-mode-${modeLabel.startsWith('voice') ? 'voice' : 'text'}">${modeLabel}</span>
@@ -226,6 +220,38 @@ async function loadUsageData(projectId) {
         </div>`;
       }).join('');
       listEl.innerHTML = rows;
+
+      // Click handler: open full transcript in modal.
+      // Remove any previous handler before attaching to avoid stacking on re-renders.
+      if (listEl._transcriptClickHandler) {
+        listEl.removeEventListener('click', listEl._transcriptClickHandler);
+      }
+      listEl._transcriptClickHandler = async (e) => {
+        const row = e.target.closest('[data-transcript-id]');
+        if (!row) return;
+        const transcriptId = row.dataset.transcriptId;
+        try {
+          const data = await api.projects.getTranscript(projectId, transcriptId);
+          const transcript = data.transcript || data;
+          const meta = `NPC: ${transcript.npc_id || 'NPC'} &nbsp;|&nbsp; Mode: ${transcript.mode || 'text-text'} &nbsp;|&nbsp; ${new Date(transcript.started_at).toLocaleString()}`;
+          const msgs = (transcript.messages || []).map(m => {
+            const roleLabel = m.role === 'user' ? 'Player' : 'NPC';
+            const safeContent = m.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<div class="transcript-msg transcript-msg-${m.role}">
+              <span class="transcript-msg-role">${roleLabel}</span>
+              <span class="transcript-msg-content">${safeContent}</span>
+            </div>`;
+          }).join('');
+          const content = `<div class="transcript-detail">
+            <div class="transcript-detail-meta">${meta}</div>
+            <div class="transcript-detail-messages">${msgs || '<em>No messages</em>'}</div>
+          </div>`;
+          modal.open({ title: 'Conversation Transcript', content, size: 'large' });
+        } catch (err) {
+          toast.error('Failed to load transcript', err.message);
+        }
+      };
+      listEl.addEventListener('click', listEl._transcriptClickHandler);
     } else {
       countEl.textContent = 'No transcripts yet';
     }

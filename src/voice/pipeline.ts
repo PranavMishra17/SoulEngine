@@ -758,7 +758,7 @@ export class VoicePipeline {
       const llmMessages = assembleConversationHistory(history);
 
       // --- PARALLEL: Speaker + Mind ---
-      const mindTimeoutMs = context.project.settings.mind_timeout_ms ?? 5000;
+      const mindTimeoutMs = context.project.settings.mind_timeout_ms ?? 15000;
 
       // Speaker: stream LLM with NO tools (pure voice)
       const speakerPromise = (async () => {

@@ -429,10 +429,12 @@ export async function runMindAgentLoop(
     const toolResultMessage = `[Tool Results]\n${toolResultLines.join('\n')}\n\n[Instructions]\nBased on these results, generate a brief follow-up (1-3 sentences) that ${definition.name} will speak next. Do not repeat what was already said. Stay in character. Output ONLY spoken dialogue. If the results don't add value, respond with NO_FOLLOWUP.`;
 
     // 7. LLM call 2: Generate follow-up
+    // Do NOT include the model+toolCalls message from call 1. Gemini (and potentially other
+    // providers) requires that a model message with functionCall parts be followed by a user
+    // message with functionResponse parts -- passing plain text causes an API error.
+    // The system prompt already contains full context; just send the tool results as a user turn.
     logger.info({ npcId: definition.id, toolResultCount: toolsCalled.length }, 'Mind generating follow-up');
-    const assistantContent = responseText || '[Used tools]';
     const messages: LLMMessage[] = [
-      { role: 'model', content: assistantContent, toolCalls: call1ToolCalls },
       { role: 'user', content: toolResultMessage },
     ];
 

@@ -190,7 +190,7 @@ export function createConversationRoutes(
         : activeProvider;  // fall back to same provider if no separate key
 
       // 11. Parallel Speaker + Mind execution
-      const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 5000;
+      const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 15000;
       const llmMessages: LLMMessage[] = conversationHistory;
 
       // Speaker: stream LLM with NO tools

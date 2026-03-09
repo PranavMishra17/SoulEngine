@@ -28,7 +28,8 @@
       "Bash(node -c web/js/pages/playground.js)",
       "Bash(node -c web/js/pages/project-settings.js)",
       "Bash(node -c web/js/pages/dashboard.js)",
-      "Bash(node -c web/js/pages/npc-editor.js)"
+      "Bash(node -c web/js/pages/npc-editor.js)",
+      "Bash(xargs grep -l \"listTranscripts\\\\|/transcripts\")"
     ]
   }
 }
