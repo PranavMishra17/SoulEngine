@@ -184,6 +184,25 @@ function updateMindModelOptions(provider, selectedModel) {
 }
 
 function bindEventHandlers(projectId) {
+  // ── Settings sub-tab switching ─────────────────────────────────────────────
+  const tabBtns = document.querySelectorAll('.settings-tab-btn');
+  const panelProject = document.getElementById('settings-panel-project');
+  const panelKeys = document.getElementById('settings-panel-keys');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (panelProject) panelProject.style.display = tab === 'project' ? '' : 'none';
+      if (panelKeys) panelKeys.style.display = tab === 'keys' ? '' : 'none';
+    });
+  });
+
+  // Keys tab save button delegates to the main save function
+  document.getElementById('btn-save-settings-keys')?.addEventListener('click', saveSettings);
+
+  // ── Original handlers ──────────────────────────────────────────────────────
   // LLM provider change -> update model options
   document.getElementById('settings-llm-provider')?.addEventListener('change', (e) => {
     updateModelOptions(e.target.value, null);

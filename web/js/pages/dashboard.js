@@ -477,6 +477,7 @@ function populateMcpBoard(toolsData) {
   }
 
   contentEl.innerHTML = html || '<div class="board-empty">No tools defined</div>';
+
 }
 
 /**

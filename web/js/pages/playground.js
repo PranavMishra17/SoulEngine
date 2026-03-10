@@ -192,17 +192,17 @@ function bindEventHandlers() {
   // End session
   document.getElementById('btn-end-session')?.addEventListener('click', handleEndSession);
 
-  // Conversation mode selection (input/output row buttons)
-  document.querySelectorAll('.mode-btn[data-mode-type]').forEach(btn => {
+  // Conversation mode selection (input/output row buttons — both .mode-btn and .mode-card)
+  document.querySelectorAll('[data-mode-type]').forEach(btn => {
     btn.addEventListener('click', () => {
       const type = btn.dataset.modeType;
       const value = btn.dataset.modeValue;
       // Deactivate siblings in same group
-      document.querySelectorAll(`.mode-btn[data-mode-type="${type}"]`).forEach(b => b.classList.remove('active'));
+      document.querySelectorAll(`[data-mode-type="${type}"]`).forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       // Update mode
-      const inputVal = document.querySelector('.mode-btn[data-mode-type="input"].active')?.dataset.modeValue || 'text';
-      const outputVal = document.querySelector('.mode-btn[data-mode-type="output"].active')?.dataset.modeValue || 'text';
+      const inputVal = document.querySelector('[data-mode-type="input"].active')?.dataset.modeValue || 'text';
+      const outputVal = document.querySelector('[data-mode-type="output"].active')?.dataset.modeValue || 'text';
       setConversationMode(inputVal, outputVal);
 
       // Warn (non-blocking) if voice is selected but the required key is not set
@@ -241,13 +241,16 @@ function bindEventHandlers() {
     }
   });
 
-  // Voice input - toggle live voice mode
+  // Voice input - toggle live voice mode (pause/stop)
   document.getElementById('btn-voice-toggle')?.addEventListener('click', toggleLiveVoice);
 
   // Interrupt button
   document.getElementById('btn-voice-interrupt')?.addEventListener('click', handleVoiceInterrupt);
 
-  // X-Ray toggle
+  // Voice bar end session (red power button)
+  document.getElementById('btn-voice-end-session')?.addEventListener('click', () => handleEndSession());
+
+  // X-Ray toggle (button removed from HTML, listener is no-op if element absent)
   document.getElementById('btn-toggle-xray')?.addEventListener('click', () => {
     document.getElementById('xray-panel')?.classList.toggle('collapsed');
   });

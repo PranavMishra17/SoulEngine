@@ -208,10 +208,10 @@ async function loadTools(projectId) {
       conversation_tools: data.conversation_tools || [],
       game_event_tools: data.game_event_tools || [],
     };
-    
+
     // Check which system tools are enabled (stored in the tools list)
     loadSystemToolStates();
-    
+
     renderToolsList();
     renderSystemTools();
   } catch (error) {
@@ -234,7 +234,7 @@ function loadSystemToolStates() {
     conversation: new Set(),
     game_event: new Set(),
   };
-  
+
   // Check which system tools are in the current tools list
   for (const tool of currentTools.conversation_tools) {
     const systemTool = SYSTEM_TOOLS.conversation.find(st => st.id === tool.id);
@@ -242,7 +242,7 @@ function loadSystemToolStates() {
       enabledSystemTools.conversation.add(tool.id);
     }
   }
-  
+
   for (const tool of currentTools.game_event_tools) {
     const systemTool = SYSTEM_TOOLS.game_event.find(st => st.id === tool.id);
     if (systemTool) {
@@ -286,7 +286,7 @@ function renderSystemToolsSection(containerId, systemTools, toolType) {
       const toolId = e.target.dataset.systemTool;
       const type = e.target.dataset.toolType;
       const enabled = e.target.checked;
-      
+
       await toggleSystemTool(toolId, type, enabled);
     });
   });
@@ -298,11 +298,11 @@ function renderSystemToolsSection(containerId, systemTools, toolType) {
 async function toggleSystemTool(toolId, toolType, enabled) {
   const systemTool = (toolType === 'conversation' ? SYSTEM_TOOLS.conversation : SYSTEM_TOOLS.game_event)
     .find(t => t.id === toolId);
-  
+
   if (!systemTool) return;
-  
+
   const toolsArray = toolType === 'conversation' ? currentTools.conversation_tools : currentTools.game_event_tools;
-  
+
   if (enabled) {
     // Add to tools list
     if (!toolsArray.find(t => t.id === toolId)) {
@@ -323,7 +323,7 @@ async function toggleSystemTool(toolId, toolType, enabled) {
       enabledSystemTools[toolType].delete(toolId);
     }
   }
-  
+
   try {
     await mcpTools.update(currentProjectId, currentTools);
     toast.success(enabled ? 'Tool Enabled' : 'Tool Disabled', `"${systemTool.name}" ${enabled ? 'enabled' : 'disabled'}.`);
@@ -340,14 +340,14 @@ function renderToolsList() {
   // Filter out system tools from custom tools list
   const customConvTools = currentTools.conversation_tools.filter(t => !t.system);
   const customGameTools = currentTools.game_event_tools.filter(t => !t.system);
-  
+
   renderToolsSection('conversation-tools', customConvTools, 'empty-conv-tools', 'conversation');
   renderToolsSection('game-event-tools', customGameTools, 'empty-game-tools', 'game_event');
-  
+
   // Update counts
-  document.getElementById('conv-tools-count').textContent = 
+  document.getElementById('conv-tools-count').textContent =
     `${currentTools.conversation_tools.length} tool${currentTools.conversation_tools.length !== 1 ? 's' : ''}`;
-  document.getElementById('game-tools-count').textContent = 
+  document.getElementById('game-tools-count').textContent =
     `${currentTools.game_event_tools.length} tool${currentTools.game_event_tools.length !== 1 ? 's' : ''}`;
 }
 
@@ -414,6 +414,13 @@ function renderToolsSection(containerId, tools, emptyId, toolType) {
       if (index > -1) deleteTool(type, index);
     });
   });
+
+  // Orange "+ Add Tool" tile
+  const addTile = document.createElement('div');
+  addTile.className = 'board-item board-item-add mcp-add-tile';
+  addTile.innerHTML = `<div class="board-item-add-icon">+</div><div class="board-item-name">Add Tool</div>`;
+  addTile.addEventListener('click', expandInlineForm);
+  container.appendChild(addTile);
 }
 
 /**
@@ -695,10 +702,10 @@ function handleEditRawJson() {
         toast.error('Invalid Format', 'Missing game_event_tools array');
         return;
       }
-      
+
       currentTools = parsedJson;
       loadSystemToolStates();
-      
+
       try {
         await mcpTools.update(currentProjectId, currentTools);
         toast.success('JSON Applied', 'MCP tools updated from JSON.');
@@ -767,7 +774,7 @@ function handleImport() {
 
       currentTools = imported;
       loadSystemToolStates();
-      
+
       await mcpTools.update(currentProjectId, currentTools);
       renderToolsList();
       renderSystemTools();

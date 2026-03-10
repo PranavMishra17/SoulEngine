@@ -186,6 +186,15 @@ async function loadNpcList(projectId) {
         router.navigate(`/projects/${projectId}/npcs/${card.dataset.id}`);
       });
     });
+
+    // Orange "+ Create NPC" tile
+    const addTile = document.createElement('div');
+    addTile.className = 'board-item board-item-add npc-add-tile';
+    addTile.innerHTML = `<div class="board-item-add-icon">+</div><div class="board-item-name">Create NPC</div>`;
+    addTile.addEventListener('click', () => {
+      router.navigate(`/projects/${projectId}/npcs/new`);
+    });
+    grid.appendChild(addTile);
   } catch (error) {
     toast.error('Failed to Load NPCs', error.message);
     grid.innerHTML = `<div class="empty-state"><p>Failed to load NPCs</p></div>`;
@@ -2352,21 +2361,21 @@ function renderMindStateHtml(s) {
       <div class="mind-section">
         <div class="mind-section-title">Short-Term Memory (${stm.length})</div>
         ${stm.length === 0
-          ? '<div class="history-empty" style="padding:0.25rem 0 0;">No short-term memories</div>'
-          : stm.map(memItem).join('')}
+      ? '<div class="history-empty" style="padding:0.25rem 0 0;">No short-term memories</div>'
+      : stm.map(memItem).join('')}
       </div>
       <div class="mind-section">
         <div class="mind-section-title">Long-Term Memory (${ltm.length})</div>
         ${ltm.length === 0
-          ? '<div class="history-empty" style="padding:0.25rem 0 0;">No long-term memories</div>'
-          : ltm.map(memItem).join('')}
+      ? '<div class="history-empty" style="padding:0.25rem 0 0;">No long-term memories</div>'
+      : ltm.map(memItem).join('')}
       </div>
       ${hasMods ? `
         <div class="mind-section">
           <div class="mind-section-title">Trait Modifiers</div>
           ${Object.entries(mods).filter(([, v]) => v !== 0).map(([k, v]) =>
-            `<div class="mind-trait-row"><span>${formatFieldName(k)}</span><span>${v > 0 ? '+' : ''}${Number(v).toFixed(3)}</span></div>`
-          ).join('')}
+        `<div class="mind-trait-row"><span>${formatFieldName(k)}</span><span>${v > 0 ? '+' : ''}${Number(v).toFixed(3)}</span></div>`
+      ).join('')}
         </div>
       ` : ''}
       ${pulse ? `

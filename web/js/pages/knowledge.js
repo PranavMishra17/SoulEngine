@@ -122,7 +122,7 @@ async function handleCreateCategory() {
 
   await saveKnowledgeBase();
   collapseInlineForm();
-  
+
   // Scroll to the new category
   setTimeout(() => {
     const newCard = document.querySelector(`[data-category="${catId}"]`);
@@ -165,7 +165,7 @@ function renderCategories(categories) {
       const depths = category.depths || {};
       const depthCount = Object.keys(depths).length;
       const entryCount = Object.values(depths).filter(d => d && d.trim()).length;
-      
+
       return `
         <div class="knowledge-category-card" data-category="${catId}">
           <div class="category-card-header">
@@ -247,6 +247,14 @@ function renderCategories(categories) {
       });
     });
   });
+
+  // Orange "+ Add Category" tile
+  const addTile = document.createElement('div');
+  addTile.className = 'board-item board-item-add knowledge-add-tile';
+  addTile.style.minHeight = '72px';
+  addTile.innerHTML = `<div class="board-item-add-icon">+</div><div class="board-item-name">Add Category</div>`;
+  addTile.addEventListener('click', expandInlineForm);
+  container.appendChild(addTile);
 }
 
 function renderDepthTiers(catId, depths) {
@@ -360,7 +368,7 @@ function handleEditRawJson() {
         toast.error('Validation Failed', errors.join('; '));
         return;
       }
-      
+
       // Ensure each category has an id field
       const processedCategories = {};
       for (const [catId, category] of Object.entries(parsedJson.categories || {})) {
@@ -369,12 +377,12 @@ function handleEditRawJson() {
           id: catId,
         };
       }
-      
+
       currentKnowledgeBase = {
         ...parsedJson,
         categories: processedCategories,
       };
-      
+
       await saveKnowledgeBase();
       toast.success('JSON Applied', 'Knowledge base updated from JSON.');
     },
