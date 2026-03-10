@@ -51,6 +51,8 @@ export interface VoicePipelineEvents {
   onMindActivity: (activity: MindActivity) => void;
   /** Called when Mind follow-up speech begins */
   onFollowupStart: () => void;
+  /** Called when the pipeline is successfully interrupted */
+  onInterrupted?: () => void;
 }
 
 /**
@@ -397,6 +399,9 @@ export class VoicePipeline {
 
       logger.debug({ sessionId: this.sessionId }, 'Interruption handled');
     }
+
+    // Notify client that interruption is complete
+    this.events.onInterrupted?.();
   }
 
   /**

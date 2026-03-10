@@ -63,6 +63,10 @@ const vadState = {
   isSpeaking: false,
 };
 
+let isNPCSpeaking = false;
+const BARGE_IN_THRESHOLD_MS = 1000;
+let bargeInTimer = null;
+
 // Mood presets (VAD values: valence, arousal, dominance)
 const MOOD_PRESETS = {
   neutral: { valence: 0.5, arousal: 0.5, dominance: 0.5, emoji: '😐', label: 'Neutral' },
@@ -895,6 +899,7 @@ async function connectVoice() {
       })
       .on('audioChunk', (data) => {
         updatePipelineStep('tts', 'active');
+        isNPCSpeaking = true;
         queueAudioChunk(data);
       })
       .on('toolCall', (name, args) => {
@@ -931,6 +936,7 @@ async function connectVoice() {
         }
 
         if (phase === 'followup') {
+          isNPCSpeaking = false;
           // Follow-up done -- flush follow-up buffer
           if (followupBuffer) {
             addChatMessage('assistant', followupBuffer);
@@ -944,6 +950,7 @@ async function connectVoice() {
         }
 
         // No phase (backward compatible / Mind had no output)
+        isNPCSpeaking = false;
         if (voiceUserTranscript && currentConversationMode.input === 'voice') {
           addChatMessage('user', voiceUserTranscript);
           messageCount++;
@@ -974,6 +981,10 @@ async function connectVoice() {
         console.log('[Playground] Voice connection closed');
         updateVoiceStatus('Disconnected');
         voiceClient = null;
+      })
+      .on('interrupted', () => {
+        console.log('[Playground] Server acknowledged interruption');
+        updateVoiceStatus('Listening...');
       });
 
     console.log('[Playground] Calling voiceClient.connect() with mode...');
@@ -1050,6 +1061,17 @@ async function startLiveVoice() {
         audioChunkCount = 0;
         // Reset accumulator for new utterance
         voiceUserTranscript = '';
+
+        // Barge-in detection: if NPC is speaking, start timer
+        if (isNPCSpeaking && !bargeInTimer) {
+          bargeInTimer = setTimeout(() => {
+            bargeInTimer = null;
+            if (isNPCSpeaking && vadState.isSpeaking) {
+              console.log('[Barge-In] Sustained user speech detected during NPC playback');
+              triggerBargeIn();
+            }
+          }, BARGE_IN_THRESHOLD_MS);
+        }
       },
 
       // Called when speech ends - commit for STT processing
@@ -1057,6 +1079,11 @@ async function startLiveVoice() {
         console.log('[VAD] Speech ended, total samples:', audio.length);
         vadState.isSpeaking = false;
         updateVadIndicator(false);
+
+        if (bargeInTimer) {
+          clearTimeout(bargeInTimer);
+          bargeInTimer = null;
+        }
 
         // Check if voiceClient still exists (WebSocket may have closed)
         if (!voiceClient) {
@@ -1167,6 +1194,28 @@ function handleVoiceInterrupt() {
     voiceClient.interrupt();
     stopAudioPlayback(); // Stop any audio currently playing
     toast.info('Interrupted', 'NPC speech stopped.');
+  }
+}
+
+/**
+ * Triggered automatically by VAD barge-in detection
+ */
+function triggerBargeIn() {
+  console.log('[Playground] Triggering barge-in interruption');
+  isNPCSpeaking = false;
+  stopAudioPlayback();
+
+  if (voiceClient) {
+    voiceClient.interrupt();
+  }
+
+  updateVoiceStatus('Interrupted...');
+
+  // Brief visual cue on the VAD indicator
+  const vadIndicator = document.getElementById('vad-indicator');
+  if (vadIndicator) {
+    vadIndicator.classList.add('interrupted');
+    setTimeout(() => vadIndicator.classList.remove('interrupted'), 600);
   }
 }
 
@@ -1319,6 +1368,7 @@ function stopAudioPlayback() {
   // Clear queue
   audioQueue = [];
   isPlayingAudio = false;
+  isNPCSpeaking = false;
 
   // Close audio context
   if (audioContext && audioContext.state !== 'closed') {

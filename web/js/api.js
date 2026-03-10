@@ -320,6 +320,7 @@ export class VoiceClient {
       onGenerationEnd: () => { },
       onMindActivity: () => { },
       onFollowupStart: () => { },
+      onInterrupted: () => { },
       onExitConvo: () => { },
       onSync: () => { },
       onError: () => { },
@@ -419,6 +420,9 @@ export class VoiceClient {
         break;
       case 'followup_start':
         this.callbacks.onFollowupStart();
+        break;
+      case 'interrupted':
+        if (this.callbacks.onInterrupted) this.callbacks.onInterrupted();
         break;
       case 'exit_convo':
         this.callbacks.onExitConvo(message.reason, message.cooldown_seconds);

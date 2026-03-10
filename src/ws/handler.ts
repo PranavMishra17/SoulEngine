@@ -126,6 +126,10 @@ interface ExitConvoMessage {
   cooldown_seconds?: number;
 }
 
+interface InterruptedMessage {
+  type: 'interrupted';
+}
+
 type OutboundMessage =
   | ReadyMessage
   | TranscriptMessage
@@ -137,7 +141,8 @@ type OutboundMessage =
   | SyncMessage
   | ExitConvoMessage
   | MindActivityMessage
-  | FollowupStartMessage;
+  | FollowupStartMessage
+  | InterruptedMessage;
 
 /**
  * Active voice connection state
@@ -418,6 +423,10 @@ async function handleInitMessage(
       onFollowupStart: () => {
         logger.info({ sessionId }, 'Pipeline event: followup_start');
         sendMessage(ws, { type: 'followup_start' });
+      },
+      onInterrupted: () => {
+        logger.info({ sessionId }, 'Pipeline event: interrupted');
+        sendMessage(ws, { type: 'interrupted' });
       },
       onError: (code, message) => {
         logger.error({ sessionId, code, message }, 'Pipeline event: error');

@@ -439,6 +439,12 @@ Key principle: **Stream at every stage**. Don't wait for full LLM response befor
 
 **Narration Stripping:** All NPC responses are post-processed before storage and playback. Parenthetical stage directions `(Osman frowns)` and asterisk actions `*sighs*` are stripped at the line level, ensuring clean dialogue output regardless of LLM tendency toward roleplay formatting. This runs on both text and voice modes.
 
+### Barge-In / Interruption Handling
+
+The pipeline natively supports player interruptions (barge-in) during NPC speech:
+- **Client-Side:** The VAD detects if the user speaks continuously for a threshold (e.g., 1000ms) while the NPC is speaking. If triggered, the client instantly stops audio playback and sends an `interrupt` signal to the server.
+- **Server-Side:** The `VoicePipeline` aborts the LLM generation and the active TTS stream, flushing all audio and sentence buffers. It then emits an `interrupted` event back to the client to confirm speech has ceased, allowing the NPC to immediately listen to the player's new input.
+
 ### TTS Provider Configuration
 
 **Default: Cartesia** — Fastest latency (40ms), cost-effective, good voice quality.
@@ -506,7 +512,8 @@ Player Input
 - Pattern stripping for obvious injection attempts
 
 **Moderation + exit_convo:**
-- Content policy check before processing
+- Content policy check targets strict out-of-character abuse (jailbreaks, slurs, political coercion)
+- Normal in-game threats, violence, and manipulation do NOT trigger moderation
 - If flagged: inject exit instruction, add exit_convo tool
 - NPC ends conversation in-character, cooldown applied
 
