@@ -319,7 +319,6 @@ export class VoiceClient {
       onToolCall: () => { },
       onGenerationEnd: () => { },
       onMindActivity: () => { },
-      onFollowupStart: () => { },
       onInterrupted: () => { },
       onExitConvo: () => { },
       onSync: () => { },
@@ -413,13 +412,10 @@ export class VoiceClient {
         this.callbacks.onToolCall(message.name, message.args);
         break;
       case 'generation_end':
-        this.callbacks.onGenerationEnd(message.phase);
+        this.callbacks.onGenerationEnd();
         break;
       case 'mind_activity':
         this.callbacks.onMindActivity(message.tools_called, message.duration_ms, message.completed);
-        break;
-      case 'followup_start':
-        this.callbacks.onFollowupStart();
         break;
       case 'interrupted':
         if (this.callbacks.onInterrupted) this.callbacks.onInterrupted();

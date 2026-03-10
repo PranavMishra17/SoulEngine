@@ -354,6 +354,11 @@ class DeepgramSession implements STTSession {
     }
   }
 
+  clearAccumulator(): void {
+    this.finalizedSegments = [];
+    logger.debug('DeepgramSession: accumulator cleared');
+  }
+
   finalize(): void {
     // For continuous conversation, we do NOT close the connection on finalize.
     // Deepgram will send final transcripts based on speech_final detection.

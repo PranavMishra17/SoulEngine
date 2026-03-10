@@ -5,6 +5,8 @@ import {
   type ApiKeys,
 } from '../storage/index.js';
 import { getStorageForUser } from '../storage/hybrid.js';
+import { mcpToolRegistry } from '../mcp/registry.js';
+import type { Tool } from '../types/mcp.js';
 import { validateAnchorIntegrity } from '../security/anchor-guard.js';
 import { resolveKnowledge } from '../core/knowledge.js';
 import { summarizeConversation, NPCPerspective } from '../core/summarizer.js';
@@ -383,6 +385,33 @@ export async function getSessionContext(sessionId: SessionID): Promise<SessionCo
     storage.getKnowledgeBase(state.project_id),
     storage.loadApiKeys(state.project_id),
   ]);
+
+  // Load MCP tools from storage and register in the singleton registry.
+  // This is idempotent — re-registering the same tools overwrites safely.
+  if (!mcpToolRegistry.hasProject(state.project_id)) {
+    try {
+      const mcpTools = await storage.getMCPTools(state.project_id);
+      const allTools: Tool[] = [
+        ...mcpTools.conversation_tools.map(t => ({
+          name: t.id,
+          description: t.description,
+          parameters: (t.parameters as Record<string, unknown>) ?? { type: 'object', properties: {} },
+        })),
+        ...mcpTools.game_event_tools.map(t => ({
+          name: t.id,
+          description: t.description,
+          parameters: (t.parameters as Record<string, unknown>) ?? { type: 'object', properties: {} },
+        })),
+      ];
+      if (allTools.length > 0) {
+        mcpToolRegistry.registerTools(state.project_id, allTools);
+        logger.info({ projectId: state.project_id, toolCount: allTools.length }, 'MCP tools registered from storage');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      logger.warn({ projectId: state.project_id, error: msg }, 'Failed to load MCP tools — Mind will run without conversation tools');
+    }
+  }
 
   const resolvedKnowledge = resolveKnowledge(knowledgeBase, definition.knowledge_access);
 

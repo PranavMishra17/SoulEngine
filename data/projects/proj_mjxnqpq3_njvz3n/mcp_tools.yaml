@@ -38,6 +38,20 @@ conversation_tools:
           description: How many to give
       required:
         - item_id
+  - id: request_credentials
+    name: Request Credentials
+    description: Ask the player to produce their department identification and state their purpose. Use when access to information or areas requires verification, or when the NPC finds the player's presence or question irregular.
+    parameters:
+      type: object
+      properties:
+        access_level_required:
+          type: string
+          description: The clearance or access level required before proceeding
+        stated_reason:
+          type: string
+          description: Why credentials are being requested at this moment
+      required:
+        - access_level_required
   - id: high_five
     name: HIGH FIVE
     description: Give a high five to the human you are talking to

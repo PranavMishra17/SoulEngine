@@ -90,7 +90,6 @@ interface ToolCallMessage {
 
 interface GenerationEndMessage {
   type: 'generation_end';
-  phase?: 'speaker' | 'followup';
 }
 
 interface MindActivityMessage {
@@ -102,10 +101,6 @@ interface MindActivityMessage {
   }>;
   duration_ms: number;
   completed: boolean;
-}
-
-interface FollowupStartMessage {
-  type: 'followup_start';
 }
 
 interface ErrorMessage {
@@ -141,7 +136,6 @@ type OutboundMessage =
   | SyncMessage
   | ExitConvoMessage
   | MindActivityMessage
-  | FollowupStartMessage
   | InterruptedMessage;
 
 /**
@@ -407,9 +401,9 @@ async function handleInitMessage(
         logger.info({ sessionId, toolName: name }, 'Pipeline event: tool_call');
         sendMessage(ws, { type: 'tool_call', name, args });
       },
-      onGenerationEnd: (phase?: 'speaker' | 'followup') => {
-        logger.info({ sessionId, phase }, 'Pipeline event: generation_end');
-        sendMessage(ws, { type: 'generation_end', phase });
+      onGenerationEnd: () => {
+        logger.info({ sessionId }, 'Pipeline event: generation_end');
+        sendMessage(ws, { type: 'generation_end' });
       },
       onMindActivity: (activity: MindActivity) => {
         logger.info({ sessionId, toolCount: activity.tools_called.length }, 'Pipeline event: mind_activity');
@@ -419,10 +413,6 @@ async function handleInitMessage(
           duration_ms: activity.duration_ms,
           completed: activity.completed,
         });
-      },
-      onFollowupStart: () => {
-        logger.info({ sessionId }, 'Pipeline event: followup_start');
-        sendMessage(ws, { type: 'followup_start' });
       },
       onInterrupted: () => {
         logger.info({ sessionId }, 'Pipeline event: interrupted');

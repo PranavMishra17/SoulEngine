@@ -63,6 +63,12 @@ export interface STTSession {
   close(): void;
 
   /**
+   * Clear any accumulated transcript segments (e.g. on interruption).
+   * Prevents stale text from being concatenated with new speech.
+   */
+  clearAccumulator?(): void;
+
+  /**
    * Whether the session is currently connected and ready
    */
   readonly isConnected: boolean;

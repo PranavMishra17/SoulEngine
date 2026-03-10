@@ -45,8 +45,6 @@ let messageCount = 0;
 let responseBuffer = '';
 let currentNpcInfo = null; // Store {name, profile_image, id} for chat bubbles and header
 let voiceUserTranscript = ''; // Accumulates STT final segments for one utterance
-let followupBuffer = ''; // Accumulates Mind follow-up text chunks
-let isInFollowup = false; // True between followup_start and generation_end(followup)
 
 // Audio playback state
 let audioContext = null;
@@ -879,27 +877,25 @@ async function connectVoice() {
         updatePipelineStep('stt', isFinal ? 'complete' : 'active');
 
         if (isFinal && text.trim()) {
-          // Accumulate finals — Deepgram may emit several is_final=true events
-          // for one utterance (fragmented speech). Display consolidated on generationEnd.
-          voiceUserTranscript += (voiceUserTranscript ? ' ' : '') + text.trim();
-          console.log('[Transcript] Final segment accumulated:', JSON.stringify(text.trim()), '| total:', JSON.stringify(voiceUserTranscript));
+          const trimmed = text.trim();
+          // Dedup: skip if already accumulated (server dedup is primary, this is safety net)
+          if (!voiceUserTranscript.endsWith(trimmed)) {
+            voiceUserTranscript += (voiceUserTranscript ? ' ' : '') + trimmed;
+            console.log('[Transcript] Final segment accumulated:', JSON.stringify(trimmed), '| total:', JSON.stringify(voiceUserTranscript));
+          }
           removeInterimTranscript();
         } else if (!isFinal && text.trim()) {
-          // Show interim transcript as user is speaking
           showInterimTranscript(text);
         }
       })
       .on('textChunk', (text) => {
         updatePipelineStep('llm', 'active');
-        if (isInFollowup) {
-          followupBuffer += text;
-        } else {
-          responseBuffer += text;
-        }
+        responseBuffer += text;
       })
       .on('audioChunk', (data) => {
         updatePipelineStep('tts', 'active');
         isNPCSpeaking = true;
+        updateVoiceStatus('NPC Speaking...');
         queueAudioChunk(data);
       })
       .on('toolCall', (name, args) => {
@@ -910,47 +906,9 @@ async function connectVoice() {
         console.log('[MindActivity] Tools called:', toolsCalled, 'Duration:', durationMs, 'Completed:', completed);
         addMindActivityDisplay({ tools_called: toolsCalled, duration_ms: durationMs, completed });
       })
-      .on('followupStart', () => {
-        console.log('[FollowupStart] Mind follow-up beginning');
-        isInFollowup = true;
-        followupBuffer = '';
-        liveFollowupBubble = null;
-      })
-      .on('generationEnd', (phase) => {
-        if (phase === 'speaker') {
-          // Flush user transcript only in voice-input mode — text input already showed it
-          if (voiceUserTranscript && currentConversationMode.input === 'voice') {
-            addChatMessage('user', voiceUserTranscript);
-            messageCount++;
-            updateMessageCount();
-            voiceUserTranscript = '';
-          }
-          if (responseBuffer) {
-            addChatMessage('assistant', responseBuffer);
-            messageCount++;
-            updateMessageCount();
-            responseBuffer = '';
-          }
-          // Don't reset pipeline -- Mind may still be working
-          return;
-        }
-
-        if (phase === 'followup') {
-          isNPCSpeaking = false;
-          // Follow-up done -- flush follow-up buffer
-          if (followupBuffer) {
-            addChatMessage('assistant', followupBuffer);
-            messageCount++;
-            updateMessageCount();
-            followupBuffer = '';
-          }
-          isInFollowup = false;
-          resetPipelineTrace();
-          return;
-        }
-
-        // No phase (backward compatible / Mind had no output)
+      .on('generationEnd', () => {
         isNPCSpeaking = false;
+        updateVoiceStatus('Listening...');
         if (voiceUserTranscript && currentConversationMode.input === 'voice') {
           addChatMessage('user', voiceUserTranscript);
           messageCount++;
@@ -984,6 +942,8 @@ async function connectVoice() {
       })
       .on('interrupted', () => {
         console.log('[Playground] Server acknowledged interruption');
+        responseBuffer = '';
+        voiceUserTranscript = '';
         updateVoiceStatus('Listening...');
       });
 
@@ -1205,6 +1165,10 @@ function triggerBargeIn() {
   isNPCSpeaking = false;
   stopAudioPlayback();
 
+  // Clear transcript/response state so next turn starts fresh
+  voiceUserTranscript = '';
+  responseBuffer = '';
+
   if (voiceClient) {
     voiceClient.interrupt();
   }
@@ -1229,10 +1193,11 @@ function updateVadIndicator(speaking) {
   if (speaking) {
     indicator?.classList.add('speaking');
     if (label) label.textContent = 'Speaking';
-    updateVoiceStatus('Listening...');
+    updateVoiceStatus('Recording...');
   } else {
     indicator?.classList.remove('speaking');
     if (label) label.textContent = 'Listening';
+    // Don't override status here — let onSpeechEnd set 'Processing...'
   }
 }
 
@@ -1370,10 +1335,9 @@ function stopAudioPlayback() {
   isPlayingAudio = false;
   isNPCSpeaking = false;
 
-  // Close audio context
-  if (audioContext && audioContext.state !== 'closed') {
-    audioContext.close();
-    audioContext = null;
+  // Suspend audio context (don't close — it can be resumed for the next turn)
+  if (audioContext && audioContext.state === 'running') {
+    audioContext.suspend();
   }
 
   console.log('[Audio] Playback interrupted and queue cleared');

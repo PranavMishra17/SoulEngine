@@ -712,3 +712,20 @@ export function checkContextBounds(
     maxTokens,
   };
 }
+
+/**
+ * Augment a Speaker system prompt with Mind's tool context.
+ * Appends a [MIND CONTEXT] block so the Speaker can weave tool results
+ * and actions naturally into its spoken response.
+ *
+ * @param basePrompt The slim system prompt (no tools, no knowledge)
+ * @param toolContext Formatted tool results from Mind's agent loop
+ * @returns The augmented prompt, or basePrompt unchanged if toolContext is empty
+ */
+export function augmentPromptWithMindContext(basePrompt: string, toolContext: string): string {
+  if (!toolContext) return basePrompt;
+
+  const mindBlock = `\n\n[MIND CONTEXT]\nYour background cognitive process just completed. Here is what you learned and did:\n${toolContext}\n\nWeave this information naturally into your spoken response. For actions you took (non-recall), acknowledge them conversationally — tell the player what you are doing. For recalled information, use it to inform your response without explicitly citing sources.`;
+
+  return basePrompt + mindBlock;
+}

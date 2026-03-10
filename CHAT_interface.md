@@ -1,9 +1,9 @@
 # CHAT Interface and Voice Pipeline (Playground)
 
 ## Quick mental model
-- Each user turn runs two parallel LLM roles: Speaker (fast, no tools) and Mind (agent loop with tools + optional follow-up).
+- Each user turn runs **sequential** Mind then Speaker: Mind (agent loop with tools) runs first, then Speaker (voice LLM) generates a unified response informed by Mind's context.
 - Voice WebSocket is used if input or output is voice; text-only uses REST.
-- Mind can emit tool activity, follow-up text, or exit_convo which ends the session and applies cooldown.
+- Mind can emit tool activity or exit_convo which ends the session and applies cooldown.
 
 ## Conversation modes and transport
 - text-text: REST only.
@@ -26,35 +26,46 @@ Outbound messages to client:
 - text_chunk: streamed assistant text
 - audio_chunk: base64 PCM audio
 - mind_activity: tool calls metadata (name, args, status)
-- followup_start: Mind follow-up is starting
-- generation_end: optional phase 'speaker' or 'followup'
+- generation_end: NPC turn complete
 - exit_convo: { reason, cooldown_seconds }
 - sync: session end result
 - error
 
-## Speaker vs Mind (dual state)
-- Speaker: uses slim prompt (no tools, no world knowledge), streams text and optionally TTS. Source: assembleSlimSystemPrompt in core context.
-- Mind: runs runMindAgentLoop in parallel, uses recall tools + MCP tools, may emit tool activity, follow_up_text, or exit_convo.
-- Both update the same session instance; Mind does not maintain a separate stored instance, it operates on the session instance snapshot.
+## Sequential Mind -> Speaker architecture
+- **Mind** runs first via `runMindAgentLoop()`: decides tools (recall, MCP conversation tools, exit_convo), executes them, returns `tool_context` (formatted tool results string).
+- **Speaker** runs second with an augmented system prompt: `augmentPromptWithMindContext()` injects Mind's tool_context into the slim prompt so Speaker can naturally weave tool results into its response.
+- Result: ONE unified NPC response per turn (no separate follow-up phase).
+- Both update the same session instance; Mind does not maintain a separate stored instance.
 
 ## Voice pipeline flow (server)
 1. WS init loads session context and voice config.
 2. Pipeline initializes STT and/or TTS based on mode.
 3. Input handling:
-   - Voice: audio chunks -> Deepgram STT -> transcript aggregation -> processTurn
+   - Voice: audio chunks -> Deepgram STT -> transcript aggregation (1.5s debounce) -> processTurn
    - Text: handleTextInput -> processTurn
-4. processTurn:
+4. processTurn (sequential):
+   - Mind runs first (8s timeout cap for voice, 15s for text)
+   - Mind activity emitted to client (tool call chips)
+   - exit_convo handled before Speaker if triggered
+   - Speaker prompt augmented with Mind's tool_context
    - Speaker streams LLM output, pushes TTS per sentence if output is voice
-   - Mind runs agent loop in parallel; may return follow-up and tool activity
-   - Emits generation_end for speaker/followup, mind_activity, followup_start
+   - Sentences tracked in spokenSentences[] for interruption context truncation
+   - Single generation_end emitted when Speaker finishes
    - exit_convo ends session + closes WS
+
+## Interruption handling
+- Client: VAD detects user speech during NPC playback -> 1s barge-in timer -> triggerBargeIn()
+- Client clears: audio queue, voiceUserTranscript, responseBuffer
+- Server: aborts LLM + TTS, clears transcript aggregator + STT accumulator
+- Context truncation: last assistant message in history replaced with actually-spoken sentences + [interrupted] marker
+- Transcript processing state reset for clean next turn
 
 ## Frontend flow (Playground)
 - Mode selection sets input/output mode.
 - Start session -> configure UI -> connect WS if any voice.
 - Voice input uses Silero VAD in browser; streams PCM16 frames, commits on speech end.
 - Audio output uses Web Audio API; sample rate picked by provider (Cartesia 44100, ElevenLabs 16000).
-- Mind activity panel shows tool calls; follow-up text appears after speaker text.
+- Mind activity panel shows tool calls alongside the unified response.
 
 ## Associated files and what they do
 
@@ -68,7 +79,7 @@ Frontend UI and logic
 
 Backend routes and session
 - src/routes/session.ts: start/end session, session stats, instance fetch.
-- src/routes/conversation.ts: REST chat for text-text mode; runs Speaker + Mind in parallel.
+- src/routes/conversation.ts: REST chat for text-text mode; runs Mind then Speaker sequentially.
 - src/routes/projects.ts: voices list endpoint used by NPC editor and settings.
 - src/routes/npcs.ts: NPC definition updates (includes voice config).
 - src/session/manager.ts: session lifecycle, session context, instance updates, endSession persistence.
@@ -76,10 +87,9 @@ Backend routes and session
 
 Voice WebSocket + pipeline
 - src/ws/handler.ts: WebSocket handshake, init, message routing, pipeline events -> WS messages, cleanup on close.
-- src/voice/pipeline.ts: STT -> security -> Speaker + Mind -> TTS orchestration, transcript aggregation, interruption, exit_convo handling.
+- src/voice/pipeline.ts: STT -> security -> Mind -> Speaker -> TTS orchestration, transcript aggregation, interruption with context truncation.
 - src/voice/audio.ts: base64 encode/decode and audio utilities.
 - src/voice/sentence-detector.ts: splits streaming text into sentences for TTS.
-- src/voice/interruption.ts: interruption utility (not currently wired into pipeline).
 
 Providers
 - src/providers/stt/deepgram.ts: live STT streaming session, transcript parsing, reconnect + keepalive.
@@ -89,15 +99,15 @@ Providers
 - src/providers/llm/*: LLM providers used by Speaker and Mind.
 
 Mind and tools
-- src/core/mind.ts: Mind agent loop, tool execution, follow-up generation.
-- src/core/context.ts: slim system prompt for Speaker, conversation history assembly.
+- src/core/mind.ts: Mind agent loop — tool decision (LLM call 1) + execution, returns tool_context for Speaker.
+- src/core/context.ts: slim system prompt for Speaker, conversation history assembly, augmentPromptWithMindContext().
 - src/core/tools.ts: defines available tools and tool selection logic.
 - src/mcp/registry.ts: project tool registry and execution (MCP tools).
 - src/mcp/exit-handler.ts: exit_convo handling and cooldowns.
 
 Types and shared contracts
 - src/types/voice.ts: ConversationMode and voice config types.
-- src/types/mind.ts: MindResult, MindActivity, tool result shapes.
+- src/types/mind.ts: MindResult (tool_context, tools_called, exit_convo), MindActivity.
 - src/types/session.ts: session state and message types.
 
 Voice config source of truth
@@ -109,14 +119,12 @@ Voice config source of truth
 - Mode switching and UI state: web/js/pages/playground.js
 - WS lifecycle and readiness handling: web/js/api.js + src/ws/handler.ts
 - Transcript aggregation and commit timing: src/voice/pipeline.ts
-- Follow-up sequencing (speaker vs mind): src/voice/pipeline.ts + src/core/mind.ts
+- Mind -> Speaker sequencing: src/voice/pipeline.ts + src/core/mind.ts + src/core/context.ts
 - Audio sample rate and playback: web/js/pages/playground.js + src/providers/tts/*
 
 ## Recent fixes and known issues (keep in mind)
 - Deepgram multi-segment STT loss: fixed by accumulating finalized segments so the full utterance is emitted. File: src/providers/stt/deepgram.ts.
-- Mind agent loop logging: added key info logs in runMindAgentLoop for visibility and timing. File: src/core/mind.ts.
-- Mind timeout default: increased from 5s to 15s to allow full 3-step loop. Files: src/voice/pipeline.ts and src/routes/conversation.ts. Re-test after server restart.
-- Transcript not emitted to client: fixed by emitting final transcript in processAggregatedTranscript, not handleSTTTranscript. File: src/voice/pipeline.ts.
-- Duplicate user messages: still occurring when transcripts flush in multiple places on the client. File: web/js/pages/playground.js. Needs consolidation to one flush path.
-- Invalid starter voice IDs: replaced with valid Cartesia voices (Edmund->Ross, Vera->Elaine, Pryce->Damon, Tom->Gavin, Lena->Diana). Files: NPC seed/config definitions.
-- Temporary debug logs: added and then removed after verification (audio chunks, transcript segments, tool events). Files: web/js/pages/playground.js, src/ws/handler.ts.
+- Transcript dedup: onTranscript now emitted AFTER dedup check to prevent client double-accumulation. File: src/voice/pipeline.ts.
+- Interruption context truncation: on interrupt, assistant message truncated to actually-spoken sentences. File: src/voice/pipeline.ts.
+- MCP tool registry: tools loaded from storage in getSessionContext() and registered in singleton registry. File: src/session/manager.ts.
+- Invalid starter voice IDs: replaced with valid Cartesia voices. Files: NPC seed/config definitions.

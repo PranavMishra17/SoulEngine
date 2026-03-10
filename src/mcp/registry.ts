@@ -33,6 +33,14 @@ export class MCPToolRegistry {
   private registry: Map<string, Map<string, RegisteredTool>> = new Map();
 
   /**
+   * Check if any tools are registered for a project
+   */
+  hasProject(projectId: string): boolean {
+    const projectTools = this.registry.get(projectId);
+    return !!projectTools && projectTools.size > 0;
+  }
+
+  /**
    * Register a tool for a project
    */
   registerTool(projectId: string, tool: Tool, handler?: ToolHandler): void {

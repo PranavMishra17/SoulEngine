@@ -10,7 +10,7 @@ import type {
   LLMStreamChunk,
 } from '../providers/llm/interface.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
-import { getMindAvailableTools, isExitConvoTool } from './tools.js';
+import { getMindAvailableTools, isExitConvoTool, isRecallTool } from './tools.js';
 import { formatTier1Npc, formatTier2Npc, formatTier3Npc } from './context.js';
 import { resolveCategoryKnowledge } from './knowledge.js';
 import { retrieveSTM, retrieveLTM, formatMemoriesForPrompt } from './memory.js';
@@ -18,22 +18,6 @@ import { generatePersonalityDescription, formatMoodForPrompt } from './personali
 import { getDefinition } from '../storage/index.js';
 
 const logger = createLogger('npc-mind');
-
-// ---------------------------------------------------------------------------
-// Narration stripping (duplicated from conversation.ts since it is not exported)
-// ---------------------------------------------------------------------------
-
-/**
- * Strips lines/paragraphs starting with (action descriptions) or *action* patterns.
- */
-function stripNarration(text: string): string {
-  const cleaned = text
-    .replace(/^\s*\(.*?\)\s*/gm, '')
-    .replace(/^\s*\*[^*]+\*\s*/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-  return cleaned || text;
-}
 
 // ---------------------------------------------------------------------------
 // 1. buildMindSystemPrompt
@@ -47,7 +31,6 @@ export function buildMindSystemPrompt(
   definition: NPCDefinition,
   instance: NPCInstance,
   userMessage: string,
-  speakerResponse: string,
   conversationHistory: LLMMessage[],
 ): string {
   const sections: string[] = [];
@@ -103,11 +86,11 @@ export function buildMindSystemPrompt(
       return `${label}: ${msg.content}`;
     });
     sections.push(
-      `[CURRENT CONVERSATION]\n${historyLines.join('\n')}\n\nPlayer: ${userMessage}\nNPC (already said): ${speakerResponse}`
+      `[CURRENT CONVERSATION]\n${historyLines.join('\n')}\n\nPlayer: ${userMessage}`
     );
   } else {
     sections.push(
-      `[CURRENT CONVERSATION]\nPlayer: ${userMessage}\nNPC (already said): ${speakerResponse}`
+      `[CURRENT CONVERSATION]\nPlayer: ${userMessage}`
     );
   }
 
@@ -123,11 +106,7 @@ Analyze this conversation and decide:
 
 If nothing is needed, respond with exactly: NO_ACTION
 
-If you call tools, you will receive their results and should then generate a brief follow-up response (1-3 sentences) that the NPC will speak. This follow-up must:
-- NOT repeat what the NPC already said
-- Add depth, new information, or reflect the action taken
-- Stay in character as ${definition.name}
-- Be natural spoken dialogue only (no stage directions, no narration)`
+Do NOT generate spoken dialogue. Only call tools or respond NO_ACTION. Your tool results will be provided to ${definition.name}'s voice to inform their spoken response.`
   );
 
   return sections.join('\n\n');
@@ -282,16 +261,15 @@ export async function executeMindTool(
  * The core Mind agent loop. Entry point for the NPC's cognitive background process.
  *
  * 1. Builds the mind system prompt
- * 2. Makes LLM call 1 to decide on tool calls
+ * 2. Makes LLM call to decide on tool calls (or NO_ACTION)
  * 3. Executes any tool calls
- * 4. Makes LLM call 2 to generate a follow-up based on tool results
- * 5. Returns a MindResult
+ * 4. Formats tool results as tool_context for Speaker prompt injection
+ * 5. Returns a MindResult (no speech generation — Speaker handles that)
  */
 export async function runMindAgentLoop(
   definition: NPCDefinition,
   instance: NPCInstance,
   userMessage: string,
-  speakerResponse: string,
   conversationHistory: LLMMessage[],
   llmProvider: LLMProvider,
   projectId: string,
@@ -315,7 +293,6 @@ export async function runMindAgentLoop(
       definition,
       instance,
       userMessage,
-      speakerResponse,
       conversationHistory,
     );
 
@@ -369,7 +346,7 @@ export async function runMindAgentLoop(
     logger.info({ npcId: definition.id, toolCallCount: call1ToolCalls.length, noAction: trimmedResponse === 'NO_ACTION' }, 'Mind LLM call 1 complete');
     if (call1ToolCalls.length === 0 || trimmedResponse === 'NO_ACTION') {
       return {
-        follow_up_text: '',
+        tool_context: '',
         tools_called: [],
         raw_tool_calls: [],
         usage: {
@@ -414,7 +391,7 @@ export async function runMindAgentLoop(
     // If signal was aborted during tool execution, return partial result
     if (signal.aborted) {
       return {
-        follow_up_text: '',
+        tool_context: '',
         tools_called: toolsCalled,
         raw_tool_calls: rawToolCalls,
         usage: {
@@ -428,106 +405,26 @@ export async function runMindAgentLoop(
       };
     }
 
-    // 6. Classify tool calls: conversation tools need mandatory verbal output
-    // Recall tools (recall_npc, recall_knowledge, recall_memories) are informational — NO_FOLLOWUP is ok.
-    // Conversation/game tools (warn_player, call_police, etc.) MUST produce spoken output.
-    const recallToolNames = new Set(['recall_npc', 'recall_knowledge', 'recall_memories']);
-    const hasConversationTool = toolsCalled.some(
-      (tc) => !recallToolNames.has(tc.tool_name) && tc.tool_name !== 'exit_convo'
-    );
-    const conversationToolNames = toolsCalled
-      .filter((tc) => !recallToolNames.has(tc.tool_name) && tc.tool_name !== 'exit_convo')
-      .map((tc) => tc.tool_name)
-      .join(', ');
-
-    // 6. Build tool result message for LLM call 2
-    const toolResultLines = toolsCalled.map((tr) => {
-      const argsStr = JSON.stringify(tr.arguments);
+    // 6. Build tool_context string for Speaker prompt injection
+    const toolContextLines = toolsCalled.map((tr) => {
+      const argsStr = Object.entries(tr.arguments)
+        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join(', ');
       if (tr.status === 'error') {
         return `- ${tr.tool_name}(${argsStr}): ERROR - ${tr.error}`;
       }
-      return `- ${tr.tool_name}(${argsStr}): ${tr.result_content}`;
+      if (isRecallTool(tr.tool_name)) {
+        return `- Retrieved (${tr.tool_name}): ${tr.result_content}`;
+      }
+      return `- Action taken (${tr.tool_name}, ${argsStr}): executed`;
     });
+    const toolContext = toolContextLines.join('\n');
 
-    // Conversation tools: mandatory verbal response — no NO_FOLLOWUP escape
-    // Recall tools: informational, NO_FOLLOWUP is acceptable
-    const toolResultMessage = hasConversationTool
-      ? `[Tool Results]\n${toolResultLines.join('\n')}\n\n[Instructions]\nYou just took action using: ${conversationToolNames}. You MUST generate a spoken response (1-3 sentences) that ${definition.name} will say to the player. Speak in character. Reflect what you just did or are doing. Do NOT return empty. Do NOT say NO_FOLLOWUP. Output ONLY spoken dialogue — no narration, no stage directions.`
-      : `[Tool Results]\n${toolResultLines.join('\n')}\n\n[Instructions]\nBased on these results, generate a brief follow-up (1-3 sentences) that ${definition.name} will speak next. Do not repeat what was already said. Stay in character. Output ONLY spoken dialogue. If the results don't add value, respond with NO_FOLLOWUP.`;
-
-    // 7. LLM call 2: Generate follow-up
-    // Do NOT include the model+toolCalls message from call 1. Gemini (and potentially other
-    // providers) requires that a model message with functionCall parts be followed by a user
-    // message with functionResponse parts -- passing plain text causes an API error.
-    // The system prompt already contains full context; just send the tool results as a user turn.
-    logger.info({ npcId: definition.id, toolResultCount: toolsCalled.length, hasConversationTool, conversationToolNames }, 'Mind generating follow-up');
-    const messages: LLMMessage[] = [
-      { role: 'user', content: toolResultMessage },
-    ];
-
-    let followUpText = '';
-
-    const stream2 = llmProvider.streamChat({
-      systemPrompt,
-      messages,
-      signal,
-    });
-
-    for await (const chunk of stream2 as AsyncIterable<LLMStreamChunk>) {
-      if (signal.aborted) {
-        logger.info({ npcId: definition.id }, 'Mind agent loop aborted during LLM call 2');
-        break;
-      }
-
-      if (chunk.text) {
-        followUpText += chunk.text;
-      }
-      if (chunk.done && chunk.usage) {
-        totalInputTokens += chunk.usage.input_tokens;
-        totalOutputTokens += chunk.usage.output_tokens;
-      }
-    }
-
-    // 8. Check for NO_FOLLOWUP
-    const trimmedFollowUp = followUpText.trim();
-    const isNoFollowup = trimmedFollowUp === 'NO_FOLLOWUP' || !trimmedFollowUp;
-    logger.info({ npcId: definition.id, textLength: followUpText.length, isNoFollowup, hasConversationTool }, 'Mind follow-up generated');
-
-    if (isNoFollowup) {
-      // Conversation tools must always produce spoken output — use a fallback if LLM returned empty
-      if (hasConversationTool) {
-        logger.warn(
-          { npcId: definition.id, conversationToolNames },
-          'Mind returned NO_FOLLOWUP after conversation tool — using fallback line'
-        );
-        // Fallback: at minimum acknowledge the action in character
-        followUpText = `${definition.name} acts without another word.`;
-      } else {
-        // Recall-only: no follow-up is fine
-        return {
-          follow_up_text: '',
-          tools_called: toolsCalled,
-          raw_tool_calls: rawToolCalls,
-          usage: {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-          },
-          completed: true,
-          exit_convo_used: exitConvoUsed,
-          exit_convo_reason: exitConvoReason,
-          duration_ms: Date.now() - startTime,
-        };
-      }
-    }
-
-    // 9. Strip narration from follow-up
-    const cleanedFollowUp = stripNarration(trimmedFollowUp);
-
-    // 10. Return full MindResult
+    // 7. Return MindResult with tool_context (no LLM call 2 — Speaker will use this)
     const duration_ms = Date.now() - startTime;
-    logger.info({ npcId: definition.id, totalDurationMs: duration_ms, toolsCalled: toolsCalled.length, hasFollowup: !!cleanedFollowUp }, 'Mind agent loop complete');
+    logger.info({ npcId: definition.id, totalDurationMs: duration_ms, toolsCalled: toolsCalled.length, toolContextLength: toolContext.length }, 'Mind agent loop complete');
     return {
-      follow_up_text: cleanedFollowUp,
+      tool_context: toolContext,
       tools_called: toolsCalled,
       raw_tool_calls: rawToolCalls,
       usage: {
@@ -552,7 +449,7 @@ export async function runMindAgentLoop(
     );
 
     return {
-      follow_up_text: '',
+      tool_context: '',
       tools_called: toolsCalled,
       raw_tool_calls: rawToolCalls,
       usage: {

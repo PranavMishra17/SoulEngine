@@ -39,9 +39,13 @@ mcp_permissions:
   conversation_tools:
     - exit_convo
     - high_five
+    - request_credentials
+    - lock_door
+    - call_guards
   game_event_tools:
-    - flee_to
-    - alert_guards
+    - receive_gift
+    - witness_crime
+    - time_of_day_change
   denied: []
 knowledge_access:
   world_history: 2

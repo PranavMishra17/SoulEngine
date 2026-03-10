@@ -5,7 +5,7 @@ import { getSession, getSessionContext, addMessageToSession, updateSessionInstan
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
-import { assembleSlimSystemPrompt, assembleConversationHistory } from '../core/context.js';
+import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext } from '../core/context.js';
 import { runMindAgentLoop } from '../core/mind.js';
 import { blendMoods } from '../core/personality.js';
 import type { LLMProvider, LLMMessage, LLMProviderType } from '../providers/llm/interface.js';
@@ -48,9 +48,7 @@ const SendMessageSchema = z.object({
  * Response from sending a message
  */
 export interface ConversationResponse {
-  response: string;                    // Combined: speaker + followup
-  speaker_response?: string;           // Speaker-only text (when mind has follow-up)
-  followup_response?: string;          // Mind follow-up text (if any)
+  response: string;                    // Unified Speaker response (informed by Mind context)
   mind?: MindActivity;                 // Mind activity metadata
   tool_calls?: ToolCall[];
   tool_results?: ToolResult[];
@@ -189,102 +187,42 @@ export function createConversationRoutes(
         ? createLlmProvider({ provider: mindProviderType as LLMProviderType, apiKey: mindApiKey, model: mindModelId })
         : activeProvider;  // fall back to same provider if no separate key
 
-      // 11. Parallel Speaker + Mind execution
+      // 11. Sequential Mind -> Speaker execution
       const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 15000;
       const llmMessages: LLMMessage[] = conversationHistory;
-
-      // Speaker: stream LLM with NO tools
-      const speakerPromise = (async () => {
-        let text = '';
-        let usage: { input_tokens: number; output_tokens: number } | undefined;
-
-        for await (const chunk of activeProvider.streamChat({
-          systemPrompt,
-          messages: llmMessages,
-          // NO tools -- Speaker is pure voice
-        })) {
-          if (chunk.text) text += chunk.text;
-          if (chunk.done && chunk.usage) usage = chunk.usage;
-        }
-
-        return { text, usage };
-      })();
-
-      // Mind: agent loop with ALL tools (recall + conversation + exit_convo)
-      const mindAbortController = new AbortController();
-      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
-
       const projectTools = toolRegistry.getProjectTools(state.project_id);
 
-      const mindPromise = (async (): Promise<MindResult | null> => {
-        try {
-          // Start Mind immediately -- it sees conversation history + user message.
-          // The speakerResponse param will be empty string since we don't have it yet.
-          // This is fine -- the Mind makes decisions based on the user's message and history,
-          // not the Speaker's response.
-          const result = await runMindAgentLoop(
-            definition,
-            instance,
-            playerInput,
-            '',  // Speaker response not available yet (parallel execution)
-            conversationHistory,
-            mindProvider,
-            state.project_id,
-            sessionContext.knowledgeBase,
-            toolRegistry,
-            securityContext,
-            projectTools,
-            mindAbortController.signal,
-          );
-          return result;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Unknown error';
-          logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
-          return null;
-        } finally {
-          clearTimeout(mindTimeout);
-        }
-      })();
+      // Step 1: Run Mind first (with timeout)
+      const mindAbortController = new AbortController();
+      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+      let mindResult: MindResult | null = null;
 
-      // Wait for both
-      const [speakerResult, mindResult] = await Promise.all([speakerPromise, mindPromise]);
-
-      let responseText = speakerResult.text;
-      const providerUsage = speakerResult.usage;
-
-      // Track token usage -- prefer real counts from the provider, fall back to chars/4 estimate.
       try {
-        // Speaker tokens
-        if (providerUsage) {
-          addTokensToSession(sessionId, {
-            text_input_tokens: providerUsage.input_tokens,
-            text_output_tokens: providerUsage.output_tokens,
-          });
-        } else {
-          // Fallback: chars/4 heuristic for providers that don't return usage data
-          const inputText = systemPrompt + conversationHistory.map(m => m.content).join('') + playerInput;
-          addTokensToSession(sessionId, {
-            text_input_tokens: Math.ceil(inputText.length / 4),
-            text_output_tokens: Math.ceil(responseText.length / 4),
-          });
-        }
-        // Mind tokens
-        if (mindResult?.usage) {
-          addTokensToSession(sessionId, {
-            text_input_tokens: mindResult.usage.input_tokens,
-            text_output_tokens: mindResult.usage.output_tokens,
-          });
-        }
-      } catch {
-        // Never block the conversation for token tracking failures
+        mindResult = await runMindAgentLoop(
+          definition,
+          instance,
+          playerInput,
+          conversationHistory,
+          mindProvider,
+          state.project_id,
+          sessionContext.knowledgeBase,
+          toolRegistry,
+          securityContext,
+          projectTools,
+          mindAbortController.signal,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
+      } finally {
+        clearTimeout(mindTimeout);
       }
 
-      // 12. Handle Mind result
+      // Step 2: Handle exit_convo before Speaker (no point generating speech if exiting)
       const toolCalls: ToolCall[] = mindResult?.raw_tool_calls ?? [];
       const toolResults: ToolResult[] = [];
       let exitConvoResult: ExitConvoResult | undefined;
 
-      // Process Mind tool results for response
       if (mindResult && mindResult.tools_called.length > 0) {
         for (const tr of mindResult.tools_called) {
           toolResults.push({
@@ -295,7 +233,6 @@ export function createConversationRoutes(
         }
       }
 
-      // Handle exit_convo from Mind
       if (mindResult?.exit_convo_used) {
         exitConvoResult = handleExitConvo(
           sessionId,
@@ -304,48 +241,75 @@ export function createConversationRoutes(
         );
       }
 
-      // 13. Strip narration and combine responses
-      responseText = stripNarration(responseText);
-      const speakerResponse = responseText;
-      const followupResponse = mindResult?.follow_up_text || '';
-
-      // Combine for storage: speaker + follow-up as single assistant message
-      if (followupResponse) {
-        responseText = `${responseText}\n\n${followupResponse}`;
+      // Step 3: Augment Speaker prompt with Mind context
+      let speakerPrompt = systemPrompt;
+      if (mindResult?.tool_context) {
+        speakerPrompt = augmentPromptWithMindContext(systemPrompt, mindResult.tool_context);
       }
 
+      // Step 4: Run Speaker with augmented prompt
+      let responseText = '';
+      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+
+      for await (const chunk of activeProvider.streamChat({
+        systemPrompt: speakerPrompt,
+        messages: llmMessages,
+      })) {
+        if (chunk.text) responseText += chunk.text;
+        if (chunk.done && chunk.usage) providerUsage = chunk.usage;
+      }
+
+      // Strip narration
+      responseText = stripNarration(responseText);
+
+      // Track token usage
+      try {
+        if (providerUsage) {
+          addTokensToSession(sessionId, {
+            text_input_tokens: providerUsage.input_tokens,
+            text_output_tokens: providerUsage.output_tokens,
+          });
+        } else {
+          const inputText = speakerPrompt + conversationHistory.map(m => m.content).join('') + playerInput;
+          addTokensToSession(sessionId, {
+            text_input_tokens: Math.ceil(inputText.length / 4),
+            text_output_tokens: Math.ceil(responseText.length / 4),
+          });
+        }
+        if (mindResult?.usage) {
+          addTokensToSession(sessionId, {
+            text_input_tokens: mindResult.usage.input_tokens,
+            text_output_tokens: mindResult.usage.output_tokens,
+          });
+        }
+      } catch {
+        // Never block the conversation for token tracking failures
+      }
+
+      // Store single unified assistant message
       const assistantMessage: Message = {
         role: 'assistant',
         content: responseText,
       };
       addMessageToSession(sessionId, assistantMessage);
 
-      // 14. Update mood based on conversation (subtle drift)
+      // Update mood based on conversation (subtle drift)
       const instance_updated = { ...instance };
       if (moderationResult.action === 'warn') {
-        // Negative mood shift if moderation warned
         const stressedMood: MoodVector = { valence: 0.3, arousal: 0.7, dominance: 0.4 };
         instance_updated.current_mood = blendMoods(instance.current_mood, stressedMood, 0.15);
       } else if (moderationResult.action === 'exit') {
-        // Strong negative mood shift if exit
         const distressedMood: MoodVector = { valence: 0.2, arousal: 0.8, dominance: 0.3 };
         instance_updated.current_mood = blendMoods(instance.current_mood, distressedMood, 0.25);
       }
       updateSessionInstance(sessionId, instance_updated);
 
-      // 15. Build response
+      // Build response
       const response: ConversationResponse = {
         response: responseText,
         mood: instance_updated.current_mood,
       };
 
-      // Include speaker/followup split if Mind generated follow-up
-      if (followupResponse) {
-        response.speaker_response = speakerResponse;
-        response.followup_response = followupResponse;
-      }
-
-      // Include Mind activity metadata
       if (mindResult && mindResult.tools_called.length > 0) {
         response.mind = {
           tools_called: mindResult.tools_called.map(tc => ({
@@ -374,7 +338,6 @@ export function createConversationRoutes(
           mindToolCount: mindResult?.tools_called.length ?? 0,
           mindCompleted: mindResult?.completed ?? false,
           mindDuration: mindResult?.duration_ms,
-          hasFollowup: !!followupResponse,
           exitConvo: !!exitConvoResult,
         },
         'Message processed'
