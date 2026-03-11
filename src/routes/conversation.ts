@@ -303,11 +303,12 @@ export function createConversationRoutes(
         // MCP tool results -> append follow-up to response
         if (mcpResults.length > 0) {
           const mcpContext = mcpResults.join('\n');
-          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext);
+          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext, definition.name);
 
           const updatedHistory: LLMMessage[] = [
             ...llmMessages,
             { role: 'model' as const, content: responseText },
+            { role: 'user' as const, content: '[System: You just took an action. Briefly address it.]' },
           ];
 
           let followUpText = '';

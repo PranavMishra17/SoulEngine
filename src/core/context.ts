@@ -732,12 +732,9 @@ export function augmentPromptWithMindContext(basePrompt: string, toolContext: st
 
 /**
  * Build a follow-up prompt for when MCP tools were called after the primary response.
- * Instructs the Speaker to produce a SHORT continuation that addresses the tool action.
+ * Uses a MINIMAL system prompt to avoid the LLM regenerating a full character response.
+ * The character's base prompt is NOT included — only the action context.
  */
-export function buildFollowUpPrompt(basePrompt: string, toolContext: string): string {
-  if (!toolContext) return basePrompt;
-
-  const followUpBlock = `\n\n[FOLLOW-UP ACTION]\nWhile you were speaking, your mind took the following action(s):\n${toolContext}\n\nYou already gave an initial response (shown in conversation history). Now produce a SHORT follow-up (1-2 sentences max) that naturally addresses what this action means for the player. For example, if you requested credentials, tell the player you need to see their ID. If you called guards, inform them. Do NOT repeat your previous response. Just address the new action.`;
-
-  return basePrompt + followUpBlock;
+export function buildFollowUpPrompt(_basePrompt: string, toolContext: string, npcName?: string): string {
+  return `You are ${npcName || 'an NPC'} in a conversation. You just finished saying something (your last message in history). Your mind then took this action:\n${toolContext}\n\nProduce ONLY a brief follow-up (1-2 sentences) addressing what this action means. For example:\n- If you requested credentials: "Before we go further, I'll need to see your identification."\n- If you called guards: "I've notified security about this."\n- If you filed a report: "I've made a note of this in our records."\n\nDo NOT repeat or rephrase your previous response. ONLY address the new action. Keep it short and natural.`;
 }

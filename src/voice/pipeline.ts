@@ -931,13 +931,14 @@ export class VoicePipeline {
         // MCP tool results -> follow-up speech NOW
         if (mcpResults.length > 0) {
           const mcpContext = mcpResults.join('\n');
-          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext);
+          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext, context.definition.name);
 
-          // Build updated history including the primary response
+          // Build updated history: primary response + synthetic user prompt for continuation
           const updatedHistory = [...llmMessages];
           if (fullResponse.trim()) {
             updatedHistory.push({ role: 'model' as const, content: fullResponse });
           }
+          updatedHistory.push({ role: 'user' as const, content: '[System: You just took an action. Briefly address it.]' });
 
           let followUpResponse = '';
           for await (const chunk of this.llmProvider.streamChat({
