@@ -36,7 +36,10 @@
       "Bash(done)",
       "Bash(bun remove @elevenlabs/elevenlabs-js elevenlabs pino-pretty)",
       "Bash(bun run tsc --noEmit)",
-      "Bash(xargs grep -l \"exit_convo\\\\|exit_conversation\\\\|refuse_service\")"
+      "Bash(xargs grep -l \"exit_convo\\\\|exit_conversation\\\\|refuse_service\")",
+      "Bash(grep -l \"landing\\\\|hero\\\\|animation\\\\|@keyframes\" /e/Evolve-NPC/web/css/*.css)",
+      "Bash(grep -l \"signin\\\\|login\\\\|auth\" /e/Evolve-NPC/web/js/*.js)",
+      "Bash(xargs grep -l \"animation\\\\|keyframe\")"
     ]
   }
 }

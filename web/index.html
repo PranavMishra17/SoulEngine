@@ -141,7 +141,6 @@
         <div class="hero-content">
           <div class="hero-badge">
             <span class="badge badge-accent">Open Source</span>
-            <span class="badge badge-outline">v2.0</span>
           </div>
           <h1 class="hero-title">
             NPCs with <span class="highlight highlight-core">memory</span>,
@@ -152,7 +151,7 @@
             Stateless NPC intelligence with layered memory cycles, personality evolution,
             multi-modal voice interaction, and autonomous decision-making.
           </p>
-          <div class="hero-actions">
+          <div class="hero-actions" id="hero-actions-auth" style="display: none;">
             <button class="btn btn-primary btn-lg" id="btn-create-project">
               <span class="icon">+</span>
               Create Project
@@ -160,6 +159,16 @@
             <button class="btn btn-outline btn-lg" id="btn-view-projects">
               <span class="icon">&#9643;</span>
               View Projects
+            </button>
+          </div>
+          <div class="hero-actions" id="hero-actions-unauth">
+            <button class="btn btn-primary btn-lg" id="btn-hero-sign-in">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;margin-right:8px;">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                <polyline points="10 17 15 12 10 7"></polyline>
+                <line x1="15" y1="12" x2="3" y2="12"></line>
+              </svg>
+              Sign In
             </button>
           </div>
         </div>

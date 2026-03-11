@@ -6,6 +6,7 @@
 import { BrainVisualization } from '../components/BrainVisualization.js';
 import { renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
+import { isAuthenticated, signInWithGoogle } from '../auth.js';
 
 let brainViz = null;
 
@@ -135,9 +136,22 @@ function initPillarDetails() {
 }
 
 function initHeroButtons() {
+  const authActions = document.getElementById('hero-actions-auth');
+  const unauthActions = document.getElementById('hero-actions-unauth');
+
+  // Show the correct hero actions based on auth state
+  if (isAuthenticated()) {
+    if (authActions) authActions.style.display = '';
+    if (unauthActions) unauthActions.style.display = 'none';
+  } else {
+    if (authActions) authActions.style.display = 'none';
+    if (unauthActions) unauthActions.style.display = '';
+  }
+
   const btnCreate = document.getElementById('btn-create-project');
   const btnView = document.getElementById('btn-view-projects');
   const btnCta = document.getElementById('btn-cta-create');
+  const btnHeroSignIn = document.getElementById('btn-hero-sign-in');
 
   if (btnCreate) {
     btnCreate.addEventListener('click', () => router.navigate('/projects/new'));
@@ -149,6 +163,24 @@ function initHeroButtons() {
 
   if (btnCta) {
     btnCta.addEventListener('click', () => router.navigate('/projects/new'));
+  }
+
+  if (btnHeroSignIn) {
+    btnHeroSignIn.addEventListener('click', async () => {
+      btnHeroSignIn.disabled = true;
+      btnHeroSignIn.textContent = 'Signing in...';
+      const { error } = await signInWithGoogle();
+      if (error) {
+        btnHeroSignIn.disabled = false;
+        btnHeroSignIn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;margin-right:8px;">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+            <polyline points="10 17 15 12 10 7"></polyline>
+            <line x1="15" y1="12" x2="3" y2="12"></line>
+          </svg>
+          Sign In`;
+      }
+    });
   }
 }
 

@@ -115,12 +115,20 @@ function updateAuthUI(user) {
     return;
   }
 
+  // Also update hero actions on landing page if present
+  const heroAuth = document.getElementById('hero-actions-auth');
+  const heroUnauth = document.getElementById('hero-actions-unauth');
+
   if (user) {
     const displayInfo = getUserDisplayInfo();
-    
+
     // Hide sign in button, show account menu
     authButtons.style.display = 'none';
     accountMenu.style.display = 'flex';
+
+    // Update hero actions
+    if (heroAuth) heroAuth.style.display = '';
+    if (heroUnauth) heroUnauth.style.display = 'none';
 
     // Update account info
     if (accountName && displayInfo) {
@@ -144,6 +152,10 @@ function updateAuthUI(user) {
     // Show sign in button, hide account menu
     authButtons.style.display = 'flex';
     accountMenu.style.display = 'none';
+
+    // Update hero actions
+    if (heroAuth) heroAuth.style.display = 'none';
+    if (heroUnauth) heroUnauth.style.display = '';
   }
 }
 

@@ -121,9 +121,9 @@ Three tool types for different decision authorities:
 
 Define tools once in the web UI, assign permissions per NPC, implement handlers in your game client.
 
-### NPC Mind (Dual-Instance Architecture)
+### NPC Mind (Parallel Dual-Instance Architecture)
 
-Every conversation turn runs two parallel LLM instances:
+Every conversation turn runs two LLM instances **in parallel**:
 
 | Instance | Role | Tools | Context |
 |----------|------|-------|---------|
@@ -131,14 +131,15 @@ Every conversation turn runs two parallel LLM instances:
 | **Mind** | Parallel thinker with agent loop | All | Full tool access via recall + conversation tools |
 
 **How it works:**
-- Speaker generates the instant reply -- pure voice, no tool overhead.
-- Mind evaluates whether tools are needed and runs an agent loop if so.
-- When Mind retrieves useful results (e.g., recalled knowledge or NPC details), it generates a follow-up response injected into the conversation.
+- Speaker streams the instant reply immediately -- zero latency from Mind, pure voice, no tool overhead.
+- Mind runs in parallel, evaluating whether tools are needed and executing an agent loop if so.
+- **Recall tools** (recall_npc, recall_knowledge, recall_memories): results are deferred and injected into the Speaker's prompt on the **next turn**. No follow-up speech, no added latency.
+- **MCP/project tools** (request_credentials, lock_door, call_guards, etc.): trigger a short **follow-up speech** in the same turn addressing the action taken.
 - Always on. No feature flag -- every turn benefits from the split.
 
 **Tool ownership:**
-- **Recall Tools** (built-in): `recall_npc`, `recall_knowledge`, `recall_memories` -- Mind fetches context on demand instead of stuffing it into the prompt.
-- **Conversation Tools** (project-defined): `warn_player`, `call_police`, etc. -- Mind decides when to invoke them based on dialogue.
+- **Recall Tools** (built-in): `recall_npc`, `recall_knowledge`, `recall_memories` -- Mind fetches context on demand; results deferred to next turn's prompt.
+- **Conversation Tools** (project-defined): `warn_player`, `call_police`, etc. -- Mind decides when to invoke them; results produce a brief follow-up response.
 
 **Cost control:** Mind LLM provider and model are configurable per project (defaults to the project LLM). The slim Speaker context achieves 29-57% token savings vs the previous full-context approach.
 
