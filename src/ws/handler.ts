@@ -45,15 +45,11 @@ interface TextInputMessage {
   text: string;
 }
 
-interface InterruptMessage {
-  type: 'interrupt';
-}
-
 interface EndMessage {
   type: 'end';
 }
 
-type InboundMessage = InitMessage | AudioMessage | CommitMessage | TextMessage | TextInputMessage | InterruptMessage | EndMessage;
+type InboundMessage = InitMessage | AudioMessage | CommitMessage | TextMessage | TextInputMessage | EndMessage;
 
 /**
  * Outbound WebSocket message types
@@ -121,10 +117,6 @@ interface ExitConvoMessage {
   cooldown_seconds?: number;
 }
 
-interface InterruptedMessage {
-  type: 'interrupted';
-}
-
 type OutboundMessage =
   | ReadyMessage
   | TranscriptMessage
@@ -135,8 +127,7 @@ type OutboundMessage =
   | ErrorMessage
   | SyncMessage
   | ExitConvoMessage
-  | MindActivityMessage
-  | InterruptedMessage;
+  | MindActivityMessage;
 
 /**
  * Active voice connection state
@@ -329,17 +320,20 @@ async function handleInboundMessage(
       await handleTextMessage(connection, message);
       break;
 
-    case 'interrupt':
-      await handleInterruptMessage(connection);
-      break;
-
     case 'end':
       await handleEndMessage(connection, connection.llmProvider);
       break;
 
-    default:
-      logger.warn({ sessionId, messageType: (message as { type: string }).type }, 'Unknown message type');
-      sendMessage(ws, { type: 'error', code: 'UNKNOWN_MESSAGE', message: 'Unknown message type' });
+    default: {
+      const msgType = (message as { type: string }).type;
+      if (msgType === 'interrupt') {
+        // Barge-in removed — interrupt is a no-op
+        logger.debug({ sessionId: connection.sessionId }, 'Interrupt message received (no-op)');
+      } else {
+        logger.warn({ sessionId, messageType: msgType }, 'Unknown message type');
+        sendMessage(ws, { type: 'error', code: 'UNKNOWN_MESSAGE', message: 'Unknown message type' });
+      }
+    }
   }
 }
 
@@ -413,10 +407,6 @@ async function handleInitMessage(
           duration_ms: activity.duration_ms,
           completed: activity.completed,
         });
-      },
-      onInterrupted: () => {
-        logger.info({ sessionId }, 'Pipeline event: interrupted');
-        sendMessage(ws, { type: 'interrupted' });
       },
       onError: (code, message) => {
         logger.error({ sessionId, code, message }, 'Pipeline event: error');
@@ -609,26 +599,6 @@ async function handleTextMessage(connection: VoiceConnection, message: TextMessa
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ sessionId, error: errorMessage }, 'Failed to process text input');
     sendMessage(ws, { type: 'error', code: 'TEXT_ERROR', message: errorMessage });
-  }
-}
-
-/**
- * Handle interrupt message - stop current generation
- */
-async function handleInterruptMessage(connection: VoiceConnection): Promise<void> {
-  const { sessionId, pipeline, ws } = connection;
-
-  if (!pipeline) {
-    sendMessage(ws, { type: 'error', code: 'NOT_INITIALIZED', message: 'Pipeline not initialized' });
-    return;
-  }
-
-  try {
-    await pipeline.handleInterruption();
-    logger.debug({ sessionId }, 'Interruption handled via WebSocket');
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ sessionId, error: errorMessage }, 'Failed to handle interruption');
   }
 }
 

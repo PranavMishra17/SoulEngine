@@ -35,7 +35,8 @@
       "Bash(grep -r \"from [''\"\"]$pkg\\\\|from [''\"\"]$pkg\" /e/Evolve-NPC/src --include=\"*.ts\")",
       "Bash(done)",
       "Bash(bun remove @elevenlabs/elevenlabs-js elevenlabs pino-pretty)",
-      "Bash(bun run tsc --noEmit)"
+      "Bash(bun run tsc --noEmit)",
+      "Bash(xargs grep -l \"exit_convo\\\\|exit_conversation\\\\|refuse_service\")"
     ]
   }
 }

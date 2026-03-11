@@ -12,8 +12,9 @@ import {
   SessionError,
 } from '../session/manager.js';
 import { sessionStore } from '../session/store.js';
-import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext } from '../core/context.js';
+import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext, buildFollowUpPrompt } from '../core/context.js';
 import { runMindAgentLoop } from '../core/mind.js';
+import { isRecallTool } from '../core/tools.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, processExitResult } from '../mcp/exit-handler.js';
 import { SentenceDetector } from './sentence-detector.js';
@@ -49,8 +50,6 @@ export interface VoicePipelineEvents {
   onExitConvo: (reason: string, cooldownSeconds?: number) => void;
   /** Called when Mind completes with tool activity */
   onMindActivity: (activity: MindActivity) => void;
-  /** Called when the pipeline is successfully interrupted */
-  onInterrupted?: () => void;
 }
 
 /**
@@ -129,8 +128,8 @@ export class VoicePipeline {
   // 1.5s later via the aggregation timer → NPC responds a second time for the same utterance.
   private pendingSTTFinal: boolean = false;
 
-  // Track sentences sent to TTS for context truncation on interruption
-  private spokenSentences: string[] = [];
+  // Deferred mind context: recall tool results stored here for injection into NEXT turn's prompt
+  private deferredMindContext: string = '';
 
   constructor(config: VoicePipelineConfig) {
     this.sessionId = config.sessionId;
@@ -374,60 +373,10 @@ export class VoicePipeline {
   }
 
   /**
-   * Handle interruption - stop current generation
+   * Handle interruption - no-op (barge-in removed; VAD is paused during NPC speech)
    */
   async handleInterruption(): Promise<void> {
-    logger.info({ sessionId: this.sessionId }, 'Handling interruption');
-
-    // Clear transcript aggregator to prevent processing partial speech
-    if (this.transcriptAggregator.timer) {
-      clearTimeout(this.transcriptAggregator.timer);
-    }
-    this.transcriptAggregator.text = '';
-    this.transcriptAggregator.timer = null;
-
-    // Clear accumulated transcript and STT segments so post-interrupt speech starts fresh
-    this.accumulatedTranscript = '';
-    this.pendingSTTFinal = false;
-    if (this.sttSession?.clearAccumulator) {
-      this.sttSession.clearAccumulator();
-    }
-
-    if (this.turnState?.isProcessing) {
-      // Abort LLM generation
-      this.turnState.abortController.abort();
-
-      // Abort TTS
-      if (this.ttsSession) {
-        this.ttsSession.abort();
-      }
-
-      // Clear sentence detector buffer
-      this.sentenceDetector.clear();
-
-      // Context truncation: replace last assistant message with what was actually spoken
-      if (this.spokenSentences.length > 0) {
-        const spokenText = this.spokenSentences.join(' ');
-        const storedSession = sessionStore.get(this.sessionId);
-        if (storedSession) {
-          const history = storedSession.state.conversation_history;
-          const lastMsg = history[history.length - 1];
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content = spokenText + ' [interrupted]';
-          }
-        }
-      }
-      this.spokenSentences = [];
-
-      logger.debug({ sessionId: this.sessionId }, 'Interruption handled');
-    }
-
-    // Reset transcript processing state for clean next turn
-    this.isProcessingTranscript = false;
-    this.pendingTranscript = null;
-
-    // Notify client that interruption is complete
-    this.events.onInterrupted?.();
+    logger.debug({ sessionId: this.sessionId }, 'handleInterruption called (no-op — barge-in removed)');
   }
 
   /**
@@ -438,12 +387,8 @@ export class VoicePipeline {
 
     this.isActive = false;
 
-    // Clear aggregator timer
-    if (this.transcriptAggregator.timer) {
-      clearTimeout(this.transcriptAggregator.timer);
-      this.transcriptAggregator.timer = null;
-    }
-    this.transcriptAggregator.text = '';
+    // Clean up transcript state
+    this.resetTranscriptState();
 
     // Abort any ongoing generation
     if (this.turnState?.isProcessing) {
@@ -656,6 +601,8 @@ export class VoicePipeline {
         this.events.onError('PROCESSING_ERROR', message);
       })
       .finally(() => {
+        // Reset all transcript state so next utterance starts clean
+        this.resetTranscriptState();
         this.isProcessingTranscript = false;
 
         // Process queued transcript if any
@@ -665,6 +612,25 @@ export class VoicePipeline {
           this.processTranscriptWithLock(pending);
         }
       });
+  }
+
+  /**
+   * Reset all transcript accumulation state for a clean next utterance.
+   * Called after processTurn completes and on pipeline end.
+   */
+  private resetTranscriptState(): void {
+    this.accumulatedTranscript = '';
+    if (this.transcriptAggregator.timer) {
+      clearTimeout(this.transcriptAggregator.timer);
+    }
+    this.transcriptAggregator.text = '';
+    this.transcriptAggregator.timer = null;
+    this.pendingSTTFinal = false;
+    this.lastProcessedHash = '';
+    if (this.sttSession?.clearAccumulator) {
+      this.sttSession.clearAccumulator();
+    }
+    logger.debug({ sessionId: this.sessionId }, 'Transcript state reset');
   }
 
   /**
@@ -699,8 +665,15 @@ export class VoicePipeline {
       return;
     }
 
-    // Get session context for LLM
-    const context = await getSessionContext(this.sessionId);
+    // Get session context for LLM (retry once on transient fetch failure)
+    let context: SessionContext;
+    try {
+      context = await getSessionContext(this.sessionId);
+    } catch (firstErr) {
+      logger.warn({ sessionId: this.sessionId, error: firstErr instanceof Error ? firstErr.message : 'Unknown' }, 'getSessionContext failed, retrying in 500ms');
+      await new Promise(r => setTimeout(r, 500));
+      context = await getSessionContext(this.sessionId);
+    }
 
     // Add user message to session history
     const userMessage: Message = { role: 'user', content: securityContext.sanitized ? text : text };
@@ -756,7 +729,12 @@ export class VoicePipeline {
   }
 
   /**
-   * Process an NPC turn - sequential Mind (tools) then Speaker (voice), unified response
+   * Process an NPC turn — parallel Mind + Speaker.
+   *
+   * Speaker streams immediately (zero wait). Mind runs in parallel.
+   * - Recall tools (recall_npc / recall_knowledge / recall_memories): results deferred to NEXT turn.
+   * - MCP/project tools (request_credentials, lock_door, etc.): trigger a follow-up speech.
+   * - exit_convo: ends the session after Speaker finishes (or immediately if moderation forced it).
    */
   private async processTurn(
     _userInput: string,
@@ -787,9 +765,17 @@ export class VoicePipeline {
       const history = stored?.state.conversation_history ?? [];
       const llmMessages = assembleConversationHistory(history);
 
-      // --- SEQUENTIAL: Mind first, then Speaker ---
+      // --- PARALLEL: Speaker starts immediately, Mind runs alongside ---
 
-      // Step 1: Run Mind (tighter timeout for voice — user waits for first audio)
+      // Augment Speaker prompt with deferred mind context from previous turn (if any)
+      let speakerPrompt = systemPrompt;
+      if (this.deferredMindContext) {
+        speakerPrompt = augmentPromptWithMindContext(systemPrompt, this.deferredMindContext);
+        logger.info({ sessionId: this.sessionId, contextLength: this.deferredMindContext.length }, 'Injected deferred mind context from previous turn');
+        this.deferredMindContext = '';
+      }
+
+      // Start Mind in background (does not block Speaker)
       const mindTimeoutMs = Math.min(
         context.project.settings.mind_timeout_ms ?? 15000,
         8000
@@ -797,30 +783,79 @@ export class VoicePipeline {
       const mindAbortController = new AbortController();
       const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
       const projectTools = mcpToolRegistry.getProjectTools(context.project.id);
-      let mindResult: MindResult | null = null;
 
-      try {
-        mindResult = await runMindAgentLoop(
-          context.definition,
-          context.instance,
-          _userInput,
-          llmMessages,
-          this.mindProvider,
-          context.project.id,
-          context.knowledgeBase,
-          mcpToolRegistry,
-          securityContext,
-          projectTools,
-          mindAbortController.signal,
-        );
-      } catch (err) {
+      const mindPromise = runMindAgentLoop(
+        context.definition,
+        context.instance,
+        _userInput,
+        llmMessages,
+        this.mindProvider,
+        context.project.id,
+        context.knowledgeBase,
+        mcpToolRegistry,
+        securityContext,
+        projectTools,
+        mindAbortController.signal,
+      ).catch((err) => {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         logger.error({ sessionId: this.sessionId, error: msg }, 'Mind agent loop failed in voice pipeline');
-      } finally {
+        return null as MindResult | null;
+      }).finally(() => {
         clearTimeout(mindTimeout);
+      });
+
+      // Stream Speaker immediately (no waiting for Mind)
+      let fullResponse = '';
+      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+
+      for await (const chunk of this.llmProvider.streamChat({
+        systemPrompt: speakerPrompt,
+        messages: llmMessages,
+        signal: this.turnState!.abortController.signal,
+      })) {
+        if (this.turnState!.abortController.signal.aborted) {
+          logger.debug({ sessionId: this.sessionId }, 'Speaker LLM stream aborted');
+          break;
+        }
+
+        if (chunk.text) {
+          fullResponse += chunk.text;
+          this.events.onTextChunk(chunk.text);
+
+          if (this.mode.output === 'voice') {
+            const sentences = this.sentenceDetector.addChunk(chunk.text);
+            for (const sentence of sentences) {
+              await this.synthesizeSentence(sentence);
+            }
+          }
+        }
+
+        if (chunk.done && chunk.usage) {
+          providerUsage = chunk.usage;
+        }
       }
 
-      // Step 2: Emit Mind activity (tool call chips for UI, before Speaker starts)
+      // Flush remaining Speaker text to TTS
+      if (this.mode.output === 'voice') {
+        const remaining = this.sentenceDetector.flush();
+        if (remaining) {
+          await this.synthesizeSentence(remaining);
+        }
+        if (this.ttsSession) {
+          await this.ttsSession.flush();
+        }
+      }
+
+      // Store primary assistant message
+      if (fullResponse.trim().length > 0) {
+        const assistantMessage: Message = { role: 'assistant', content: fullResponse };
+        addMessageToSession(this.sessionId, assistantMessage);
+      }
+
+      // Await Mind result (likely already done by now)
+      const mindResult = await mindPromise;
+
+      // Emit Mind activity chips to UI
       if (mindResult && mindResult.tools_called.length > 0) {
         this.events.onMindActivity({
           tools_called: mindResult.tools_called.map(tc => ({
@@ -833,7 +868,7 @@ export class VoicePipeline {
         });
       }
 
-      // Step 3: Handle exit_convo before Speaker (no point generating speech if exiting)
+      // Handle exit_convo
       if (mindResult?.exit_convo_used) {
         if (this.turnState) {
           this.turnState.exitConvoUsed = true;
@@ -862,68 +897,92 @@ export class VoicePipeline {
 
         this.isActive = false;
         this.events.onExitConvo(exitResult.reason, exitResult.cooldownSeconds);
+        this.events.onGenerationEnd();
         return;
       }
 
-      // Step 4: Augment Speaker prompt with Mind context
-      let speakerPrompt = systemPrompt;
-      if (mindResult?.tool_context) {
-        speakerPrompt = augmentPromptWithMindContext(systemPrompt, mindResult.tool_context);
-      }
+      // Separate recall tools vs MCP/project tools
+      if (mindResult && mindResult.tools_called.length > 0) {
+        const recallResults: string[] = [];
+        const mcpResults: string[] = [];
 
-      // Step 5: Stream Speaker with augmented prompt + TTS
-      this.spokenSentences = [];
-      let fullResponse = '';
-      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+        for (const tr of mindResult.tools_called) {
+          if (tr.status === 'error') continue;
 
-      for await (const chunk of this.llmProvider.streamChat({
-        systemPrompt: speakerPrompt,
-        messages: llmMessages,
-        signal: this.turnState!.abortController.signal,
-      })) {
-        if (this.turnState!.abortController.signal.aborted) {
-          logger.debug({ sessionId: this.sessionId }, 'Speaker LLM stream aborted');
-          break;
-        }
+          const argsStr = Object.entries(tr.arguments)
+            .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+            .join(', ');
 
-        if (chunk.text) {
-          fullResponse += chunk.text;
-          this.events.onTextChunk(chunk.text);
-
-          if (this.mode.output === 'voice') {
-            const sentences = this.sentenceDetector.addChunk(chunk.text);
-            for (const sentence of sentences) {
-              this.spokenSentences.push(sentence);
-              await this.synthesizeSentence(sentence);
+          if (isRecallTool(tr.tool_name)) {
+            if (tr.result_content) {
+              recallResults.push(`- Retrieved (${tr.tool_name}): ${tr.result_content}`);
             }
+          } else {
+            mcpResults.push(`- Action taken (${tr.tool_name}): ${tr.result_content || 'executed successfully'}. Params: ${argsStr}`);
           }
         }
 
-        if (chunk.done && chunk.usage) {
-          providerUsage = chunk.usage;
+        // Recall results -> defer to next turn's speaker prompt
+        if (recallResults.length > 0) {
+          this.deferredMindContext = recallResults.join('\n');
+          logger.info({ sessionId: this.sessionId, recallCount: recallResults.length }, 'Recall results deferred to next turn');
+        }
+
+        // MCP tool results -> follow-up speech NOW
+        if (mcpResults.length > 0) {
+          const mcpContext = mcpResults.join('\n');
+          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext);
+
+          // Build updated history including the primary response
+          const updatedHistory = [...llmMessages];
+          if (fullResponse.trim()) {
+            updatedHistory.push({ role: 'model' as const, content: fullResponse });
+          }
+
+          let followUpResponse = '';
+          for await (const chunk of this.llmProvider.streamChat({
+            systemPrompt: followUpPrompt,
+            messages: updatedHistory,
+            signal: this.turnState!.abortController.signal,
+          })) {
+            if (this.turnState!.abortController.signal.aborted) break;
+
+            if (chunk.text) {
+              followUpResponse += chunk.text;
+              this.events.onTextChunk(chunk.text);
+
+              if (this.mode.output === 'voice') {
+                const sentences = this.sentenceDetector.addChunk(chunk.text);
+                for (const sentence of sentences) {
+                  await this.synthesizeSentence(sentence);
+                }
+              }
+            }
+          }
+
+          // Flush follow-up TTS
+          if (this.mode.output === 'voice') {
+            const remaining = this.sentenceDetector.flush();
+            if (remaining) {
+              await this.synthesizeSentence(remaining);
+            }
+            if (this.ttsSession) {
+              await this.ttsSession.flush();
+            }
+          }
+
+          // Store follow-up as part of conversation
+          if (followUpResponse.trim().length > 0) {
+            const followUpMessage: Message = { role: 'assistant', content: followUpResponse };
+            addMessageToSession(this.sessionId, followUpMessage);
+          }
+
+          logger.info({ sessionId: this.sessionId, mcpToolCount: mcpResults.length }, 'MCP follow-up speech completed');
         }
       }
 
-      // Flush remaining Speaker text to TTS
-      if (this.mode.output === 'voice') {
-        const remaining = this.sentenceDetector.flush();
-        if (remaining) {
-          this.spokenSentences.push(remaining);
-          await this.synthesizeSentence(remaining);
-        }
-        if (this.ttsSession) {
-          await this.ttsSession.flush();
-        }
-      }
-
-      // Step 6: Single generation_end (no phases)
+      // Generation complete
       this.events.onGenerationEnd();
-
-      // Step 7: Store single unified assistant message
-      if (fullResponse.trim().length > 0) {
-        const assistantMessage: Message = { role: 'assistant', content: fullResponse };
-        addMessageToSession(this.sessionId, assistantMessage);
-      }
 
       // Track token usage
       try {

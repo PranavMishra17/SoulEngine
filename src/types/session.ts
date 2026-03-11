@@ -38,6 +38,8 @@ export interface SessionState {
   mode: ConversationMode;
   /** Accumulated token/char usage for this session */
   token_usage: SessionTokenUsage;
+  /** Mind recall results deferred for injection into next turn's speaker prompt */
+  deferred_mind_context?: string;
 }
 
 export interface SessionInitRequest {

@@ -62,8 +62,6 @@ const vadState = {
 };
 
 let isNPCSpeaking = false;
-const BARGE_IN_THRESHOLD_MS = 1000;
-let bargeInTimer = null;
 
 // Mood presets (VAD values: valence, arousal, dominance)
 const MOOD_PRESETS = {
@@ -877,6 +875,12 @@ async function connectVoice() {
         updatePipelineStep('stt', isFinal ? 'complete' : 'active');
 
         if (isFinal && text.trim()) {
+          // Discard transcripts that arrive while NPC is speaking (stale audio from before gate)
+          if (isNPCSpeaking) {
+            console.log('[Transcript] Discarding final during NPC speech:', text.trim().substring(0, 40));
+            removeInterimTranscript();
+            return;
+          }
           const trimmed = text.trim();
           // Dedup: skip if already accumulated (server dedup is primary, this is safety net)
           if (!voiceUserTranscript.endsWith(trimmed)) {
@@ -933,6 +937,15 @@ async function connectVoice() {
         console.error('[Playground] Voice error:', code, message);
         toast.error('Voice Error', message);
         addSecurityLog('error', `${code}: ${message}`);
+        // Safety flush: show any accumulated content in chat before error
+        if (voiceUserTranscript && currentConversationMode.input === 'voice') {
+          addChatMessage('user', voiceUserTranscript);
+          voiceUserTranscript = '';
+        }
+        if (responseBuffer) {
+          addChatMessage('assistant', responseBuffer);
+          responseBuffer = '';
+        }
         updateVoiceStatus('Error');
       })
       .on('close', () => {
@@ -940,12 +953,6 @@ async function connectVoice() {
         updateVoiceStatus('Disconnected');
         voiceClient = null;
       })
-      .on('interrupted', () => {
-        console.log('[Playground] Server acknowledged interruption');
-        responseBuffer = '';
-        voiceUserTranscript = '';
-        updateVoiceStatus('Listening...');
-      });
 
     console.log('[Playground] Calling voiceClient.connect() with mode...');
     await voiceClient.connect(currentConversationMode);
@@ -1017,21 +1024,14 @@ async function startLiveVoice() {
         console.log('[VAD] Speech started (Silero)');
         vadState.isSpeaking = true;
         updateVadIndicator(true);
+
+        // Ignore speech events during NPC playback (no audio will be streamed)
+        if (isNPCSpeaking) return;
+
         updatePipelineStep('stt', 'active');
         audioChunkCount = 0;
         // Reset accumulator for new utterance
         voiceUserTranscript = '';
-
-        // Barge-in detection: if NPC is speaking, start timer
-        if (isNPCSpeaking && !bargeInTimer) {
-          bargeInTimer = setTimeout(() => {
-            bargeInTimer = null;
-            if (isNPCSpeaking && vadState.isSpeaking) {
-              console.log('[Barge-In] Sustained user speech detected during NPC playback');
-              triggerBargeIn();
-            }
-          }, BARGE_IN_THRESHOLD_MS);
-        }
       },
 
       // Called when speech ends - commit for STT processing
@@ -1040,9 +1040,10 @@ async function startLiveVoice() {
         vadState.isSpeaking = false;
         updateVadIndicator(false);
 
-        if (bargeInTimer) {
-          clearTimeout(bargeInTimer);
-          bargeInTimer = null;
+        // Discard speech that happened while NPC was speaking — no audio was streamed
+        if (isNPCSpeaking) {
+          console.log('[VAD] Speech ended during NPC playback — discarding (no audio was sent)');
+          return;
         }
 
         // Check if voiceClient still exists (WebSocket may have closed)
@@ -1064,6 +1065,9 @@ async function startLiveVoice() {
         if (frame) {
           updateVisualizer(frame);
         }
+
+        // Don't stream audio to STT while NPC is speaking (no barge-in)
+        if (isNPCSpeaking) return;
 
         // Stream audio while speaking (for real-time STT)
         if (vadState.isSpeaking && frame) {
@@ -1154,32 +1158,6 @@ function handleVoiceInterrupt() {
     voiceClient.interrupt();
     stopAudioPlayback(); // Stop any audio currently playing
     toast.info('Interrupted', 'NPC speech stopped.');
-  }
-}
-
-/**
- * Triggered automatically by VAD barge-in detection
- */
-function triggerBargeIn() {
-  console.log('[Playground] Triggering barge-in interruption');
-  isNPCSpeaking = false;
-  stopAudioPlayback();
-
-  // Clear transcript/response state so next turn starts fresh
-  voiceUserTranscript = '';
-  responseBuffer = '';
-
-  if (voiceClient) {
-    voiceClient.interrupt();
-  }
-
-  updateVoiceStatus('Interrupted...');
-
-  // Brief visual cue on the VAD indicator
-  const vadIndicator = document.getElementById('vad-indicator');
-  if (vadIndicator) {
-    vadIndicator.classList.add('interrupted');
-    setTimeout(() => vadIndicator.classList.remove('interrupted'), 600);
   }
 }
 

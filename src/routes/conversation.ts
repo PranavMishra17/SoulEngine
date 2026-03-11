@@ -5,8 +5,9 @@ import { getSession, getSessionContext, addMessageToSession, updateSessionInstan
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
-import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext } from '../core/context.js';
+import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext, buildFollowUpPrompt } from '../core/context.js';
 import { runMindAgentLoop } from '../core/mind.js';
+import { isRecallTool } from '../core/tools.js';
 import { blendMoods } from '../core/personality.js';
 import type { LLMProvider, LLMMessage, LLMProviderType } from '../providers/llm/interface.js';
 import { createLlmProvider, getDefaultModel, getDefaultLlmProviderType, isLlmProviderSupported } from '../providers/llm/factory.js';
@@ -187,38 +188,69 @@ export function createConversationRoutes(
         ? createLlmProvider({ provider: mindProviderType as LLMProviderType, apiKey: mindApiKey, model: mindModelId })
         : activeProvider;  // fall back to same provider if no separate key
 
-      // 11. Sequential Mind -> Speaker execution
+      // 11. Parallel Mind + Speaker execution
       const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 15000;
       const llmMessages: LLMMessage[] = conversationHistory;
       const projectTools = toolRegistry.getProjectTools(state.project_id);
 
-      // Step 1: Run Mind first (with timeout)
-      const mindAbortController = new AbortController();
-      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
-      let mindResult: MindResult | null = null;
-
-      try {
-        mindResult = await runMindAgentLoop(
-          definition,
-          instance,
-          playerInput,
-          conversationHistory,
-          mindProvider,
-          state.project_id,
-          sessionContext.knowledgeBase,
-          toolRegistry,
-          securityContext,
-          projectTools,
-          mindAbortController.signal,
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
-      } finally {
-        clearTimeout(mindTimeout);
+      // Augment Speaker prompt with deferred mind context from previous turn (if any)
+      let speakerPrompt = systemPrompt;
+      if (state.deferred_mind_context) {
+        speakerPrompt = augmentPromptWithMindContext(systemPrompt, state.deferred_mind_context);
+        logger.info({ sessionId, contextLength: state.deferred_mind_context.length }, 'Injected deferred mind context from previous turn');
+        state.deferred_mind_context = undefined;
       }
 
-      // Step 2: Handle exit_convo before Speaker (no point generating speech if exiting)
+      // Start Mind in background (does not block Speaker)
+      const mindAbortController = new AbortController();
+      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+
+      const mindPromise = runMindAgentLoop(
+        definition,
+        instance,
+        playerInput,
+        conversationHistory,
+        mindProvider,
+        state.project_id,
+        sessionContext.knowledgeBase,
+        toolRegistry,
+        securityContext,
+        projectTools,
+        mindAbortController.signal,
+      ).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
+        return null as MindResult | null;
+      }).finally(() => {
+        clearTimeout(mindTimeout);
+      });
+
+      // Speaker streams immediately (no waiting for Mind)
+      let responseText = '';
+      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+
+      for await (const chunk of activeProvider.streamChat({
+        systemPrompt: speakerPrompt,
+        messages: llmMessages,
+      })) {
+        if (chunk.text) responseText += chunk.text;
+        if (chunk.done && chunk.usage) providerUsage = chunk.usage;
+      }
+
+      // Strip narration
+      responseText = stripNarration(responseText);
+
+      // Store primary assistant message
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: responseText,
+      };
+      addMessageToSession(sessionId, assistantMessage);
+
+      // Await Mind result (likely already done)
+      const mindResult = await mindPromise;
+
+      // Process Mind results
       const toolCalls: ToolCall[] = mindResult?.raw_tool_calls ?? [];
       const toolResults: ToolResult[] = [];
       let exitConvoResult: ExitConvoResult | undefined;
@@ -241,26 +273,59 @@ export function createConversationRoutes(
         );
       }
 
-      // Step 3: Augment Speaker prompt with Mind context
-      let speakerPrompt = systemPrompt;
-      if (mindResult?.tool_context) {
-        speakerPrompt = augmentPromptWithMindContext(systemPrompt, mindResult.tool_context);
+      // Separate recall vs MCP tool results
+      if (mindResult && mindResult.tools_called.length > 0) {
+        const recallResults: string[] = [];
+        const mcpResults: string[] = [];
+
+        for (const tr of mindResult.tools_called) {
+          if (tr.status === 'error') continue;
+
+          const argsStr = Object.entries(tr.arguments)
+            .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+            .join(', ');
+
+          if (isRecallTool(tr.tool_name)) {
+            if (tr.result_content) {
+              recallResults.push(`- Retrieved (${tr.tool_name}): ${tr.result_content}`);
+            }
+          } else {
+            mcpResults.push(`- Action taken (${tr.tool_name}): ${tr.result_content || 'executed successfully'}. Params: ${argsStr}`);
+          }
+        }
+
+        // Recall results -> defer to next turn
+        if (recallResults.length > 0) {
+          state.deferred_mind_context = recallResults.join('\n');
+          logger.info({ sessionId, recallCount: recallResults.length }, 'Recall results deferred to next turn');
+        }
+
+        // MCP tool results -> append follow-up to response
+        if (mcpResults.length > 0) {
+          const mcpContext = mcpResults.join('\n');
+          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext);
+
+          const updatedHistory: LLMMessage[] = [
+            ...llmMessages,
+            { role: 'model' as const, content: responseText },
+          ];
+
+          let followUpText = '';
+          for await (const chunk of activeProvider.streamChat({
+            systemPrompt: followUpPrompt,
+            messages: updatedHistory,
+          })) {
+            if (chunk.text) followUpText += chunk.text;
+          }
+
+          followUpText = stripNarration(followUpText);
+
+          if (followUpText.trim()) {
+            responseText += '\n\n' + followUpText;
+            addMessageToSession(sessionId, { role: 'assistant', content: followUpText });
+          }
+        }
       }
-
-      // Step 4: Run Speaker with augmented prompt
-      let responseText = '';
-      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
-
-      for await (const chunk of activeProvider.streamChat({
-        systemPrompt: speakerPrompt,
-        messages: llmMessages,
-      })) {
-        if (chunk.text) responseText += chunk.text;
-        if (chunk.done && chunk.usage) providerUsage = chunk.usage;
-      }
-
-      // Strip narration
-      responseText = stripNarration(responseText);
 
       // Track token usage
       try {
@@ -285,13 +350,6 @@ export function createConversationRoutes(
       } catch {
         // Never block the conversation for token tracking failures
       }
-
-      // Store single unified assistant message
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: responseText,
-      };
-      addMessageToSession(sessionId, assistantMessage);
 
       // Update mood based on conversation (subtle drift)
       const instance_updated = { ...instance };

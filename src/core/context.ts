@@ -725,7 +725,19 @@ export function checkContextBounds(
 export function augmentPromptWithMindContext(basePrompt: string, toolContext: string): string {
   if (!toolContext) return basePrompt;
 
-  const mindBlock = `\n\n[MIND CONTEXT]\nYour background cognitive process just completed. Here is what you learned and did:\n${toolContext}\n\nWeave this information naturally into your spoken response. For actions you took (non-recall), acknowledge them conversationally — tell the player what you are doing. For recalled information, use it to inform your response without explicitly citing sources.`;
+  const mindBlock = `\n\n[MIND CONTEXT]\nYour cognitive process completed these actions. You MUST reference and incorporate these results naturally in your response:\n${toolContext}\n\nDo not ignore these — they represent decisions and information your mind has already processed.`;
 
   return basePrompt + mindBlock;
+}
+
+/**
+ * Build a follow-up prompt for when MCP tools were called after the primary response.
+ * Instructs the Speaker to produce a SHORT continuation that addresses the tool action.
+ */
+export function buildFollowUpPrompt(basePrompt: string, toolContext: string): string {
+  if (!toolContext) return basePrompt;
+
+  const followUpBlock = `\n\n[FOLLOW-UP ACTION]\nWhile you were speaking, your mind took the following action(s):\n${toolContext}\n\nYou already gave an initial response (shown in conversation history). Now produce a SHORT follow-up (1-2 sentences max) that naturally addresses what this action means for the player. For example, if you requested credentials, tell the player you need to see their ID. If you called guards, inform them. Do NOT repeat your previous response. Just address the new action.`;
+
+  return basePrompt + followUpBlock;
 }
