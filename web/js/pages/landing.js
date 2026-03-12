@@ -12,7 +12,7 @@ let brainViz = null;
 
 export function initLandingPage() {
   renderTemplate('template-landing');
-  
+
   // Clear project-specific nav tabs when on landing page
   updateNav([]);
 
@@ -25,6 +25,7 @@ export function initLandingPage() {
       initSmoothScroll();
       initNavScrollEffect();
       initBewareTrigger();
+      initUnityCloud();
     }, 50);
   });
 }
@@ -104,7 +105,7 @@ function scrollToPillarDetail(pillarName) {
 function initPillarDetails() {
   const details = document.querySelectorAll('.pillar-detail');
   if (!details.length) return;
-  
+
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -115,18 +116,18 @@ function initPillarDetails() {
     threshold: 0.2,
     rootMargin: '0px 0px -50px 0px'
   });
-  
+
   details.forEach((detail, index) => {
     detail.style.transitionDelay = `${index * 0.1}s`;
     observer.observe(detail);
-    
+
     detail.addEventListener('mouseenter', () => {
       const pillar = detail.dataset.pillar;
       if (brainViz && pillar) {
         brainViz.setPillarColor(pillar);
       }
     });
-    
+
     detail.addEventListener('mouseleave', () => {
       if (brainViz) {
         brainViz.clearPillarColor();
@@ -189,7 +190,7 @@ function initSmoothScroll() {
     anchor.addEventListener('click', (e) => {
       const href = anchor.getAttribute('href');
       if (href === '#') return;
-      
+
       const target = document.querySelector(href);
       if (target) {
         e.preventDefault();
@@ -202,9 +203,9 @@ function initSmoothScroll() {
 function initNavScrollEffect() {
   const nav = document.getElementById('main-nav');
   if (!nav) return;
-  
+
   let ticking = false;
-  
+
   const handleScroll = () => {
     if (!ticking) {
       window.requestAnimationFrame(() => {
@@ -218,7 +219,7 @@ function initNavScrollEffect() {
       ticking = true;
     }
   };
-  
+
   window.addEventListener('scroll', handleScroll, { passive: true });
   handleScroll();
 }
@@ -237,6 +238,158 @@ function initBewareTrigger() {
       popup.classList.remove('open');
     }
   });
+}
+
+function initUnityCloud() {
+  const cloud = document.getElementById('unity-cloud');
+  const anchor = document.getElementById('unity-cloud-anchor');
+  const badge = document.getElementById('hero-badge-unity');
+  if (!cloud || !anchor) return;
+
+  let wobbleTimer = null;
+  let isPopped = false;
+
+  // --- Periodic wobble + ripple ---
+  function scheduleWobble() {
+    if (isPopped) return;
+    const delay = 4000 + Math.random() * 3000;
+    wobbleTimer = setTimeout(() => {
+      if (isPopped) return;
+      triggerWobble();
+      scheduleWobble();
+    }, delay);
+  }
+
+  function triggerWobble() {
+    cloud.classList.remove('wobble');
+    // Force reflow so re-adding the class restarts the animation
+    void cloud.offsetWidth;
+    cloud.classList.add('wobble');
+
+    // Ripple ring
+    const ripple = document.createElement('div');
+    ripple.className = 'unity-cloud-ripple';
+    cloud.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+  }
+
+  // Remove wobble class when animation ends to allow re-trigger
+  cloud.addEventListener('animationend', (e) => {
+    if (e.animationName === 'nudgeWobble') {
+      cloud.classList.remove('wobble');
+    }
+  });
+
+  // --- Click: pop + particle burst ---
+  cloud.addEventListener('click', (e) => {
+    if (isPopped) return;
+    isPopped = true;
+    if (wobbleTimer) clearTimeout(wobbleTimer);
+
+    const rect = cloud.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // Start pop animation on cloud
+    cloud.classList.add('popping');
+
+    // After pop scale completes, spawn particles and remove cloud
+    setTimeout(() => {
+      spawnParticles(cx, cy, rect.width);
+      anchor.style.display = 'none';
+
+      // Reveal the badge after a short delay
+      setTimeout(() => {
+        if (badge) {
+          badge.classList.add('visible');
+        }
+      }, 400);
+    }, 220);
+  });
+
+  scheduleWobble();
+}
+
+
+// --- Particle burst system ---
+function spawnParticles(cx, cy, cloudWidth) {
+  const container = document.createElement('div');
+  container.className = 'unity-cloud-particles';
+  document.body.appendChild(container);
+
+  const particleCount = 28;
+  const particles = [];
+
+  // Colors sampled from pillar palette + white
+  const colors = [
+    'rgba(122, 224, 196, 0.9)',   // teal (persona)
+    'rgba(196, 165, 245, 0.9)',   // purple (mcp)
+    'rgba(245, 194, 122, 0.85)',  // orange (daily)
+    'rgba(245, 226, 122, 0.8)',   // yellow (weekly)
+    'rgba(255, 255, 255, 0.7)',   // white
+    'rgba(245, 165, 184, 0.85)',  // pink (core)
+  ];
+
+  for (let i = 0; i < particleCount; i++) {
+    const el = document.createElement('div');
+    el.className = 'unity-particle';
+
+    const size = 4 + Math.random() * 8;
+    const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.6;
+    const speed = 80 + Math.random() * 160;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.background = color;
+    el.style.left = cx + 'px';
+    el.style.top = cy + 'px';
+    el.style.boxShadow = '0 0 ' + (size * 2) + 'px ' + color;
+
+    container.appendChild(el);
+
+    particles.push({
+      el,
+      x: cx,
+      y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40, // slight upward bias
+      gravity: 120 + Math.random() * 60,
+      drag: 0.96 + Math.random() * 0.03,
+      opacity: 1,
+      fadeRate: 0.9 + Math.random() * 0.8, // per-second opacity drain
+    });
+  }
+
+  const startTime = performance.now();
+  const duration = 900;
+
+  function tick(now) {
+    const elapsed = now - startTime;
+    if (elapsed > duration) {
+      container.remove();
+      return;
+    }
+
+    const dt = 1 / 60; // approximate fixed timestep
+
+    for (const p of particles) {
+      p.vy += p.gravity * dt;
+      p.vx *= p.drag;
+      p.vy *= p.drag;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.opacity -= p.fadeRate * dt;
+      if (p.opacity < 0) p.opacity = 0;
+
+      p.el.style.transform = `translate(${p.x - parseFloat(p.el.style.left)}px, ${p.y - parseFloat(p.el.style.top)}px)`;
+      p.el.style.opacity = p.opacity;
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
 }
 
 export default { init, cleanup };

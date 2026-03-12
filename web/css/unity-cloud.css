@@ -1,0 +1,335 @@
+/**
+ * SoulEngine - Unity Cloud Bubble
+ * Floating announcement with poke-to-pop interaction
+ */
+
+/* ========================================
+   Cloud Container & Shape
+   ======================================== */
+
+.unity-cloud-anchor {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  pointer-events: none;
+  animation: cloudEntry 0.8s ease-out both;
+}
+
+@media (max-width: 1200px) {
+  .unity-cloud-anchor {
+    top: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .unity-cloud-anchor {
+    position: relative;
+    top: auto;
+    right: auto;
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--space-4);
+    order: 0;
+  }
+}
+
+.unity-cloud {
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 16px 28px 16px 24px;
+  border-radius: 60px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 0 40px rgba(122, 224, 196, 0.08),
+    0 0 80px rgba(196, 165, 245, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: cloudFloat 4.5s ease-in-out infinite;
+  animation-delay: 1.2s;
+  transform-origin: center center;
+  user-select: none;
+  white-space: normal;
+  text-align: left;
+  max-width: 380px;
+  width: max-content;
+}
+
+.unity-cloud::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 62px;
+  background: linear-gradient(135deg,
+      rgba(122, 224, 196, 0.15) 0%,
+      rgba(196, 165, 245, 0.10) 50%,
+      rgba(245, 194, 122, 0.08) 100%);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.unity-cloud:hover::before {
+  opacity: 1;
+}
+
+.unity-cloud:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 0 50px rgba(122, 224, 196, 0.14),
+    0 0 100px rgba(196, 165, 245, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ========================================
+   Cloud Content
+   ======================================== */
+
+.unity-cloud-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.unity-cloud-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  opacity: 0.85;
+  filter: brightness(1.1);
+}
+
+.unity-cloud-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.unity-cloud-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(122, 224, 196, 0.8);
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.unity-cloud-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary, #f5f0eb);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+/* ========================================
+   Poke Hint (ghost cursor)
+   ======================================== */
+
+.unity-cloud-hint {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.03em;
+  animation: hintPulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.unity-cloud-hint svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.5;
+}
+
+/* ========================================
+   Nudge Wobble Animation
+   ======================================== */
+
+.unity-cloud.wobble {
+  animation: cloudFloat 4.5s ease-in-out infinite, nudgeWobble 0.5s ease-in-out;
+}
+
+/* Ripple ring on wobble */
+.unity-cloud-ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+  border-radius: 60px;
+  border: 1px solid rgba(122, 224, 196, 0.3);
+  pointer-events: none;
+  animation: rippleExpand 1s ease-out forwards;
+}
+
+/* ========================================
+   Particle Burst (on click)
+   ======================================== */
+
+.unity-cloud-particles {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9998;
+}
+
+.unity-particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* ========================================
+   Pop Animation (on click, before particles)
+   ======================================== */
+
+.unity-cloud.popping {
+  animation: cloudPop 0.25s ease-out forwards !important;
+  pointer-events: none;
+}
+
+/* ========================================
+   Post-Dissolve Badge
+   ======================================== */
+
+.hero-badge-unity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  background: rgba(122, 224, 196, 0.12);
+  color: rgba(122, 224, 196, 0.85);
+  border: 1px solid rgba(122, 224, 196, 0.15);
+  opacity: 0;
+  transform: translateY(8px) scale(0.92);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+
+.hero-badge-unity.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.hero-badge-unity svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+/* ========================================
+   Keyframes
+   ======================================== */
+
+@keyframes cloudEntry {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.85);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes cloudFloat {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes nudgeWobble {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  15% {
+    transform: translateY(-2px) rotate(-2.5deg);
+  }
+
+  30% {
+    transform: translateY(0) rotate(2deg);
+  }
+
+  50% {
+    transform: translateY(-1px) rotate(-1.5deg);
+  }
+
+  70% {
+    transform: translateY(0) rotate(1deg);
+  }
+
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes rippleExpand {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes cloudPop {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  40% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+
+@keyframes hintPulse {
+
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  40%,
+  60% {
+    opacity: 1;
+  }
+}

@@ -10,8 +10,8 @@
   <meta name="theme-color" content="#0d0d0d">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/jpeg" href="/img/icon.jpeg">
-  <link rel="apple-touch-icon" href="/img/icon.jpeg">
+  <link rel="icon" type="image/jpeg" href="/img/log.jpg">
+  <link rel="apple-touch-icon" href="/img/log.jpg">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="/css/pages.css">
   <link rel="stylesheet" href="/css/pages-app.css">
   <link rel="stylesheet" href="/css/conversation-modes.css">
+  <link rel="stylesheet" href="/css/unity-cloud.css">
 
   <!-- VAD Web -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
@@ -41,7 +42,7 @@
     <nav class="main-nav" id="main-nav">
       <div class="nav-brand">
         <a href="/" class="brand-link">
-          <img src="/img/icon.jpeg" alt="SoulEngine" class="brand-icon-img">
+          <img src="/img/logg.jpg" alt="SoulEngine" class="brand-icon-img">
           <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
         </a>
       </div>
@@ -138,9 +139,45 @@
           </div>
         </div>
 
+        <!-- Unity Cloud Bubble -->
+        <div class="unity-cloud-anchor" id="unity-cloud-anchor">
+          <div class="unity-cloud" id="unity-cloud" role="button" aria-label="Coming Soon to Unity - click to dismiss">
+            <div class="unity-cloud-inner">
+              <svg class="unity-cloud-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M57.81 104.09L33.17 75.49L57.81 46.93V66.67L45.33 75.49L57.81 84.35V104.09Z" fill="white"
+                  opacity="0.9" />
+                <path d="M70.19 104.09V84.35L82.67 75.49L70.19 66.67V46.93L94.83 75.49L70.19 104.09Z" fill="white"
+                  opacity="0.9" />
+                <path d="M64 23.91L104.09 46.93L94.83 52.27L64 34.55L33.17 52.27L23.91 46.93L64 23.91Z" fill="white"
+                  opacity="0.9" />
+              </svg>
+              <div class="unity-cloud-text">
+                <span class="unity-cloud-label">COMING SOON AS A UNITY ASSET</span>
+                <span class="unity-cloud-title">One prefab - Infinite Personalities - Your NPCs are about to wake up
+                </span>
+              </div>
+            </div>
+            <span class="unity-cloud-hint">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+              </svg>
+              tap
+            </span>
+          </div>
+        </div>
+
         <div class="hero-content">
           <div class="hero-badge">
             <span class="badge badge-accent">Open Source</span>
+            <button class="hero-badge-unity" id="hero-badge-unity" type="button">
+              <svg viewBox="0 0 128 128" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M57.81 104.09L33.17 75.49L57.81 46.93V66.67L45.33 75.49L57.81 84.35V104.09Z" />
+                <path d="M70.19 104.09V84.35L82.67 75.49L70.19 66.67V46.93L94.83 75.49L70.19 104.09Z" />
+                <path d="M64 23.91L104.09 46.93L94.83 52.27L64 34.55L33.17 52.27L23.91 46.93L64 23.91Z" />
+              </svg>
+              Coming Soon to Unity
+              <span class="badge-plus">+</span>
+            </button>
           </div>
           <h1 class="hero-title">
             NPCs with <span class="highlight highlight-core">memory</span>,
@@ -163,7 +200,8 @@
           </div>
           <div class="hero-actions" id="hero-actions-unauth">
             <button class="btn btn-primary btn-lg" id="btn-hero-sign-in">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;margin-right:8px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" style="width:20px;height:20px;margin-right:8px;">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
                 <polyline points="10 17 15 12 10 7"></polyline>
                 <line x1="15" y1="12" x2="3" y2="12"></line>
@@ -440,7 +478,7 @@
           <div class="footer-grid">
             <div class="footer-brand">
               <div class="footer-brand-header">
-                <img src="/img/icon.jpeg" alt="SoulEngine" class="brand-icon-img">
+                <img src="/img/logg.jpg" alt="SoulEngine" class="brand-icon-img">
                 <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
               </div>
               <p>NPCs with memory, motive, and agency. Stateless intelligence with layered psychological cycles.</p>
@@ -501,9 +539,41 @@
       <!-- Hidden beware trigger — half-circle on right edge -->
       <div class="beware-trigger" id="beware-trigger" aria-label="Secret message"></div>
       <div class="beware-popup" id="beware-popup">
-        <p class="beware-line">Hey friend...</p>
-        <p class="beware-line beware-line-bold">beware...</p>
-        <p class="beware-line beware-line-spaced">They listen.<br>They remember.<br>They act.</p>
+        <p class="beware-line">They listen</p>
+        <p class="beware-line">They remember</p>
+        <p class="beware-line">They act</p>
+      </div>
+
+      <!-- Unity Waitlist Modal -->
+      <div class="waitlist-overlay" id="waitlist-overlay">
+        <div class="waitlist-modal">
+          <button class="waitlist-close" id="waitlist-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+          <div class="waitlist-header">
+            <svg class="waitlist-unity-icon" viewBox="0 0 128 128" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M57.81 104.09L33.17 75.49L57.81 46.93V66.67L45.33 75.49L57.81 84.35V104.09Z" />
+              <path d="M70.19 104.09V84.35L82.67 75.49L70.19 66.67V46.93L94.83 75.49L70.19 104.09Z" />
+              <path d="M64 23.91L104.09 46.93L94.83 52.27L64 34.55L33.17 52.27L23.91 46.93L64 23.91Z" />
+            </svg>
+            <h2>Join the Waitlist</h2>
+          </div>
+          <p class="waitlist-desc">
+            Get notified when the SoulEngine Unity package is ready.
+            We will only send official Unity package updates — no marketing, no ads, ever.
+          </p>
+          <div class="waitlist-form" id="waitlist-form">
+            <label class="waitlist-label" for="waitlist-email">Email address</label>
+            <div class="waitlist-input-row">
+              <input type="email" id="waitlist-email" class="waitlist-input" placeholder="you@example.com" required>
+              <button type="button" class="btn btn-primary waitlist-submit" id="waitlist-submit">Join</button>
+            </div>
+          </div>
+          <div class="waitlist-result" id="waitlist-result" style="display:none;"></div>
+        </div>
       </div>
     </div>
   </template>
