@@ -215,6 +215,7 @@
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
   font-weight: var(--font-medium);
+  font-family: inherit;
   border-radius: var(--radius-full);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wider);
@@ -223,19 +224,197 @@
   border: 1px solid rgba(122, 224, 196, 0.15);
   opacity: 0;
   transform: translateY(8px) scale(0.92);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition: opacity 0.5s ease, transform 0.5s ease, background 0.2s ease, border-color 0.2s ease;
   pointer-events: none;
+  cursor: pointer;
+  line-height: 1;
 }
 
 .hero-badge-unity.visible {
   opacity: 1;
   transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.hero-badge-unity:hover {
+  background: rgba(122, 224, 196, 0.22);
+  border-color: rgba(122, 224, 196, 0.35);
+}
+
+.hero-badge-unity:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .hero-badge-unity svg {
   width: 14px;
   height: 14px;
   opacity: 0.7;
+}
+
+.badge-plus {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
+/* ========================================
+   Waitlist Modal
+   ======================================== */
+
+.waitlist-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.waitlist-overlay.open {
+  display: flex;
+}
+
+.waitlist-modal {
+  position: relative;
+  background: var(--color-surface, #1a1a1a);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl, 16px);
+  padding: 36px 32px 32px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(122, 224, 196, 0.06);
+  animation: fadeInUp 0.3s ease;
+}
+
+.waitlist-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.4));
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.waitlist-close:hover {
+  color: var(--color-text-primary, #f5f0eb);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.waitlist-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.waitlist-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.waitlist-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary, #f5f0eb);
+  margin: 0;
+}
+
+.waitlist-unity-icon {
+  width: 28px;
+  height: 28px;
+  color: rgba(122, 224, 196, 0.8);
+  flex-shrink: 0;
+}
+
+.waitlist-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.5));
+  margin: 0 0 20px;
+}
+
+.waitlist-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, rgba(255, 255, 255, 0.5));
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.waitlist-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.waitlist-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-primary, #f5f0eb);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.waitlist-input:focus {
+  border-color: rgba(122, 224, 196, 0.4);
+}
+
+.waitlist-input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.waitlist-submit {
+  white-space: nowrap;
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
+.waitlist-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.waitlist-result {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.waitlist-result.success {
+  background: rgba(122, 224, 196, 0.1);
+  border: 1px solid rgba(122, 224, 196, 0.2);
+  color: rgba(122, 224, 196, 0.9);
+}
+
+.waitlist-result.already {
+  background: rgba(245, 194, 122, 0.1);
+  border: 1px solid rgba(245, 194, 122, 0.2);
+  color: rgba(245, 194, 122, 0.9);
+}
+
+.waitlist-result.error {
+  background: rgba(245, 130, 130, 0.1);
+  border: 1px solid rgba(245, 130, 130, 0.2);
+  color: rgba(245, 130, 130, 0.9);
 }
 
 /* ========================================

@@ -6,7 +6,7 @@
 import { BrainVisualization } from '../components/BrainVisualization.js';
 import { renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
-import { isAuthenticated, signInWithGoogle } from '../auth.js';
+import { isAuthenticated, signInWithGoogle, getUserDisplayInfo } from '../auth.js';
 
 let brainViz = null;
 
@@ -240,6 +240,26 @@ function initBewareTrigger() {
   });
 }
 
+function openWaitlistModal() {
+  const overlay = document.getElementById('waitlist-overlay');
+  const emailInput = document.getElementById('waitlist-email');
+  const form = document.getElementById('waitlist-form');
+  const result = document.getElementById('waitlist-result');
+  if (!overlay) return;
+
+  // Pre-fill email if signed in
+  if (emailInput) {
+    const info = getUserDisplayInfo();
+    emailInput.value = info?.email || '';
+  }
+
+  // Reset state
+  if (form) form.style.display = '';
+  if (result) { result.style.display = 'none'; result.className = 'waitlist-result'; }
+
+  overlay.classList.add('open');
+}
+
 function initUnityCloud() {
   const cloud = document.getElementById('unity-cloud');
   const anchor = document.getElementById('unity-cloud-anchor');
@@ -262,26 +282,23 @@ function initUnityCloud() {
 
   function triggerWobble() {
     cloud.classList.remove('wobble');
-    // Force reflow so re-adding the class restarts the animation
     void cloud.offsetWidth;
     cloud.classList.add('wobble');
 
-    // Ripple ring
     const ripple = document.createElement('div');
     ripple.className = 'unity-cloud-ripple';
     cloud.appendChild(ripple);
     ripple.addEventListener('animationend', () => ripple.remove());
   }
 
-  // Remove wobble class when animation ends to allow re-trigger
   cloud.addEventListener('animationend', (e) => {
     if (e.animationName === 'nudgeWobble') {
       cloud.classList.remove('wobble');
     }
   });
 
-  // --- Click: pop + particle burst ---
-  cloud.addEventListener('click', (e) => {
+  // --- Click: pop + particle burst + open modal ---
+  cloud.addEventListener('click', () => {
     if (isPopped) return;
     isPopped = true;
     if (wobbleTimer) clearTimeout(wobbleTimer);
@@ -290,24 +307,108 @@ function initUnityCloud() {
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
 
-    // Start pop animation on cloud
     cloud.classList.add('popping');
 
-    // After pop scale completes, spawn particles and remove cloud
     setTimeout(() => {
       spawnParticles(cx, cy, rect.width);
       anchor.style.display = 'none';
 
-      // Reveal the badge after a short delay
       setTimeout(() => {
-        if (badge) {
-          badge.classList.add('visible');
-        }
+        if (badge) badge.classList.add('visible');
+        // Open waitlist modal after cloud pops
+        openWaitlistModal();
       }, 400);
     }, 220);
   });
 
+  // Badge button also opens modal
+  if (badge) {
+    badge.addEventListener('click', () => openWaitlistModal());
+  }
+
+  // --- Waitlist modal close + submit ---
+  const overlay = document.getElementById('waitlist-overlay');
+  const closeBtn = document.getElementById('waitlist-close');
+  const submitBtn = document.getElementById('waitlist-submit');
+  const emailInput = document.getElementById('waitlist-email');
+
+  if (closeBtn && overlay) {
+    closeBtn.addEventListener('click', () => overlay.classList.remove('open'));
+  }
+
+  // Close on overlay background click
+  if (overlay) {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  }
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay?.classList.contains('open')) {
+      overlay.classList.remove('open');
+    }
+  });
+
+  if (submitBtn && emailInput) {
+    submitBtn.addEventListener('click', () => submitWaitlist(emailInput, submitBtn));
+    emailInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitWaitlist(emailInput, submitBtn);
+    });
+  }
+
   scheduleWobble();
+}
+
+async function submitWaitlist(emailInput, submitBtn) {
+  const email = emailInput.value.trim();
+  if (!email || !email.includes('@')) {
+    emailInput.focus();
+    return;
+  }
+
+  const form = document.getElementById('waitlist-form');
+  const result = document.getElementById('waitlist-result');
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = '...';
+
+  try {
+    const res = await fetch('/api/waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json();
+
+    if (form) form.style.display = 'none';
+    if (result) {
+      result.style.display = 'block';
+      if (res.ok) {
+        if (data.already_registered) {
+          result.className = 'waitlist-result already';
+          result.textContent = 'This email is already on the waitlist. You will be notified when the Unity package is ready.';
+        } else {
+          result.className = 'waitlist-result success';
+          result.textContent = 'You are on the list. We will email you when the Unity package is ready.';
+        }
+      } else {
+        result.className = 'waitlist-result error';
+        result.textContent = data.error || 'Something went wrong. Please try again.';
+      }
+    }
+  } catch {
+    if (result) {
+      if (form) form.style.display = 'none';
+      result.style.display = 'block';
+      result.className = 'waitlist-result error';
+      result.textContent = 'Network error. Please try again.';
+    }
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Join';
+  }
 }
 
 

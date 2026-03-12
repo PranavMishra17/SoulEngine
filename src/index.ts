@@ -18,6 +18,7 @@ import { createSessionRoutes } from './routes/session.js';
 import { createConversationRoutes } from './routes/conversation.js';
 import { createCycleRoutes } from './routes/cycles.js';
 import { historyRoutes } from './routes/history.js';
+import { waitlistRoutes } from './routes/waitlist.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
 import { getStarterPackMetaList } from './data/starter-packs.js';
 
@@ -121,6 +122,9 @@ app.route('/api/projects', projectRoutes);
 app.get('/api/starter-packs', (c) => {
   return c.json(getStarterPackMetaList());
 });
+
+// Unity waitlist (public, no auth required)
+app.route('/api/waitlist', waitlistRoutes);
 
 // Create a sub-app for project-scoped routes
 const projectScoped = new Hono();
