@@ -1,12 +1,11 @@
 <div align="center">
 
-# SoulEngine
-
 ![SoulEngine Demo](img/demo.gif)
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.onrender.com)
-[![GitHub](https://img.shields.io/badge/GitHub-SoulEngine-181717?style=for-the-badge&logo=github)](https://github.com/PranavMishra17/SoulEngine)
-[![License](https://img.shields.io/badge/License-ISC-green?style=for-the-badge)](LICENSE)
+[![Website](https://img.shields.io/badge/Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.onrender.com)
+[![Bun](https://img.shields.io/badge/Runtime-Bun-f9f9f9?style=for-the-badge&logo=bun&logoColor=black)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-Research_Only-orange?style=for-the-badge)](LICENSE)
 
 *Stateless NPC intelligence with layered memory cycles, personality evolution, dual-instance mind, multi-modal voice interaction, social networks, tiered knowledge-base and MCP-based agency.*
 
@@ -320,28 +319,28 @@ web/                      # Web UI (vanilla JS SPA, no build step)
 
 | Layer | Technology |
 |-------|------------|
-| Runtime | Node.js 20+ / Bun |
+| Runtime | Node.js 20+ / Bun / **TypeScript** |
 | Framework | Hono |
 | LLM | Gemini / OpenAI / Anthropic / Grok |
 | STT | Deepgram Nova-2 |
 | TTS | Cartesia Sonic / ElevenLabs |
 | Storage | Local JSON + Supabase PostgreSQL |
-| Frontend | Vanilla JS SPA |
+| Frontend | Vanilla JS / CSS3 / HTML5 |
 
 ---
 
 ## Documentation
 
-- **[System Design](Evolve_NPC_System_Design.md)** — Full architecture, all design decisions, and implementation details
-- **[Unity SDK](UNITY_REPACKAGE.md)** — Unity integration plan, scene setup guide, feature mapping
-- **[SDK Reference](SDK_REFERENCE.md)** — Third-party SDK documentation
-- **[Add Providers](ADD_PROVIDERS.MD)** — How to add additional LLM/TTS/STT providers
+- **[System Design](documentation/Evolve_NPC_System_Design.md)** — Full architecture, all design decisions, and implementation details
+- **[Chat Interface](documentation/CHAT_interface.md)** — Voice and text chat interface, details of VAD, Mind State, MCP tools, Streaming
+- **[Unity SDK](documentation/UNITY_REPACKAGE.md)** — Unity integration plan, scene setup guide, feature mapping
+- **[Add Providers](documentation/ADD_PROVIDERS.MD)** — How to add additional LLM/TTS/STT providers
 
 ---
 
 ## License
 
-ISC
+**[Academic/Research Use Only](LICENSE)**
 
 ---
 
@@ -368,9 +367,7 @@ ISC
 
 <div align="center">
 
-### BEWARE FRIEND
-
-**They listen. They remember. They act.**
-
+**They listen. They remember. They act...**
 
 </div>
+
