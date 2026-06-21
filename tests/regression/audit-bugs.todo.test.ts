@@ -1,19 +1,14 @@
 import { describe, it } from 'vitest';
 
-// Pending regression tests — one per row in ../../ERRORS.md.
-// As each backlog item is implemented, its `it.todo` becomes a real test in this
-// folder that fails before the fix and passes after. `it.todo` never fails the suite.
+// Pending regression tests — one per still-OPEN row in ../../ERRORS.md.
+// As each backlog item is implemented, its `it.todo` becomes a real test file
+// (e.g. tests/regression/err-0NN-*.test.ts) and its line here is removed.
+// `it.todo` never fails the suite. ERR-001..012, 018, 019 are now real tests.
 describe('audit regressions (pending — see ERRORS.md)', () => {
-  it.todo('ERR-001 Weekly Whisper retains high-salience memories');
-  it.todo('ERR-002 Core Anchor immutability is enforced, not just logged');
-  it.todo('ERR-003 realtime voice WebSocket is served on the main HTTP port');
-  it.todo('ERR-004 project routes reject cross-tenant access');
-  it.todo('ERR-005 one storage backend selector governs a request end-to-end');
-  it.todo('ERR-006 secrets round-trip and survive an encryption-key rotation');
-  it.todo('ERR-007 no undefined CSS custom properties are referenced');
-  it.todo('ERR-008 concurrent local usage appends do not lose data');
-  it.todo('ERR-009 deferred recall context survives a voice reconnect');
-  it.todo('ERR-010 knowledge category descriptions survive a Supabase round-trip');
-  it.todo('ERR-011 instance version scheme is consistent across backends');
-  it.todo('ERR-012 concurrent instance saves do not lose updates');
+  it.todo('ERR-013 history/instance GETs work when no LLM key is configured');
+  it.todo('ERR-014 /projects/new route is registered (landing CTA works)');
+  it.todo('ERR-015 diff-modal buttons are bound after the template renders');
+  it.todo('ERR-016 dead src/voice/interruption.ts is removed / not imported');
+  it.todo('ERR-017 transcripts are deduplicated by a per-utterance id');
+  it.todo('ERR-020 app version comes from a single source (package.json)');
 });
