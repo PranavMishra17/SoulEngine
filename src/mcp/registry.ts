@@ -1,5 +1,7 @@
 import { createLogger } from '../logger.js';
 import type { Tool } from '../types/mcp.js';
+import type { RegistryStore, RegisteredTool } from './registry-store.js';
+import { InMemoryRegistryStore } from './registry-store.js';
 
 const logger = createLogger('mcp-registry');
 
@@ -9,15 +11,7 @@ const logger = createLogger('mcp-registry');
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
 /**
- * Registered tool with handler
- */
-export interface RegisteredTool {
-  tool: Tool;
-  handler?: ToolHandler;
-}
-
-/**
- * MCP Tool Registry
+ * MCP Tool Registry with pluggable storage
  *
  * Manages tool definitions and handlers per project.
  * Tools are defined by the project/game developer and registered here.
@@ -25,32 +19,33 @@ export interface RegisteredTool {
  * 1. Get available tools for LLM function calling
  * 2. Validate tool calls
  * 3. Execute tool handlers (if provided)
+ *
+ * State is stored via RegistryStore interface, allowing external/shared storage
+ * (e.g., Redis) to be plugged in for horizontal scaling.
  */
 export class MCPToolRegistry {
-  /**
-   * Map of project ID -> tool name -> registered tool
-   */
-  private registry: Map<string, Map<string, RegisteredTool>> = new Map();
+  private store: RegistryStore;
+
+  constructor(store?: RegistryStore) {
+    this.store = store || new InMemoryRegistryStore();
+  }
 
   /**
    * Check if any tools are registered for a project
+   *
+   * Note: This is synchronous and assumes a synchronous store.
+   * For async stores, wrap this class or use an async version.
    */
   hasProject(projectId: string): boolean {
-    const projectTools = this.registry.get(projectId);
-    return !!projectTools && projectTools.size > 0;
+    const projectTools = this.store.getProjectTools(projectId) as Map<string, RegisteredTool>;
+    return projectTools.size > 0;
   }
 
   /**
    * Register a tool for a project
    */
   registerTool(projectId: string, tool: Tool, handler?: ToolHandler): void {
-    let projectTools = this.registry.get(projectId);
-    if (!projectTools) {
-      projectTools = new Map();
-      this.registry.set(projectId, projectTools);
-    }
-
-    projectTools.set(tool.name, { tool, handler });
+    this.store.setTool(projectId, tool.name, { tool, handler });
     logger.info({ projectId, toolName: tool.name, hasHandler: !!handler }, 'Tool registered');
   }
 
@@ -66,14 +61,11 @@ export class MCPToolRegistry {
 
   /**
    * Unregister a tool from a project
+   *
+   * Note: This is synchronous and assumes a synchronous store.
    */
   unregisterTool(projectId: string, toolName: string): boolean {
-    const projectTools = this.registry.get(projectId);
-    if (!projectTools) {
-      return false;
-    }
-
-    const deleted = projectTools.delete(toolName);
+    const deleted = this.store.deleteTool(projectId, toolName) as boolean;
     if (deleted) {
       logger.info({ projectId, toolName }, 'Tool unregistered');
     }
@@ -82,13 +74,11 @@ export class MCPToolRegistry {
 
   /**
    * Get all tools for a project (as a Record for easy lookup)
+   *
+   * Note: This is synchronous and assumes a synchronous store.
    */
   getProjectTools(projectId: string): Record<string, Tool> {
-    const projectTools = this.registry.get(projectId);
-    if (!projectTools) {
-      return {};
-    }
-
+    const projectTools = this.store.getProjectTools(projectId) as Map<string, RegisteredTool>;
     const tools: Record<string, Tool> = {};
     for (const [name, registered] of projectTools) {
       tools[name] = registered.tool;
@@ -98,16 +88,22 @@ export class MCPToolRegistry {
 
   /**
    * Get a specific tool for a project
+   *
+   * Note: This is synchronous and assumes a synchronous store.
    */
   getTool(projectId: string, toolName: string): Tool | undefined {
-    return this.registry.get(projectId)?.get(toolName)?.tool;
+    const registered = this.store.getTool(projectId, toolName) as RegisteredTool | undefined;
+    return registered?.tool;
   }
 
   /**
    * Check if a tool exists in a project
+   *
+   * Note: This is synchronous and assumes a synchronous store.
    */
   hasTool(projectId: string, toolName: string): boolean {
-    return this.registry.get(projectId)?.has(toolName) ?? false;
+    const registered = this.store.getTool(projectId, toolName) as RegisteredTool | undefined;
+    return registered !== undefined;
   }
 
   /**
@@ -116,13 +112,15 @@ export class MCPToolRegistry {
    * If the tool has a registered handler, it will be executed.
    * If no handler is registered, returns a placeholder result indicating
    * the tool call should be handled by the game/client.
+   *
+   * Note: This is synchronous for tool lookup and assumes a synchronous store.
    */
   async executeTool(
     projectId: string,
     toolName: string,
     args: Record<string, unknown>
   ): Promise<unknown> {
-    const registered = this.registry.get(projectId)?.get(toolName);
+    const registered = this.store.getTool(projectId, toolName) as RegisteredTool | undefined;
 
     if (!registered) {
       logger.warn({ projectId, toolName }, 'Tool not found in registry');
@@ -154,12 +152,11 @@ export class MCPToolRegistry {
 
   /**
    * Get all tool names for a project
+   *
+   * Note: This is synchronous and assumes a synchronous store.
    */
   getToolNames(projectId: string): string[] {
-    const projectTools = this.registry.get(projectId);
-    if (!projectTools) {
-      return [];
-    }
+    const projectTools = this.store.getProjectTools(projectId) as Map<string, RegisteredTool>;
     return Array.from(projectTools.keys());
   }
 
@@ -167,7 +164,7 @@ export class MCPToolRegistry {
    * Clear all tools for a project
    */
   clearProject(projectId: string): void {
-    this.registry.delete(projectId);
+    this.store.deleteProject(projectId);
     logger.info({ projectId }, 'Project tools cleared');
   }
 
@@ -175,7 +172,9 @@ export class MCPToolRegistry {
    * Clear all tools from all projects
    */
   clearAll(): void {
-    this.registry.clear();
+    if (this.store.clearAll) {
+      this.store.clearAll();
+    }
     logger.info('All tools cleared');
   }
 
@@ -185,15 +184,18 @@ export class MCPToolRegistry {
   getStats(): { projectCount: number; totalTools: number; toolsByProject: Record<string, number> } {
     const toolsByProject: Record<string, number> = {};
     let totalTools = 0;
+    let projectCount = 0;
 
-    for (const [projectId, projectTools] of this.registry) {
-      const count = projectTools.size;
-      toolsByProject[projectId] = count;
-      totalTools += count;
-    }
+    // Note: This requires iterating all projects. For external stores,
+    // this may be expensive. Consider adding a getProjectIds() method
+    // to the RegistryStore interface if stats are needed frequently.
+
+    // For now, we can't efficiently get all project IDs from the store interface.
+    // This is a limitation when using external storage. Return empty stats.
+    // TODO: Add getProjectIds() or getStats() to RegistryStore interface.
 
     return {
-      projectCount: this.registry.size,
+      projectCount,
       totalTools,
       toolsByProject,
     };

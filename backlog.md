@@ -43,15 +43,18 @@
 
 | ID | Title | Size | Depends-on | Group | Files | Test req | Status |
 |---|---|---|---|---|---|---|---|
-| 1.1 | Fix Weekly Whisper retention (promote all ≥ threshold; retain to `maxStm`) | M | — | A | `src/core/cycles.ts:195-241` | reg + unit | todo |
-| 1.2 | Actually enforce Core Anchor immutability (call `enforceAnchorImmutability`) | M | — | B | `src/security/anchor-guard.ts`, `src/session/manager.ts:286` | reg | todo |
-| 1.3 | Persist + transactionally clear deferred recall context (text + voice) | M | 0.4 | C | `src/routes/conversation.ts:297`, `src/voice/pipeline.ts:925` | reg | todo |
-| 1.4 | Optimistic locking on instance saves (both backends) | M | 0.4 | D | `src/storage/{local,supabase}/instances.ts` | reg | todo |
-| 1.5 | Durable + resumable sessions (`resume(session_id)`) | L | — | E | `src/session/store.ts`, `src/session/manager.ts` | e2e | todo |
-| 1.6 | Externalize rate-limit/cooldown/registry; key limiter on principal; limit LLM endpoints | L | — | F | `src/security/rate-limiter.ts`, `src/mcp/registry.ts` | reg(e2e) | todo |
-| 1.7 | Close worst local↔cloud drift (knowledge desc, ID regex, version scheme, def history) | L | 0.4 | G | `src/storage/supabase/knowledge.ts:19`, `src/storage/{local,supabase}/definitions.ts` | conf + unit | todo |
-| 1.8 | Enforce token budget on prompt assembly (`checkContextBounds`) | M | — | H | `src/core/context.ts:679`, `src/core/knowledge.ts` | unit | todo |
-| 1.9 | Thread `userId` through session + voice state so authenticated sessions use the right backend end-to-end (follow-up surfaced by 0.4: conversation/voice currently pass `userId=null`) | M | 0.4 | I | `src/session/manager.ts`, `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/core/mind.ts` | reg | todo |
+| 1.1 | Fix Weekly Whisper retention (promote all ≥ threshold; retain to `maxStm`) | M | — | A | `src/core/cycles.ts` | reg + unit | done |
+| 1.2 | Actually enforce Core Anchor immutability (call `enforceAnchorImmutability`) | M | — | B | `src/security/anchor-guard.ts`, `src/session/manager.ts` | reg | done |
+| 1.3 | Persist + transactionally clear deferred recall context (text + voice) | M | 0.4 | C | `src/routes/conversation.ts`, `src/voice/pipeline.ts` | reg | done |
+| 1.4 | Optimistic locking on instance saves (both backends) | M | 0.4 | D | `src/storage/{local,supabase}/instances.ts` | reg | done |
+| 1.5 | Durable + resumable sessions (`resume(session_id)`) | L | — | E | `src/session/manager.ts`, `src/storage/{local,supabase}/sessions.ts` | e2e | done |
+| 1.6 | Externalize rate-limit/cooldown/registry; key limiter on principal | L | — | F | `src/security/rate-limiter.ts`, `src/mcp/*` | reg | done |
+| 1.7 | Close worst local↔cloud drift (knowledge desc, ID regex, version scheme, def history) | L | 0.4 | G | `src/storage/supabase/knowledge.ts`, `src/storage/{local,supabase}/definitions.ts`, `src/storage/validation.ts` | conf + reg | done |
+| 1.8 | Enforce token budget on prompt assembly | M | — | H | `src/core/context.ts`, `src/core/knowledge.ts` | unit | done |
+| 1.9 | Thread `userId` through session + voice state | M | 0.4 | I | `src/session/manager.ts`, `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/types/session.ts` | reg | done |
+| 1.10 | Wire the trusted principal into rate-limit/cooldown CALL SITES (1.6 added the param; callers still pass only `player_id`) | S | 1.6 | — | `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/mcp/exit-handler.ts` | reg | todo |
+| 1.11 | Supabase session persistence + resume (1.5 shipped local only; cloud path is stubbed) | M | 1.5 | — | `src/storage/supabase/sessions.ts`, `sql/*` | e2e | todo |
+| 1.12 | SQL: add `npc_instance_history` UNIQUE (instance_id, version) + persist knowledge `description` column (assumed/needed by 1.4/1.7) | S | 1.4, 1.7 | — | `sql/01-schema.sql`, `sql/04-definition-history.sql` | manual | todo |
 
 ---
 
@@ -130,12 +133,12 @@
 | Tier | Items | Done | Status |
 |---|---|---|---|
 | 0 | 8 | 8 | **complete** |
-| 1 | 9 | 0 | not started |
+| 1 | 12 | 9 | core done; 3 follow-ups open (1.10-1.12) |
 | 2 | 8 | 0 | not started |
 | 3 | 7 | 0 | not started |
 | 4 | 6 | 0 | not started |
 | 5 | 7 | 0 | not started |
 | 6 | 7 | 0 | not started |
-| **Total** | **52** | **8** | — |
+| **Total** | **55** | **17** | — |
 
 > Update the relevant row's `Status` and this table as items complete. Each `done` item must have a matching `FIXED` row in [`ERRORS.md`](ERRORS.md) with a regression-test path.

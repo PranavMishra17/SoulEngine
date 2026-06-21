@@ -4,6 +4,7 @@ import type { LLMProvider } from '../providers/llm/interface.js';
 import { pruneLTM, promoteToLTM, createMemory } from './memory.js';
 import { blendMoods, updateTraitModifiers } from './personality.js';
 import { summarizeWeeklyMemories, type NPCPerspective } from './summarizer.js';
+import { getConfig } from '../config.js';
 
 const logger = createLogger('cycles');
 
@@ -159,14 +160,14 @@ Your takeaway:`;
  *
  * This cycle:
  * 1. Reviews all STM memories
- * 2. Selects the most salient ones to retain
- * 3. REPLACES STM with the retained memories (aggressive pruning)
- * 4. Promotes high-salience memories to LTM based on NPC's salience threshold
+ * 2. Promotes ALL memories with salience >= threshold to LTM
+ * 3. Retains remaining STM up to maxStmMemories (highest-salience first)
+ * 4. Discards only when STM exceeds capacity
  *
  * Token cost: ~500 tokens
  *
  * @param instance - The NPC instance to process
- * @param retainCount - Maximum memories to retain in STM (default: 3)
+ * @param retainCount - DEPRECATED: ignored, kept for API compatibility
  * @param salienceThreshold - NPC-specific threshold for LTM promotion (default: 0.7)
  *                            Lower = better memory, promotes more to LTM
  */
@@ -178,10 +179,16 @@ export async function runWeeklyWhisper(
   npcPerspective?: NPCPerspective
 ): Promise<WeeklyWhisperResult> {
   const startTime = Date.now();
+  const config = getConfig();
+  const maxStmMemories = config.limits.maxStmMemories;
+
+  // retainCount parameter is deprecated but kept for API compatibility
+  void retainCount;
+
   logger.info({
     instanceId: instance.id,
-    retainCount,
     salienceThreshold,
+    maxStmMemories,
     useLLMSynthesis: !!(llmProvider && npcPerspective),
   }, 'Running weekly whisper with NPC-specific threshold');
 
@@ -191,12 +198,8 @@ export async function runWeeklyWhisper(
     // Sort by salience (highest first)
     const sortedMemories = [...instance.short_term_memory].sort((a, b) => b.salience - a.salience);
 
-    // Retain top N memories
-    const retained = sortedMemories.slice(0, retainCount);
-    const discarded = sortedMemories.slice(retainCount);
-
-    // Memories eligible for LTM promotion
-    const toPromote = retained.filter((m) => m.salience >= salienceThreshold);
+    // Promote ALL memories with salience >= threshold to LTM (not just top N)
+    const toPromote = sortedMemories.filter((m) => m.salience >= salienceThreshold);
     let promoted = 0;
 
     if (toPromote.length > 0) {
@@ -236,9 +239,15 @@ export async function runWeeklyWhisper(
     const ltmPruneResult = pruneLTM(instance.long_term_memory);
     instance.long_term_memory = ltmPruneResult.kept;
 
-    // Keep in STM only what was NOT promoted to LTM (promoted entries have been consolidated)
+    // Remove promoted memories from STM
     const promotedIds = new Set(toPromote.map((m) => m.id));
-    instance.short_term_memory = retained.filter((m) => !promotedIds.has(m.id));
+    const nonPromotedMemories = sortedMemories.filter((m) => !promotedIds.has(m.id));
+
+    // Retain STM up to maxStmMemories (highest-salience first)
+    const retained = nonPromotedMemories.slice(0, maxStmMemories);
+    const discarded = nonPromotedMemories.slice(maxStmMemories);
+
+    instance.short_term_memory = retained;
 
     // Update cycle metadata
     instance.cycle_metadata.last_weekly = new Date().toISOString();
@@ -252,8 +261,10 @@ export async function runWeeklyWhisper(
         retained: retained.length,
         discarded: discarded.length,
         promoted,
+        finalSTM: instance.short_term_memory.length,
         finalLTM: instance.long_term_memory.length,
         salienceThreshold,
+        maxStmMemories,
       },
       'Weekly whisper completed'
     );

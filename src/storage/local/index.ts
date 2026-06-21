@@ -13,6 +13,7 @@ export * from './knowledge.js';
 export * from './mcp-tools.js';
 export * from './secrets.js';
 export * from './usage.js';
+export * from './sessions.js';
 
 import * as fs from 'fs/promises';
 import * as path from 'path';

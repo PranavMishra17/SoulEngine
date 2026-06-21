@@ -748,8 +748,9 @@ export class VoicePipeline {
     };
 
     try {
-      const storedForPlayerInfo = sessionStore.get(this.sessionId);
-      const playerInfo = storedForPlayerInfo?.state.player_info || null;
+      const stored = sessionStore.get(this.sessionId);
+      const playerInfo = stored?.state.player_info || null;
+      const sessionUserId = stored?.state.user_id ?? null;
 
       // Build slim system prompt for Speaker (no knowledge, no tools)
       const systemPrompt = await assembleSlimSystemPrompt(
@@ -757,11 +758,11 @@ export class VoicePipeline {
         context.instance,
         securityContext,
         { voiceMode: this.mode.output === 'voice' },
-        playerInfo
+        playerInfo,
+        sessionUserId
       );
 
       // Assemble conversation history
-      const stored = sessionStore.get(this.sessionId);
       const history = stored?.state.conversation_history ?? [];
       const llmMessages = assembleConversationHistory(history);
 
@@ -796,7 +797,7 @@ export class VoicePipeline {
         securityContext,
         projectTools,
         mindAbortController.signal,
-        null, // userId not tracked in voice sessions yet
+        sessionUserId,
       ).catch((err) => {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         logger.error({ sessionId: this.sessionId, error: msg }, 'Mind agent loop failed in voice pipeline');

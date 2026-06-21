@@ -1,6 +1,8 @@
 import { createLogger } from '../logger.js';
 import type { SecurityContext } from '../types/security.js';
 import type { SessionID } from '../types/session.js';
+import type { CooldownStore } from './cooldown-store.js';
+import { InMemoryCooldownStore } from './cooldown-store.js';
 
 const logger = createLogger('mcp-exit-handler');
 
@@ -107,22 +109,17 @@ export function formatExitForClient(exitResult: ExitConvoResult): {
 }
 
 /**
- * In-memory cooldown tracker
+ * Cooldown tracker with pluggable storage
+ *
+ * Tracks cooldowns applied when NPCs use exit_convo due to moderation.
+ * State is stored via CooldownStore interface, allowing external/shared storage
+ * (e.g., Redis) to be plugged in for horizontal scaling.
  */
 class CooldownTracker {
-  private cooldowns: Map<string, number> = new Map();
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private store: CooldownStore;
 
-  constructor() {
-    // Cleanup expired cooldowns every minute
-    this.cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      for (const [key, expiresAt] of this.cooldowns) {
-        if (expiresAt <= now) {
-          this.cooldowns.delete(key);
-        }
-      }
-    }, 60000);
+  constructor(store?: CooldownStore) {
+    this.store = store || new InMemoryCooldownStore();
   }
 
   /**
@@ -131,23 +128,26 @@ class CooldownTracker {
   applyCooldown(projectId: string, playerId: string, npcId: string, seconds: number): void {
     const key = this.makeKey(projectId, playerId, npcId);
     const expiresAt = Date.now() + seconds * 1000;
-    this.cooldowns.set(key, expiresAt);
+    this.store.set(key, expiresAt);
     logger.debug({ key, expiresAt, seconds }, 'Cooldown applied');
   }
 
   /**
    * Check if a cooldown is active
+   *
+   * Note: This is synchronous and assumes a synchronous store.
+   * For async stores, wrap this class or use an async version.
    */
   isOnCooldown(projectId: string, playerId: string, npcId: string): boolean {
     const key = this.makeKey(projectId, playerId, npcId);
-    const expiresAt = this.cooldowns.get(key);
+    const expiresAt = this.store.get(key) as number | null;
 
     if (!expiresAt) {
       return false;
     }
 
     if (expiresAt <= Date.now()) {
-      this.cooldowns.delete(key);
+      this.store.delete(key);
       return false;
     }
 
@@ -156,10 +156,13 @@ class CooldownTracker {
 
   /**
    * Get remaining cooldown time in seconds
+   *
+   * Note: This is synchronous and assumes a synchronous store.
+   * For async stores, wrap this class or use an async version.
    */
   getRemainingCooldown(projectId: string, playerId: string, npcId: string): number {
     const key = this.makeKey(projectId, playerId, npcId);
-    const expiresAt = this.cooldowns.get(key);
+    const expiresAt = this.store.get(key) as number | null;
 
     if (!expiresAt) {
       return 0;
@@ -174,7 +177,8 @@ class CooldownTracker {
    */
   clearCooldown(projectId: string, playerId: string, npcId: string): boolean {
     const key = this.makeKey(projectId, playerId, npcId);
-    return this.cooldowns.delete(key);
+    this.store.delete(key);
+    return true;
   }
 
   /**
@@ -185,14 +189,14 @@ class CooldownTracker {
   }
 
   /**
-   * Stop the cleanup interval
+   * Destroy the tracker and clean up resources
    */
   destroy(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
+    if (this.store instanceof InMemoryCooldownStore) {
+      this.store.destroy();
+    } else if (this.store.clear) {
+      this.store.clear();
     }
-    this.cooldowns.clear();
   }
 }
 
