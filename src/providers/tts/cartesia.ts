@@ -158,7 +158,7 @@ class CartesiaSession implements TTSSession {
       let chunkCount = 0;
       let lastReadPos = 0;
 
-      // Helper to read and emit any new audio
+      // Helper to read and emit any new audio since lastReadPos
       const emitNewAudio = () => {
         const currentWritePos = source.writeIndex;
         if (currentWritePos > lastReadPos) {
@@ -185,65 +185,69 @@ class CartesiaSession implements TTSSession {
         }
       };
 
-      // Wait for source to close (synthesis complete)
-      // Add timeout and minimum wait to handle edge cases where close fires immediately
-      const MAX_WAIT_MS = 30000; // 30 second max timeout
-      const MIN_WAIT_MS = 100;   // Minimum wait before accepting zero audio
+      // Event-driven delivery: listen to source 'enqueue' events instead of polling.
+      // The SDK's Source emits 'enqueue' every time audio data is appended, so we
+      // get chunks immediately rather than waiting up to 50ms per poll cycle.
+      // A 30s hard timeout guards against a hung source.
+      const MAX_WAIT_MS = 30000;
 
       await new Promise<void>((resolve) => {
-        const startWait = Date.now();
-        let sourceIsClosed = false;
+        let hardTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+        let resolved = false;
 
-        // Poll for new audio and check for close
-        const checkInterval = setInterval(() => {
-          if (this.abortController?.signal.aborted) {
-            clearInterval(checkInterval);
-            resolve();
-            return;
+        const finish = () => {
+          if (resolved) return;
+          resolved = true;
+          if (hardTimeoutHandle !== null) {
+            clearTimeout(hardTimeoutHandle);
+            hardTimeoutHandle = null;
           }
+          resolve();
+        };
 
-          // Check for timeout
-          const elapsed = Date.now() - startWait;
-          if (elapsed > MAX_WAIT_MS) {
+        // Hard timeout guard
+        hardTimeoutHandle = setTimeout(() => {
+          logger.warn({
+            textLength: text.length,
+            chunkCount,
+            elapsed: MAX_WAIT_MS
+          }, 'CartesiaSession.synthesize: hard timeout waiting for audio');
+          finish();
+        }, MAX_WAIT_MS);
+
+        // Abort signal check
+        if (this.abortController?.signal.aborted) {
+          finish();
+          return;
+        }
+        this.abortController?.signal.addEventListener('abort', finish, { once: true });
+
+        // Emit audio on each 'enqueue' event (no polling needed)
+        // source.events() returns an async iterator; we consume it via on() callbacks.
+        const unsubscribeEnqueue = source.on('enqueue', () => {
+          emitNewAudio();
+        });
+
+        // Resolve when source closes (all audio delivered)
+        source.once('close').then(() => {
+          emitNewAudio(); // Flush any final buffered audio
+          if (chunkCount === 0) {
             logger.warn({
               textLength: text.length,
-              chunkCount,
-              elapsed
-            }, 'CartesiaSession.synthesize: timeout waiting for audio');
-            clearInterval(checkInterval);
-            resolve();
-            return;
+              sourceBufferLength: source.buffer?.length ?? 0,
+              sourceWriteIndex: source.writeIndex
+            }, 'CartesiaSession.synthesize: source closed with no audio received');
           }
-
-          emitNewAudio();
-
-          // If source is closed and we've either got audio or waited minimum time, resolve
-          if (sourceIsClosed) {
-            const waitedEnough = elapsed >= MIN_WAIT_MS;
-            if (chunkCount > 0 || waitedEnough) {
-              clearInterval(checkInterval);
-              if (chunkCount === 0) {
-                logger.warn({
-                  textLength: text.length,
-                  elapsed,
-                  sourceBufferLength: source.buffer?.length ?? 0,
-                  sourceWriteIndex: source.writeIndex
-                }, 'CartesiaSession.synthesize: source closed but no audio received');
-              }
-              resolve();
-            }
+          if (typeof unsubscribeEnqueue === 'function') {
+            unsubscribeEnqueue();
           }
-        }, 50);
-
-        source.once('close').then(() => {
-          sourceIsClosed = true;
-          emitNewAudio(); // Get any remaining audio
-          // Don't resolve immediately - let the interval check handle it
-          // to ensure we've waited minimum time and collected all audio
+          finish();
         }).catch((err) => {
           logger.error({ error: String(err) }, 'CartesiaSession.synthesize: source close error');
-          clearInterval(checkInterval);
-          resolve();
+          if (typeof unsubscribeEnqueue === 'function') {
+            unsubscribeEnqueue();
+          }
+          finish();
         });
       });
 
