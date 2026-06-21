@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs typecheck + tests before every commit.
+# Enable once per clone with: git config core.hooksPath .githooks
+set -e
+
+if [ ! -d node_modules ]; then
+  echo "pre-commit: node_modules missing, installing dependencies..."
+  npm install --no-audit --no-fund
+fi
+
+echo "pre-commit: running typecheck + tests"
+npm run precommit
