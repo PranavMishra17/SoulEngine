@@ -6,7 +6,8 @@ import {
   StorageValidationError,
   StorageLimitError,
 } from '../storage/index.js';
-import { getStorageForUser } from '../storage/hybrid.js';
+import { getStorage } from '../storage/factory.js';
+import { requireProjectOwnership } from '../middleware/ownership.js';
 
 const logger = createLogger('routes-knowledge');
 
@@ -42,11 +43,13 @@ knowledgeRoutes.get('/', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const knowledgeBase = await storage.getKnowledgeBase(projectId);
 
@@ -80,11 +83,13 @@ knowledgeRoutes.put('/', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const body = await c.req.json();
     const parsed = UpdateKnowledgeBaseSchema.safeParse(body);
@@ -137,11 +142,13 @@ knowledgeRoutes.get('/categories/:categoryId', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const category = await storage.getCategory(projectId, categoryId);
 
@@ -180,11 +187,13 @@ knowledgeRoutes.put('/categories/:categoryId', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const body = await c.req.json();
 
@@ -240,11 +249,13 @@ knowledgeRoutes.delete('/categories/:categoryId', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     await storage.deleteCategory(projectId, categoryId);
 

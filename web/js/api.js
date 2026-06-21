@@ -340,16 +340,13 @@ export class VoiceClient {
       this.connectionState = 'connecting';
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // WebSocket server runs on HTTP port + 1 (e.g., HTTP 3000 → WS 3001)
-      const httpPort = parseInt(window.location.port) || (window.location.protocol === 'https:' ? 443 : 80);
-      const wsPort = httpPort + 1;
-      const url = `${protocol}//${window.location.hostname}:${wsPort}/ws/voice?session_id=${this.sessionId}`;
+      // WebSocket server runs on the SAME port as HTTP
+      const url = `${protocol}//${window.location.host}/ws/voice?session_id=${this.sessionId}`;
 
       // Debug logging
       console.log('[VoiceClient] Connecting to:', url);
       console.log('[VoiceClient] Session ID:', this.sessionId);
       console.log('[VoiceClient] Mode:', mode);
-      console.log('[VoiceClient] HTTP Port:', httpPort, '→ WS Port:', wsPort);
 
       this.ws = new WebSocket(url);
 

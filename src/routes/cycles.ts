@@ -4,7 +4,8 @@ import { createLogger } from '../logger.js';
 import {
   StorageNotFoundError,
 } from '../storage/index.js';
-import { getStorageForUser } from '../storage/hybrid.js';
+import { getStorage } from '../storage/factory.js';
+import { requireProjectOwnership } from '../middleware/ownership.js';
 import {
   runDailyPulse,
   runWeeklyWhisper,
@@ -48,8 +49,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
   cycleRoutes.post('/:instanceId/daily-pulse', async (c) => {
     const startTime = Date.now();
     const instanceId = c.req.param('instanceId');
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     try {
       // Parse optional body
@@ -77,6 +78,10 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         storage.getDefinition(instance.project_id, instance.definition_id),
         storage.loadApiKeys(instance.project_id),
       ]);
+
+      // Verify project ownership
+      const ownershipError = requireProjectOwnership(c, project);
+      if (ownershipError) return ownershipError;
 
       // Resolve per-project LLM provider (BYOK), falling back to global default
       const activeProvider = resolveProjectLlmProvider(project.settings, apiKeys as Partial<Record<string, string>>, llmProvider);
@@ -125,8 +130,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
   cycleRoutes.post('/:instanceId/weekly-whisper', async (c) => {
     const startTime = Date.now();
     const instanceId = c.req.param('instanceId');
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     try {
       // Parse optional body
@@ -154,6 +159,11 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         storage.getDefinition(instance.project_id, instance.definition_id),
         storage.loadApiKeys(instance.project_id),
       ]);
+
+      // Verify project ownership
+      const ownershipError = requireProjectOwnership(c, project);
+      if (ownershipError) return ownershipError;
+
       const salienceThreshold = definition.salience_threshold ?? 0.7;
 
       logger.debug({
@@ -213,8 +223,8 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
   cycleRoutes.post('/:instanceId/persona-shift', async (c) => {
     const startTime = Date.now();
     const instanceId = c.req.param('instanceId');
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     try {
       // Find and load instance using the correct storage backend
@@ -230,6 +240,10 @@ export function createCycleRoutes(llmProvider: LLMProvider): Hono {
         storage.getDefinition(instance.project_id, instance.definition_id),
         storage.loadApiKeys(instance.project_id),
       ]);
+
+      // Verify project ownership
+      const ownershipError = requireProjectOwnership(c, project);
+      if (ownershipError) return ownershipError;
 
       // Resolve per-project LLM provider (BYOK), falling back to global default
       const activeProvider = resolveProjectLlmProvider(project.settings, apiKeys as Partial<Record<string, string>>, llmProvider);
@@ -286,7 +300,7 @@ async function findInstanceById(
   instanceId: string,
   userId?: string | null
 ): Promise<import('../types/npc.js').NPCInstance | null> {
-  const storage = getStorageForUser(userId);
+  const storage = getStorage(userId);
 
   try {
     const projects = await storage.listProjects(userId ?? undefined);

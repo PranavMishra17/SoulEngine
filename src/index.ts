@@ -302,96 +302,105 @@ const server = serve({
   logger.info({ port: info.port, dataDir: config.dataDir }, 'Evolve.NPC HTTP server started');
 });
 
-// Create WebSocket server on a separate port (or use the same server with ws upgrade)
-const wss = new WebSocketServer({ port: port + 1 });
+// Create WebSocket server with noServer: true (no separate port)
+const wss = new WebSocketServer({ noServer: true });
 
-logger.info({ wsPort: port + 1 }, 'WebSocket server starting...');
+logger.info({ port }, 'WebSocket server configured on same port as HTTP');
 
-wss.on('listening', () => {
-  logger.info({ wsPort: port + 1 }, 'WebSocket server now listening');
-});
+// Wire the upgrade event to handle WebSocket connections on the SAME port
+server.on('upgrade', (req, socket, head) => {
+  try {
+    const url = new URL(req.url || '', `http://${req.headers.host || `localhost:${port}`}`);
 
-// Handle WebSocket connections
-wss.on('connection', (ws, req) => {
-  const clientIp = req.socket.remoteAddress;
-  const url = new URL(req.url || '', `http://localhost:${port + 1}`);
-
-  logger.info({
-    clientIp,
-    path: url.pathname,
-    query: Object.fromEntries(url.searchParams),
-    headers: {
-      origin: req.headers.origin,
-      host: req.headers.host,
-    }
-  }, 'WebSocket connection received');
-
-  // Only handle /ws/voice connections
-  if (url.pathname !== '/ws/voice') {
-    logger.warn({ path: url.pathname }, 'Unsupported WebSocket path');
-    ws.close(1003, 'Unsupported path');
-    return;
-  }
-
-  const sessionId = url.searchParams.get('session_id');
-  logger.info({ sessionId }, 'Voice WebSocket: checking session');
-
-  if (!sessionId) {
-    logger.warn('Voice WebSocket: missing session_id');
-    ws.close(1008, 'session_id query parameter required');
-    return;
-  }
-
-  // Verify session exists
-  const stored = sessionStore.get(sessionId);
-  if (!stored) {
-    logger.warn({ sessionId }, 'Voice WebSocket: session not found');
-    ws.close(1008, 'Session not found');
-    return;
-  }
-
-  logger.info({ sessionId }, 'Voice WebSocket: session verified');
-
-  // Get API keys from config (synchronous)
-  const deepgramKey = config.providers.deepgramApiKey;
-  const cartesiaKey = config.providers.cartesiaApiKey;
-  const llmProviderType = config.defaultLlmProvider;
-  const llmKey = getLlmApiKey(llmProviderType);
-
-  logger.info({
-    hasDeepgram: !!deepgramKey,
-    hasCartesia: !!cartesiaKey,
-    hasLlm: !!llmKey,
-    llmProvider: llmProviderType,
-  }, 'Voice WebSocket: API key status');
-
-  // Check required keys (Cartesia is default; ElevenLabs checked lazily in handler)
-  if (!deepgramKey || !llmKey) {
-    logger.error({
-      sessionId,
-      missingKeys: {
-        deepgram: !deepgramKey,
-        llm: !llmKey,
-        llmProvider: llmProviderType,
+    logger.info({
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
+      headers: {
+        origin: req.headers.origin,
+        host: req.headers.host,
       }
-    }, 'Voice WebSocket: missing required API keys');
-    ws.close(1008, `Voice providers not configured. Set DEEPGRAM_API_KEY and ${llmProviderType.toUpperCase()}_API_KEY.`);
-    return;
+    }, 'WebSocket upgrade request received');
+
+    // Only handle /ws/voice connections
+    if (url.pathname !== '/ws/voice') {
+      logger.warn({ path: url.pathname }, 'Unsupported WebSocket path, destroying socket');
+      socket.destroy();
+      return;
+    }
+
+    const sessionId = url.searchParams.get('session_id');
+    logger.info({ sessionId }, 'Voice WebSocket: checking session');
+
+    if (!sessionId) {
+      logger.warn('Voice WebSocket: missing session_id, destroying socket');
+      socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // Verify session exists
+    const stored = sessionStore.get(sessionId);
+    if (!stored) {
+      logger.warn({ sessionId }, 'Voice WebSocket: session not found');
+      // Complete the upgrade but close immediately with proper close code
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        ws.close(1008, 'Session not found');
+      });
+      return;
+    }
+
+    logger.info({ sessionId }, 'Voice WebSocket: session verified');
+
+    // Get API keys from config (synchronous)
+    const deepgramKey = config.providers.deepgramApiKey;
+    const cartesiaKey = config.providers.cartesiaApiKey;
+    const llmProviderType = config.defaultLlmProvider;
+    const llmKey = getLlmApiKey(llmProviderType);
+
+    logger.info({
+      hasDeepgram: !!deepgramKey,
+      hasCartesia: !!cartesiaKey,
+      hasLlm: !!llmKey,
+      llmProvider: llmProviderType,
+    }, 'Voice WebSocket: API key status');
+
+    // Check required keys (Cartesia is default; ElevenLabs checked lazily in handler)
+    if (!deepgramKey || !llmKey) {
+      logger.error({
+        sessionId,
+        missingKeys: {
+          deepgram: !deepgramKey,
+          llm: !llmKey,
+          llmProvider: llmProviderType,
+        }
+      }, 'Voice WebSocket: missing required API keys');
+      // Complete the upgrade but close immediately with proper close code
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        ws.close(1008, `Voice providers not configured. Set DEEPGRAM_API_KEY and ${llmProviderType.toUpperCase()}_API_KEY.`);
+      });
+      return;
+    }
+
+    // Build deps with API key config — providers created lazily in handleInitMessage
+    const deps: VoiceWebSocketDependencies = {
+      deepgramApiKey: deepgramKey,
+      cartesiaApiKey: cartesiaKey || '',
+      elevenLabsApiKey: config.providers.elevenLabsApiKey,
+      llmProviderType,
+      llmApiKey: llmKey,
+      defaultLlmModel: getDefaultModel(llmProviderType),
+    };
+
+    // Complete the WebSocket upgrade and hand off to handler
+    logger.info({ sessionId }, 'Voice WebSocket: upgrading connection');
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      logger.info({ sessionId }, 'Voice WebSocket: handing off to handler (sync)');
+      handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);
+    });
+  } catch (error) {
+    logger.error({ error: String(error) }, 'Error handling WebSocket upgrade');
+    socket.destroy();
   }
-
-  // Build deps with API key config — providers created lazily in handleInitMessage
-  const deps: VoiceWebSocketDependencies = {
-    deepgramApiKey: deepgramKey,
-    cartesiaApiKey: cartesiaKey || '',
-    elevenLabsApiKey: config.providers.elevenLabsApiKey,
-    llmProviderType,
-    llmApiKey: llmKey,
-    defaultLlmModel: getDefaultModel(llmProviderType),
-  };
-
-  // Call SYNCHRONOUSLY so ws.onmessage is set before the client's init message arrives
-  logger.info({ sessionId }, 'Voice WebSocket: handing off to handler (sync)');
-  handleVoiceWebSocket(ws as unknown as WebSocket, sessionId, deps);
 });
 
 wss.on('error', (error) => {

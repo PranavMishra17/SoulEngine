@@ -4,12 +4,12 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createLogger } from '../logger.js';
 import {
-  storageMode,
   StorageNotFoundError,
   StorageValidationError,
   StorageLimitError,
 } from '../storage/index.js';
-import { getStorageForUser } from '../storage/hybrid.js';
+import { getStorage, getStorageMode } from '../storage/factory.js';
+import { requireProjectOwnership } from '../middleware/ownership.js';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 
@@ -126,7 +126,7 @@ const UpdateNPCSchema = z.object({
  * Helper functions for bidirectional network updates
  */
 
-type StorageBackend = ReturnType<typeof getStorageForUser>;
+type StorageBackend = ReturnType<typeof getStorage>;
 
 async function addToOtherNpcNetwork(
   storage: StorageBackend,
@@ -227,11 +227,13 @@ npcRoutes.post('/', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const body = await c.req.json();
     const parsed = CreateNPCSchema.safeParse(body);
@@ -283,11 +285,13 @@ npcRoutes.get('/', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const definitions = await storage.listDefinitions(projectId);
 
@@ -322,8 +326,8 @@ npcRoutes.get('/:npcId', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const definition = await storage.getDefinition(projectId, npcId);
 
@@ -365,8 +369,8 @@ npcRoutes.put('/:npcId', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const body = await c.req.json();
     const parsed = UpdateNPCSchema.safeParse(body);
@@ -459,8 +463,8 @@ npcRoutes.delete('/:npcId', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     await storage.deleteDefinition(projectId, npcId);
 
@@ -503,8 +507,8 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     // Verify NPC exists
     await storage.getDefinition(projectId, npcId);
@@ -542,7 +546,7 @@ npcRoutes.post('/:npcId/avatar', async (c) => {
     await storage.updateDefinition(projectId, npcId, { profile_image: imageUrl });
 
     const duration = Date.now() - startTime;
-    logger.info({ projectId, npcId, url: imageUrl, storageMode, duration }, 'NPC avatar uploaded');
+    logger.info({ projectId, npcId, url: imageUrl, storageMode: getStorageMode(userId), duration }, 'NPC avatar uploaded');
 
     return c.json({ 
       message: 'Avatar uploaded', 
@@ -577,8 +581,8 @@ npcRoutes.get('/:npcId/avatar', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const npc = await storage.getDefinition(projectId, npcId);
 
@@ -642,8 +646,8 @@ npcRoutes.delete('/:npcId/avatar', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const npc = await storage.getDefinition(projectId, npcId);
 
@@ -659,7 +663,7 @@ npcRoutes.delete('/:npcId/avatar', async (c) => {
     // Update NPC definition
     await storage.updateDefinition(projectId, npcId, { profile_image: undefined });
 
-    logger.info({ projectId, npcId, storageMode }, 'NPC avatar deleted');
+    logger.info({ projectId, npcId, storageMode: getStorageMode(userId) }, 'NPC avatar deleted');
 
     return c.json({ message: 'Avatar deleted' });
   } catch (error) {
@@ -685,8 +689,8 @@ npcRoutes.get('/:npcId/history', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const versions = await storage.getDefinitionHistory(projectId, npcId);
 
@@ -719,8 +723,8 @@ npcRoutes.get('/:npcId/history/:version', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const entry = await storage.getDefinitionSnapshot(projectId, npcId, version);
 
@@ -759,8 +763,8 @@ npcRoutes.post('/:npcId/rollback', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const definition = await storage.rollbackDefinition(projectId, npcId, body.version);
 
@@ -806,8 +810,8 @@ npcRoutes.post('/:npcId/reset', async (c) => {
   }
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     // Validate NPC exists
     await storage.getDefinition(projectId, npcId);
