@@ -10,6 +10,7 @@ import {
 } from '../storage/index.js';
 import { getStorage, getStorageMode } from '../storage/factory.js';
 import { requireProjectOwnership } from '../middleware/ownership.js';
+import { parsePagination } from '../http/pagination.js';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 
@@ -295,10 +296,19 @@ npcRoutes.get('/', async (c) => {
 
     const definitions = await storage.listDefinitions(projectId);
 
-    const duration = Date.now() - startTime;
-    logger.debug({ projectId, count: definitions.length, duration }, 'NPCs listed via API');
+    // Additive pagination: keep the legacy `npcs` key so existing clients keep working,
+    // while exposing consistent pagination metadata. Default limit covers a full project.
+    const { limit } = parsePagination(c.req.query());
+    const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+    const paged = definitions.slice(offset, offset + limit);
 
-    return c.json({ npcs: definitions });
+    const duration = Date.now() - startTime;
+    logger.debug({ projectId, count: definitions.length, returned: paged.length, duration }, 'NPCs listed via API');
+
+    return c.json({
+      npcs: paged,
+      pagination: { limit, offset, total: definitions.length, has_more: offset + limit < definitions.length },
+    });
   } catch (error) {
     const duration = Date.now() - startTime;
 
