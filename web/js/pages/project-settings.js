@@ -387,7 +387,8 @@ async function showImportKeysModal(projectId) {
   let allProjects;
   try {
     const data = await projects.list();
-    allProjects = Array.isArray(data) ? data : (data.projects ?? []);
+    // Tolerate both the paginated shape ({items}) and the legacy shape ({projects}).
+    allProjects = Array.isArray(data) ? data : (data.items ?? data.projects ?? []);
   } catch (error) {
     toast.error('Failed to Load Projects', error.message);
     return;
