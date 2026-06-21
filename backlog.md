@@ -55,8 +55,8 @@
 | 1.10 | Wire the trusted principal into rate-limit/cooldown CALL SITES (1.6 added the param; callers still pass only `player_id`) | S | 1.6 | — | `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/mcp/exit-handler.ts`, `src/security/principal.ts` | reg | done |
 | 1.11 | Supabase session persistence + resume (1.5 shipped local only; cloud path is stubbed) | M | 1.5 | — | `src/storage/supabase/sessions.ts`, `sql/07-session-and-integrity.sql` | e2e | done |
 | 1.12 | SQL: add `npc_instance_history` UNIQUE (instance_id, version) + knowledge `description` column | S | 1.4, 1.7 | — | `sql/07-session-and-integrity.sql` | reg | done |
-| 1.13 | Wire principal into the WS `canStartConversation` cooldown check (`ws/handler.ts` was outside 1.10's edit scope) | S | 1.10 | — | `src/ws/handler.ts` | reg | todo |
-| 1.14 | Map the knowledge `description` column in the Supabase TS layer (column added in 1.12; reads/writes still omit it) | S | 1.12 | — | `src/storage/supabase/knowledge.ts` | reg | todo |
+| 1.13 | Wire principal into the WS `canStartConversation` cooldown check | S | 1.10 | — | `src/ws/handler.ts` | reg | done |
+| 1.14 | Map the knowledge `description` column in the Supabase TS layer | S | 1.12 | — | `src/storage/supabase/knowledge.ts` | reg | done |
 
 ---
 
@@ -72,9 +72,10 @@
 | 2.6 | `migrateLocalToSupabase(projectId,userId)` | M | 0.5, 2.5 | reg | done |
 | 2.7 | Batch create/update for NPCs + knowledge | S | 2.1 | e2e | done |
 | 2.8 | Versioned `/ws/voice` protocol spec + `audio_format` in `ready` | M | 0.1 | unit | done |
-| 2.9 | WS voice **lifecycle** auth + `resumeSession` token minting (2.4 covered HTTP; WS still auths only at start) | S | 2.4 | reg | todo |
-| 2.10 | Apply the standard envelope + pagination to ALL list routes (2.2 shipped helper + projects; other routes pending) | S | 2.2 | e2e | todo |
-| 2.11 | Frontend: adopt new list shape `{items,pagination}` + `/api/v1` (list-projects shape changed — handled in Tier 3 rewrite) | S | 2.2 | manual | todo |
+| 2.9 | WS voice **lifecycle** auth (session-token verify on init, opt-in) + `resumeSession` token minting | S | 2.4 | reg | done |
+| 2.10 | Pagination on the NPC list (additive, non-breaking) + tested params helper | S | 2.2 | unit | done |
+| 2.11 | Frontend tolerates the paginated list shape (`{items}` / `{projects}`) so the webapp keeps working | S | 2.2 | manual | done |
+| 2.12 | Extend pagination/envelope to the remaining list routes (knowledge, transcripts, instances) — keep legacy keys until Tier 3 | S | 2.10 | e2e | todo |
 
 ---
 
@@ -96,12 +97,13 @@
 
 | ID | Title | Size | Depends-on | Test req | Status |
 |---|---|---|---|---|---|
-| 4.1 | Delete dead `src/voice/interruption.ts` | S | — | unit | todo |
-| 4.2 | Collapse ~3s stacked endpointing latency to one short settle | M | 0.1 | manual | todo |
-| 4.3 | Per-utterance ID dedup (replace `pendingSTTFinal` boolean) | M | — | reg | todo |
-| 4.4 | Harden providers (DG reconnect, Cartesia events, TTS pipeline, backpressure) | L | — | reg | todo |
-| 4.5 | Binary WS audio frames | M | 0.1, 2.8 | manual | todo |
-| 4.6 | Latency instrumentation + budget | S | — | unit | todo |
+| 4.1 | Delete dead `src/voice/interruption.ts` | S | — | unit | done |
+| 4.2 | Collapse ~3s stacked endpointing latency (aggregation 1500→400ms, DG utterance_end 1500→1000ms; ~1.4s budget) | M | 0.1 | unit | done |
+| 4.3 | Per-utterance ID dedup (replaced `pendingSTTFinal` boolean) | M | — | reg | done |
+| 4.4 | Harden providers (DG reconnect accumulator clear, Cartesia event-driven, TTS pipelining) | L | — | reg | done |
+| 4.5 | Binary WS audio frames (deferred — needs `ws/handler.ts` + client; pairs with Tier 3) | M | 0.1, 2.8 | manual | todo |
+| 4.6 | Latency instrumentation + budget (`LatencyTracker`: commit→firstTranscript→firstToken→firstAudio) | S | — | unit | done |
+| 4.7 | WS outbound-audio backpressure (`handler.ts` `bufferedAmount`) — not covered by 4.4 (provider-only) | S | — | reg | todo |
 
 ---
 
@@ -138,12 +140,14 @@
 | Tier | Items | Done | Status |
 |---|---|---|---|
 | 0 | 8 | 8 | **complete** |
-| 1 | 14 | 12 | core + follow-ups done; 2 minor loose ends open (1.13-1.14) |
-| 2 | 11 | 8 | **contract shipped**; 3 follow-ups open (2.9-2.11) |
-| 3 | 7 | 0 | not started |
-| 4 | 6 | 0 | not started |
-| 5 | 7 | 0 | not started |
+| 1 | 14 | 14 | **complete** |
+| 2 | 12 | 11 | **contract shipped**; remaining-routes pagination open (2.12) |
+| 3 | 7 | 0 | not started (frontend rewrite) |
+| 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
+| 5 | 7 | 0 | not started (deferred per request — features/testing first) |
 | 6 | 7 | 0 | not started |
-| **Total** | **60** | **28** | — |
+| **Total** | **62** | **38** | — |
+
+> **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
 > Update the relevant row's `Status` and this table as items complete. Each `done` item must have a matching `FIXED` row in [`ERRORS.md`](ERRORS.md) with a regression-test path.

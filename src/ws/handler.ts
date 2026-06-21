@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { createLogger } from '../logger.js';
 import { sessionStore } from '../session/store.js';
-import { endSession, getSessionContext } from '../session/manager.js';
+import { endSession, getSessionContext, verifySessionToken } from '../session/manager.js';
 import { createVoicePipeline, VoicePipeline, VoicePipelineEvents } from '../voice/pipeline.js';
 import { decodeClientAudio } from '../voice/audio.js';
 import { canStartConversation } from '../mcp/exit-handler.js';
+import { resolveRateLimitPrincipal } from '../security/principal.js';
 import { DeepgramSttProvider } from '../providers/stt/deepgram.js';
 import { createTtsProvider } from '../providers/tts/factory.js';
 import type { TTSProviderType } from '../providers/tts/interface.js';
@@ -29,6 +30,8 @@ interface InitMessage {
   type: 'init';
   session_id: string;
   mode?: ConversationMode;
+  /** Optional session token minted at session start; verified for lifecycle auth when present. */
+  session_token?: string;
 }
 
 interface AudioMessage {
@@ -248,7 +251,8 @@ export function createVoiceWebSocketHandler(_deps: VoiceWebSocketDependencies): 
 
     // Check cooldown
     const { state } = stored;
-    const cooldownCheck = canStartConversation(state.project_id, state.player_id, state.definition_id);
+    const principal = resolveRateLimitPrincipal({ userId: state.user_id, playerId: state.player_id });
+    const cooldownCheck = canStartConversation(state.project_id, state.player_id, state.definition_id, principal);
     if (!cooldownCheck.allowed) {
       return c.json(
         { error: 'On cooldown', remaining_seconds: cooldownCheck.remainingSeconds },
@@ -409,6 +413,20 @@ async function handleInitMessage(
     logger.error({ sessionId, messageSessionId: msg.session_id }, 'handleInitMessage: session mismatch');
     sendMessage(ws, { type: 'error', code: 'SESSION_MISMATCH', message: 'Session ID does not match' });
     return;
+  }
+
+  // Lifecycle auth: if the session was minted with a token and the client supplies one,
+  // it must match. Strict enforcement arrives when every client always sends the token;
+  // today a dashboard client may omit it, so a missing token is allowed but logged.
+  const storedForAuth = sessionStore.get(sessionId);
+  if (storedForAuth?.sessionTokenHash && msg.session_token) {
+    if (!verifySessionToken(msg.session_token, storedForAuth.sessionTokenHash)) {
+      logger.warn({ sessionId }, 'handleInitMessage: invalid session token');
+      sendMessage(ws, { type: 'error', code: 'UNAUTHORIZED', message: 'Invalid session token' });
+      return;
+    }
+  } else if (storedForAuth?.sessionTokenHash && !msg.session_token) {
+    logger.debug({ sessionId }, 'handleInitMessage: no session token provided; lifecycle auth not enforced');
   }
 
   // Check if already initialized

@@ -27,8 +27,9 @@
 | ERR-013 | P1 | api | 503 catch-all shadows history routes (registered after it) | route order in `index.ts:202-213` | 1.5 (or new) | `tests/e2e/err-013-history-no-llm.test.ts` (pending) | OPEN |
 | ERR-014 | P1 | frontend | `/projects/new` route unregistered → landing CTA 404s | anchored route regex falls through to `:projectId='new'` | 3.7 | `tests/regression/err-014-projects-new-route.test.ts` (pending) | OPEN |
 | ERR-015 | P1 | frontend | Diff-modal buttons never bound (wired at module-load before template exists) | `DOMContentLoaded` handler runs before `renderTemplate` | 3.7 | `tests/regression/err-015-diff-modal-binding.test.ts` (pending) | OPEN |
-| ERR-016 | P1 | voice | `src/voice/interruption.ts` is 188 lines of dead, contradictory code | barge-in removed but module never deleted; imported nowhere | 4.1 | `tests/unit/err-016-no-dead-interruption.test.ts` (assert not imported) (pending) | OPEN |
-| ERR-017 | P1 | voice | Transcript double-processing via fragile `pendingSTTFinal` boolean | boolean reset by new interim; dedup half-reset across turns | 4.3 | `tests/regression/err-017-utterance-dedup.test.ts` (pending) | OPEN |
+| ERR-016 | P1 | voice | `src/voice/interruption.ts` is 188 lines of dead, contradictory code | barge-in removed but module never deleted; imported nowhere | 4.1 | `tests/unit/no-dead-interruption.test.ts` | FIXED |
+| ERR-017 | P1 | voice | Transcript double-processing via fragile `pendingSTTFinal` boolean | boolean reset by new interim; dedup half-reset across turns | 4.3 | `tests/regression/utterance-dedup.test.ts` | FIXED |
+| ERR-021 | P1 | voice | Deepgram reconnect prepends stale pre-disconnect segments → garbled transcript | `finalizedSegments` accumulator not cleared before reconnect | 4.4 | `tests/regression/deepgram-reconnect.test.ts` | FIXED |
 | ERR-018 | P1 | security | Rate limiter bypassable by rotating client-supplied `player_id` | limiter keyed on untrusted `player_id`; in-memory only | 1.6 | `tests/regression/err-018-ratelimit-bypass.test.ts` | FIXED |
 | ERR-019 | P1 | storage | Local definition history stubbed; `rollbackDefinition` is a silent no-op | interface implemented in Supabase only; local returns current | 1.7 | `tests/regression/err-019-local-def-history.test.ts` | FIXED |
 | ERR-020 | P2 | packaging | Version mismatch: `package.json` 1.0.0 vs `/health` 2.0.0 | hardcoded version string in `index.ts` | 6.2 | `tests/unit/err-020-version-source.test.ts` (pending) | OPEN |
@@ -97,3 +98,12 @@ The limiter keyed on client-supplied `player_id`. Fixed by keying on a trusted p
 
 ### ERR-019: Local definition history was a silent no-op
 Local `getDefinitionHistory`/`getDefinitionSnapshot`/`rollbackDefinition` were stubs while Supabase was real. Implemented file-based local history mirroring the instance-history approach, and unified NPC-id validation in `src/storage/validation.ts`. Guard: `tests/regression/err-019-local-def-history.test.ts`.
+
+### ERR-016: Dead interruption module
+`src/voice/interruption.ts` (188 lines of orphaned barge-in machinery) was imported nowhere and contradicted the "barge-in removed" design. Deleted; pipeline references removed. Guard: `tests/unit/no-dead-interruption.test.ts` asserts the module stays gone and is not imported.
+
+### ERR-017: Transcript double-processing
+`pendingSTTFinal` was a boolean that a new interim could reset, so a late STT final for utterance N slipped through after utterance N+1 started — the same utterance processed twice. Replaced with a monotonic `currentUtteranceId` (incremented per interim) + `committedUtteranceId` captured at commit; finals at/under the committed id are suppressed regardless of timing. Also cut stacked endpointing latency (aggregation 1500→400ms, Deepgram utterance_end 1500→1000ms). Guard: `tests/regression/utterance-dedup.test.ts`.
+
+### ERR-021: Deepgram reconnect garbled transcripts
+On reconnect, the `finalizedSegments` accumulator wasn't cleared, so post-reconnect speech got pre-disconnect partials prepended. Cleared the accumulator in `attemptReconnect()` before reconnecting. (Same pass made Cartesia event-driven instead of 50ms polling and pipelined TTS so a slow sentence doesn't stall the stream.) Guard: `tests/regression/deepgram-reconnect.test.ts`.

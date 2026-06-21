@@ -682,14 +682,20 @@ export async function resumeSession(
       trauma_flags: [...definition.core_anchor.trauma_flags],
     };
 
+    // Mint a fresh session token so the resumed session is authable for its lifecycle
+    // (matches startSession; the raw token is returned to the client, only the hash is stored).
+    const sessionToken = generateSessionToken();
+    const sessionTokenHash = createHash('sha256').update(sessionToken).digest('hex');
+
     // Restore the session to the in-memory store
-    sessionStore.create(sessionId, persistedState, originalAnchor, userId);
+    sessionStore.create(sessionId, persistedState, originalAnchor, userId, sessionTokenHash);
 
     const duration = Date.now() - startTime;
     logger.info({ sessionId, duration }, 'Session resumed');
 
     return {
       session_id: sessionId,
+      session_token: sessionToken,
       npc_name: definition.name,
       npc_description: definition.description,
       mood: persistedState.instance.current_mood,
