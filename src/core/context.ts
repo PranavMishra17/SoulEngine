@@ -10,6 +10,12 @@ import { getStorage } from '../storage/factory.js';
 const logger = createLogger('context-assembly');
 
 /**
+ * Token budget for memory section during prompt assembly.
+ * Prevents massive individual memories from inflating prompt size.
+ */
+const MEMORY_SECTION_TOKEN_BUDGET = 1500;
+
+/**
  * Context assembly options
  */
 export interface ContextAssemblyOptions {
@@ -192,7 +198,8 @@ ${resolvedKnowledge}`;
 }
 
 /**
- * Format the memories section for the prompt
+ * Format the memories section for the prompt with token budget enforcement.
+ * Limits both count AND total token size to prevent unbounded prompt growth.
  */
 function formatMemories(instance: NPCInstance, maxMemories: number): string {
   // Combine STM and LTM, prioritizing by salience
@@ -209,8 +216,11 @@ function formatMemories(instance: NPCInstance, maxMemories: number): string {
 
   const formattedMemories = formatMemoriesForPrompt(allMemories, maxMemories);
 
+  // Apply token budget to prevent massive individual memories from inflating the prompt
+  const budgetedMemories = truncateToTokenBudget(formattedMemories, MEMORY_SECTION_TOKEN_BUDGET);
+
   return `[RECENT IMPORTANT MEMORIES]
-${formattedMemories}`;
+${budgetedMemories}`;
 }
 
 /**
@@ -684,6 +694,26 @@ export function assembleConversationHistory(
  */
 export function estimateTokenCount(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+/**
+ * Truncate text to fit within a token budget.
+ * Uses character-based truncation with a trailing ellipsis indicator.
+ *
+ * @param text - The text to truncate
+ * @param tokenBudget - Maximum allowed tokens
+ * @returns Truncated text within budget
+ */
+function truncateToTokenBudget(text: string, tokenBudget: number): string {
+  const estimatedTokens = estimateTokenCount(text);
+  if (estimatedTokens <= tokenBudget) {
+    return text;
+  }
+
+  // Approximate: ~4 chars per token, leave room for ellipsis
+  const targetChars = Math.floor(tokenBudget * 4) - 20;
+  const truncated = text.substring(0, targetChars);
+  return truncated + '... [truncated]';
 }
 
 /**
