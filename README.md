@@ -39,7 +39,7 @@ SoulEngine transforms static game NPCs into genuinely evolving entities. Charact
 
 ## Features
 
-    Unity SDK coming soon!
+> **Unity SDK — in progress.** A Unity 6 client is substantially built: a full C# runtime (memory, Mind, cycles, personality, providers, security, session) plus a CloudSync layer. The remaining work before public release is the backend's `/api/sync/*` endpoints it syncs against, a versioned API to pin to, and packaging. See [`documentation/UNITY_REPACKAGE.md`](documentation/UNITY_REPACKAGE.md) for status and scope.
 
 ### Multi-Provider LLM, TTS, and STT
 

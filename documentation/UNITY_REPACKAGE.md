@@ -1,6 +1,15 @@
 # SoulEngine Unity SDK
 
-Implementation plan for repackaging SoulEngine as a Unity asset. All NPC intelligence runs locally inside Unity, with optional cloud sync back to the SoulEngine backend for state persistence, history, and the web management UI.
+Plan + status for packaging SoulEngine as a Unity asset. All NPC intelligence runs locally inside Unity, with optional cloud sync back to the SoulEngine backend for state persistence, history, and the web management UI.
+
+> **Status (2026-06): much of this is already built, not aspirational.** A Unity 6 (6000.3.11f1) project lives in the workspace at `Unity-SoulEngine/SoulEngine`. `Assets/SoulEngine/` already contains a working C# re-implementation: `Core/` (MindAgent, MemorySystem, CycleRunner, PersonalityEngine, ContextAssembler, ConversationSummarizer, KnowledgeResolver), `Providers/` (LLM: Anthropic/Gemini/Grok/OpenAI; STT: Deepgram; TTS: Cartesia/ElevenLabs/Piper), `Security/`, `Session/`, `MCP/`, the drop-in components (`SoulEngineBootstrapper`, `NPCConversationController`, `GameToolHandler`, `SoulEngineConfig`), and a `CloudSync/` layer (`CloudSyncService`, `SyncQueue`, `SyncJob`).
+>
+> **What is NOT done yet (the real blockers, tracked in `../backlog.md`):**
+> 1. The backend **`/api/sync/*` endpoints** the `CloudSync` layer calls do not exist in the webapp yet (Tier 5.1).
+> 2. There is **no shared contract / conformance test** between this C# runtime and the TS runtime, so the two cognition implementations can drift (Tier 5.2).
+> 3. No **versioned API** to pin the client to (Tier 2.1) and no published **UPM/.unitypackage** (Tier 5.7).
+>
+> Sections below describe the intended end state; treat unbuilt pieces as roadmap, not current behavior.
 
 ---
 
