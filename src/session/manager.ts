@@ -1,6 +1,7 @@
 import { createLogger } from '../logger.js';
 import { getConfig } from '../config.js';
 import { sessionStore, StoredSession } from './store.js';
+import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import {
   type ApiKeys,
 } from '../storage/index.js';
@@ -29,6 +30,13 @@ const logger = createLogger('session-manager');
  */
 export interface SessionStartResult {
   session_id: SessionID;
+  /**
+   * One-time session token returned to the game client at session start.
+   * All subsequent lifecycle calls (message, history, end) must include this
+   * value in the x-session-token header to authenticate the request.
+   * Only present when auth applies; undefined in local/dev mode.
+   */
+  session_token?: string;
   npc_name: string;
   npc_description: string;
   mood: MoodVector;
@@ -71,10 +79,62 @@ export class SessionError extends Error {
 }
 
 /**
- * Generate a unique session ID
+ * Generate a cryptographically-strong session ID.
+ *
+ * Uses 128 bits of entropy from crypto.randomBytes, encoded as lowercase hex.
+ * Format: sess_<32 hex chars> (128 bits — resistant to enumeration attacks).
  */
-function generateSessionId(): SessionID {
-  return `sess_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+export function generateSessionId(): SessionID {
+  return `sess_${randomBytes(16).toString('hex')}`;
+}
+
+/**
+ * Generate a one-time session token to authenticate the conversation lifecycle.
+ *
+ * The raw token is returned to the game client at session start and must be
+ * supplied in the x-session-token header for all subsequent lifecycle calls.
+ * Only the SHA-256 hash is persisted in the session store.
+ */
+export function generateSessionToken(): string {
+  return randomBytes(32).toString('hex');
+}
+
+/**
+ * Verify a session token against its stored SHA-256 hash using a constant-time
+ * comparison to prevent timing-oracle attacks.
+ *
+ * Returns false for any empty or mismatched input; never throws.
+ */
+export function verifySessionToken(token: string, storedHash: string): boolean {
+  if (!token || !storedHash) return false;
+  try {
+    const incomingHash = createHash('sha256').update(token).digest('hex');
+    const a = Buffer.from(incomingHash, 'utf8');
+    const b = Buffer.from(storedHash, 'utf8');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify a raw game-client API key against its stored SHA-256 hash using
+ * constant-time comparison to prevent timing-oracle attacks.
+ *
+ * Returns false for any empty or mismatched input; never throws.
+ */
+export function verifyGameClientKey(rawKey: string, storedHash: string): boolean {
+  if (!rawKey || !storedHash) return false;
+  try {
+    const incomingHash = createHash('sha256').update(rawKey).digest('hex');
+    const a = Buffer.from(incomingHash, 'utf8');
+    const b = Buffer.from(storedHash, 'utf8');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -157,8 +217,13 @@ export async function startSession(
       trauma_flags: [...definition.core_anchor.trauma_flags],
     };
 
+    // Mint a session token for lifecycle authentication.
+    // The raw token is returned to the game client; only the hash is stored.
+    const sessionToken = generateSessionToken();
+    const sessionTokenHash = createHash('sha256').update(sessionToken).digest('hex');
+
     // Store session with userId so endSession and getSessionContext can pick the right backend
-    sessionStore.create(sessionId, sessionState, originalAnchor, userId);
+    sessionStore.create(sessionId, sessionState, originalAnchor, userId, sessionTokenHash);
 
     const duration = Date.now() - startTime;
     logger.info(
@@ -175,6 +240,7 @@ export async function startSession(
 
     return {
       session_id: sessionId,
+      session_token: sessionToken,
       npc_name: definition.name,
       npc_description: definition.description,
       mood: instance.current_mood,

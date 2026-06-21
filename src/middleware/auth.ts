@@ -1,5 +1,6 @@
 import { Context, Next } from 'hono';
 import { createLogger } from '../logger.js';
+import { verifySessionToken } from '../session/manager.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -152,4 +153,42 @@ export async function optionalAuthMiddleware(c: Context, next: Next): Promise<Re
  */
 export function isAuthEnabled(): boolean {
   return useAuth;
+}
+
+/**
+ * Verify that a lifecycle request (message, history, end) carries valid authority.
+ *
+ * Authority hierarchy (first match wins):
+ *  1. Local/dev mode — auth disabled entirely, always allow.
+ *  2. Dashboard user — request carries a validated Supabase userId that matches
+ *     the session's user_id; allow.
+ *  3. Game client — request carries x-session-token header that matches the
+ *     session's stored token hash; allow.
+ *  4. Everything else — deny with 401.
+ *
+ * The function returns null on success, or an error object on failure.
+ * Route handlers should return the error response immediately when non-null.
+ */
+export function checkSessionLifecycleAuth(
+  sessionUserId: string | null | undefined,
+  sessionTokenHash: string | undefined,
+  requestUserId: string | null | undefined,
+  requestSessionToken: string | undefined
+): { status: 401; error: string } | null {
+  // Auth disabled in local/dev mode
+  if (!useAuth) return null;
+
+  // Dashboard user path: authenticated userId matches the session owner
+  if (requestUserId && sessionUserId && requestUserId === sessionUserId) {
+    return null;
+  }
+
+  // Game client path: session token provided and valid
+  if (requestSessionToken && sessionTokenHash) {
+    if (verifySessionToken(requestSessionToken, sessionTokenHash)) {
+      return null;
+    }
+  }
+
+  return { status: 401, error: 'Unauthorized - valid session token or authenticated user required' };
 }

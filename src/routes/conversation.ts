@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import { getSession, getSessionContext, addMessageToSession, updateSessionInstance, addTokensToSession, SessionError } from '../session/manager.js';
+import { checkSessionLifecycleAuth } from '../middleware/auth.js';
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
@@ -89,6 +90,18 @@ export function createConversationRoutes(
       if (!stored) {
         logger.warn({ sessionId }, 'Session not found');
         return c.json({ error: 'Session not found' }, 404);
+      }
+
+      // 2a. Lifecycle auth — game clients must supply x-session-token; dashboard users pass via userId
+      const authError = checkSessionLifecycleAuth(
+        stored.state.user_id,
+        stored.sessionTokenHash,
+        c.get('userId'),
+        c.req.header('x-session-token')
+      );
+      if (authError) {
+        logger.warn({ sessionId }, 'Lifecycle auth failed for message');
+        return c.json({ error: authError.error }, authError.status);
       }
 
       const { state } = stored;
@@ -444,6 +457,18 @@ export function createConversationRoutes(
       if (!stored) {
         logger.warn({ sessionId }, 'Session not found');
         return c.json({ error: 'Session not found' }, 404);
+      }
+
+      // Lifecycle auth — same authority as message/end
+      const authError = checkSessionLifecycleAuth(
+        stored.state.user_id,
+        stored.sessionTokenHash,
+        c.get('userId'),
+        c.req.header('x-session-token')
+      );
+      if (authError) {
+        logger.warn({ sessionId }, 'Lifecycle auth failed for history');
+        return c.json({ error: authError.error }, authError.status);
       }
 
       const duration = Date.now() - startTime;

@@ -166,13 +166,22 @@ export const NPCInstanceSchema = z.object({
 // Project
 // ---------------------------------------------------------------------------
 
+export const GameClientApiKeySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  hash: z.string().min(1),
+});
+
 export const ProjectSettingsSchema = z.object({
   llm_provider: z.string().min(1),
   llm_model: z.string().optional(),
   stt_provider: z.string().min(1),
   tts_provider: z.string().min(1),
   default_voice_id: z.string(),
+  /** Legacy single-key hash — kept for backward compatibility */
   game_client_api_key_hash: z.string().optional(),
+  /** Named revocable keys array */
+  game_client_api_keys: z.array(GameClientApiKeySchema).optional(),
   timeouts: z.object({
     session: z.number().optional(),
     llm: z.number().optional(),
