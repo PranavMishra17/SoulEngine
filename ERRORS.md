@@ -14,11 +14,11 @@
 |---|---|---|---|---|---|---|---|
 | ERR-001 | P1 | core | Weekly Whisper silently deletes high-salience memories | `retainCount=3` slice discards rank>3 regardless of salience; promoted items dropped from STM | 1.1 | `tests/regression/err-001-weekly-whisper.test.ts` (pending) | OPEN |
 | ERR-002 | P1 | core/security | Core Anchor immutability never enforced (only logged) | `enforceAnchorImmutability` never called; save continues on violation | 1.2 | `tests/regression/err-002-anchor-immutability.test.ts` (pending) | OPEN |
-| ERR-003 | P0 | voice/deploy | Production voice dead — WS binds `PORT+1`, unreachable behind single-port PaaS | 2nd `WebSocketServer({port:port+1})`; no HTTP upgrade; client dials `host:444` | 0.1, 0.2 | `tests/e2e/err-003-ws-same-port.test.ts` + manual prod check (pending) | OPEN |
-| ERR-004 | P0 | security | Cross-tenant IDOR on every project-scoped route | server uses service-role key (bypasses RLS); routes only existence-check, no `user_id` | 0.3 | `tests/regression/err-004-idor.test.ts` (pending) | OPEN |
-| ERR-005 | P0 | storage | Storage split-brain — static vs per-request backend selectors disagree | `index.ts` `NODE_ENV` switch (core) vs `hybrid.ts` `userId` switch (routes) | 0.4 | `tests/regression/err-005-storage-selector.test.ts` (pending) | OPEN |
-| ERR-006 | P0 | storage/security | BYOK secrets unrotatable + non-portable across backends | no `key_version`; different ciphertext formats; `ENCRYPTION_KEY` change bricks all keys | 0.5 | `tests/regression/err-006-secrets-roundtrip.test.ts` (pending) | OPEN |
-| ERR-007 | P0 | frontend/css | Landing renders old indigo brand; session panel tokens transparent | `--accent-primary-rgb` undefined (falls back to indigo); 5 phantom `--*` tokens | 0.6 | `tests/unit/err-007-css-tokens.test.ts` (grep undefined `var(--…)`) (pending) | OPEN |
+| ERR-003 | P0 | voice/deploy | Production voice dead — WS binds `PORT+1`, unreachable behind single-port PaaS | 2nd `WebSocketServer({port:port+1})`; no HTTP upgrade; client dials `host:444` | 0.1, 0.2 | `tests/e2e/err-003-ws-same-port.test.ts` | FIXED |
+| ERR-004 | P0 | security | Cross-tenant IDOR on every project-scoped route | server uses service-role key (bypasses RLS); routes only existence-check, no `user_id` | 0.3 | `tests/regression/err-004-idor.test.ts` | FIXED |
+| ERR-005 | P0 | storage | Storage split-brain — static vs per-request backend selectors disagree | `index.ts` `NODE_ENV` switch (core) vs `hybrid.ts` `userId` switch (routes) | 0.4 | `tests/regression/err-005-storage-selector.test.ts` | FIXED |
+| ERR-006 | P0 | storage/security | BYOK secrets unrotatable + non-portable across backends | no `key_version`; different ciphertext formats; `ENCRYPTION_KEY` change bricks all keys | 0.5 | `tests/regression/err-006-secrets-roundtrip.test.ts` | FIXED |
+| ERR-007 | P0 | frontend/css | Landing renders old indigo brand; session panel tokens transparent | `--accent-primary-rgb` undefined (falls back to indigo); 5 phantom `--*` tokens | 0.6 | `tests/unit/err-007-css-tokens.test.ts` | FIXED |
 | ERR-008 | P0 | storage | Concurrent local usage appends lose token/cost data | unlocked read-modify-write in `appendProjectUsage` | 0.8 | `tests/regression/err-008-usage-append-race.test.ts` | FIXED |
 | ERR-009 | P2 | core/voice | Deferred recall context lost on voice reconnect; stale double-injection possible | stored on per-pipeline field, not session state; cleared late | 1.3 | `tests/regression/err-009-deferred-recall.test.ts` (pending) | OPEN |
 | ERR-010 | P1 | storage | Supabase silently destroys knowledge category `description` | hardcoded `description:''` on read + write | 1.7 | `tests/regression/err-010-knowledge-desc.test.ts` (pending) | OPEN |
@@ -48,6 +48,21 @@ When fixing:
 4. For a bug present in BOTH runtimes (TS + C#), add a `tests/conformance/` fixture so neither side can regress silently.
 
 ## Resolved (FIXED) — detail log
+
+### ERR-003: Production voice WebSocket unreachable
+Voice ran on a second listener at `PORT+1`, which single-port PaaS never exposes, and the client dialed `host:port+1`. Fixed by serving `/ws/voice` via the existing HTTP server's `upgrade` event (one port) and connecting the client to the page origin with no port math. Guard: `tests/regression`/`tests/e2e/err-003-ws-same-port.test.ts` opens a WS on the same ephemeral port the HTTP server uses and asserts the upgrade succeeds.
+
+### ERR-004: Cross-tenant IDOR
+Server storage ran as Supabase service-role (bypassing RLS) and routes authorized only by project existence. Fixed by carrying `user_id` on projects and adding a fail-closed ownership guard (`src/middleware/ownership.ts`) on project- and instance-scoped routes (404 on mismatch). Guard: `tests/regression/err-004-idor.test.ts` asserts user B cannot read/update/delete user A's project while the owner can, and local mode stays open.
+
+### ERR-005: Storage split-brain
+Routes selected the backend per-request (by `userId`) while the cognition core used a static `NODE_ENV` selector, so reads and writes could hit different backends. Fixed with one request-scoped `getStorage(userId)` factory threaded into routes and core (`mind.ts`/`context.ts`). Guard: `tests/regression/err-005-storage-selector.test.ts` asserts a single selector governs a request across modes. (Follow-up filed as backlog 1.9: thread `userId` through session/voice state — currently `null` there.)
+
+### ERR-006: Secrets unrotatable / non-portable
+The two backends used incompatible ciphertext formats with no key version, so an `ENCRYPTION_KEY` change bricked all secrets. Fixed with a shared envelope (`src/storage/crypto/secrets.ts`) carrying `keyVersion` + algorithm, a `rotateSecret` routine, and backward-compatible reads of the old formats. Guard: `tests/regression/err-006-secrets-roundtrip.test.ts` covers round-trip, rotation, wrong-key handling, tamper detection, old-format migration, and salt/IV uniqueness.
+
+### ERR-007: Undefined CSS custom properties
+`--accent-primary-rgb` was referenced but never defined (landing fell back to the old indigo), and `conversation-modes.css` referenced phantom non-`--color-*` tokens. Fixed by defining the missing tokens (ember `224,120,80`) and correcting the phantom references. Guard: `tests/unit/err-007-css-tokens.test.ts` scans `web/css/*.css` and fails on any custom property referenced (without fallback) but never defined.
 
 ### ERR-008: Concurrent local usage appends lose token/cost data
 

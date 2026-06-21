@@ -22,14 +22,14 @@
 
 | ID | Title | Size | Depends-on | Group | Files | Test req | Status |
 |---|---|---|---|---|---|---|---|
-| 0.1 | Move WebSocket onto the main HTTP port (Upgrade handler); delete `port+1` server | M | — | **A** | `src/index.ts:306`, `src/ws/handler.ts:163` | e2e + manual | todo |
-| 0.2 | Drop client `port+1` WS-URL math; use page origin / `/api/config` | S | 0.1 | **A** | `web/js/api.js:343-346` | manual | todo |
-| 0.3 | Enforce project ownership (kill cross-tenant IDOR) | L | — | **B** | `src/storage/supabase/projects.ts:97`, `src/middleware/auth.ts`, `src/routes/*` | reg(e2e) | todo |
-| 0.4 | Collapse dual storage selector into one request-scoped path; thread storage into core | L | — | **B** | `src/storage/index.ts:14`, `src/storage/hybrid.ts`, `src/core/mind.ts:163`, `src/core/context.ts:334` | reg + unit | todo |
-| 0.5 | Rotatable + portable secrets (shared envelope, `key_version`, re-encrypt routine) | M | — | **C** | `src/storage/local/secrets.ts`, `src/storage/supabase/secrets.ts` | unit + reg | todo |
-| 0.6 | Fix visible token bugs (`--accent-primary-rgb`; phantom tokens) + CI grep for undefined vars | S | — | **D** | `web/css/pages.css`, `web/css/conversation-modes.css:6` | unit(css-lint) + manual | todo |
-| 0.7 | Reconcile Unity docs with reality (SDK is built; `/api/sync` is the real blocker) | S | — | **E** | `documentation/UNITY_REPACKAGE.md`, `README.md:42` | manual | todo |
-| 0.8 | Serialize local usage append (lock/append-only) — stop losing token/cost data | S | — | **F** | `src/storage/local/usage.ts:41-66` | reg | done |
+| 0.1 | Move WebSocket onto the main HTTP port (Upgrade handler); delete `port+1` server | M | — | **A** | `src/index.ts`, `src/ws/handler.ts` | e2e + manual | done |
+| 0.2 | Drop client `port+1` WS-URL math; use page origin | S | 0.1 | **A** | `web/js/api.js` | manual | done |
+| 0.3 | Enforce project ownership (kill cross-tenant IDOR) | L | — | **B** | `src/middleware/ownership.ts`, `src/storage/supabase/projects.ts`, `src/routes/*`, `src/types/project.ts` | reg(e2e) | done |
+| 0.4 | Collapse dual storage selector into one request-scoped path; thread storage into core | L | — | **B** | `src/storage/factory.ts`, `src/core/mind.ts`, `src/core/context.ts` | reg + unit | done |
+| 0.5 | Rotatable + portable secrets (shared envelope, `keyVersion`, rotate routine) | M | — | **C** | `src/storage/crypto/secrets.ts`, `src/storage/{local,supabase}/secrets.ts` | reg | done |
+| 0.6 | Fix visible token bugs (`--accent-primary-rgb`; phantom tokens) + undefined-var guard | S | — | **D** | `web/css/design-system.css`, `web/css/conversation-modes.css` | unit | done |
+| 0.7 | Reconcile Unity docs with reality (SDK is built; `/api/sync` is the real blocker) | S | — | **E** | `documentation/UNITY_REPACKAGE.md`, `README.md` | manual | done |
+| 0.8 | Serialize local usage append (lock/append-only) — stop losing token/cost data | S | — | **F** | `src/storage/local/usage.ts` | reg | done |
 
 **Tier 0 dispatch plan (waves):**
 - **Wave 1 (parallel, 6 agents in 6 worktrees):** A `{0.1→0.2}` · B `{0.3→0.4}` · C `{0.5}` · D `{0.6}` · E `{0.7}` · F `{0.8}`.
@@ -51,6 +51,7 @@
 | 1.6 | Externalize rate-limit/cooldown/registry; key limiter on principal; limit LLM endpoints | L | — | F | `src/security/rate-limiter.ts`, `src/mcp/registry.ts` | reg(e2e) | todo |
 | 1.7 | Close worst local↔cloud drift (knowledge desc, ID regex, version scheme, def history) | L | 0.4 | G | `src/storage/supabase/knowledge.ts:19`, `src/storage/{local,supabase}/definitions.ts` | conf + unit | todo |
 | 1.8 | Enforce token budget on prompt assembly (`checkContextBounds`) | M | — | H | `src/core/context.ts:679`, `src/core/knowledge.ts` | unit | todo |
+| 1.9 | Thread `userId` through session + voice state so authenticated sessions use the right backend end-to-end (follow-up surfaced by 0.4: conversation/voice currently pass `userId=null`) | M | 0.4 | I | `src/session/manager.ts`, `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/core/mind.ts` | reg | todo |
 
 ---
 
@@ -128,13 +129,13 @@
 
 | Tier | Items | Done | Status |
 |---|---|---|---|
-| 0 | 8 | 1 | in progress |
-| 1 | 8 | 0 | not started |
+| 0 | 8 | 8 | **complete** |
+| 1 | 9 | 0 | not started |
 | 2 | 8 | 0 | not started |
 | 3 | 7 | 0 | not started |
 | 4 | 6 | 0 | not started |
 | 5 | 7 | 0 | not started |
 | 6 | 7 | 0 | not started |
-| **Total** | **51** | **1** | — |
+| **Total** | **52** | **8** | — |
 
 > Update the relevant row's `Status` and this table as items complete. Each `done` item must have a matching `FIXED` row in [`ERRORS.md`](ERRORS.md) with a regression-test path.
