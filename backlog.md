@@ -64,14 +64,17 @@
 
 | ID | Title | Size | Depends-on | Test req | Status |
 |---|---|---|---|---|---|
-| 2.1 | Introduce `/api/v1` + deprecation headers | M | — | e2e | todo |
-| 2.2 | Standard response/error envelope + stable error-code enum + pagination | M | 2.1 | e2e | todo |
-| 2.3 | Server→client event channel (WS/SSE) for game-event tools + Mind follow-ups | L | 0.1 | e2e | todo |
-| 2.4 | Authenticate full conversation lifecycle; high-entropy session ids; revocable keys | M | 0.3 | reg(e2e) | todo |
-| 2.5 | Versioned data contract (zod → TS+JSON Schema+SQL, `schemaVersion`) | L | — | unit+conf | todo |
-| 2.6 | `migrateLocalToSupabase(projectId,userId)` | M | 0.5, 2.5 | e2e | todo |
-| 2.7 | Batch create/update for NPCs + knowledge | S | 2.1 | e2e | todo |
-| 2.8 | Versioned `/ws/voice` protocol spec + `audio_format` in `ready` | M | 0.1 | manual+e2e | todo |
+| 2.1 | Introduce `/api/v1` + deprecation headers (legacy `/api/*` aliased) | M | — | e2e | done |
+| 2.2 | Standard response/error envelope + stable error-code enum + pagination | M | 2.1 | e2e | done |
+| 2.3 | Server→client event channel (WS + SSE `/api/v1/events`) for game-event tools + Mind follow-ups | L | 0.1 | e2e | done |
+| 2.4 | Authenticate full conversation lifecycle; high-entropy session ids; revocable named keys | M | 0.3 | reg | done |
+| 2.5 | Versioned data contract (zod schemas + `SCHEMA_VERSION`) | L | — | unit | done |
+| 2.6 | `migrateLocalToSupabase(projectId,userId)` | M | 0.5, 2.5 | reg | done |
+| 2.7 | Batch create/update for NPCs + knowledge | S | 2.1 | e2e | done |
+| 2.8 | Versioned `/ws/voice` protocol spec + `audio_format` in `ready` | M | 0.1 | unit | done |
+| 2.9 | WS voice **lifecycle** auth + `resumeSession` token minting (2.4 covered HTTP; WS still auths only at start) | S | 2.4 | reg | todo |
+| 2.10 | Apply the standard envelope + pagination to ALL list routes (2.2 shipped helper + projects; other routes pending) | S | 2.2 | e2e | todo |
+| 2.11 | Frontend: adopt new list shape `{items,pagination}` + `/api/v1` (list-projects shape changed — handled in Tier 3 rewrite) | S | 2.2 | manual | todo |
 
 ---
 
@@ -136,11 +139,11 @@
 |---|---|---|---|
 | 0 | 8 | 8 | **complete** |
 | 1 | 14 | 12 | core + follow-ups done; 2 minor loose ends open (1.13-1.14) |
-| 2 | 8 | 0 | not started |
+| 2 | 11 | 8 | **contract shipped**; 3 follow-ups open (2.9-2.11) |
 | 3 | 7 | 0 | not started |
 | 4 | 6 | 0 | not started |
 | 5 | 7 | 0 | not started |
 | 6 | 7 | 0 | not started |
-| **Total** | **57** | **20** | — |
+| **Total** | **60** | **28** | — |
 
 > Update the relevant row's `Status` and this table as items complete. Each `done` item must have a matching `FIXED` row in [`ERRORS.md`](ERRORS.md) with a regression-test path.

@@ -8,6 +8,7 @@ import {
 } from '../storage/index.js';
 import { getStorage } from '../storage/factory.js';
 import { requireProjectOwnership } from '../middleware/ownership.js';
+import { parsePagination, paginatedResponse } from '../http/pagination.js';
 
 const logger = createLogger('routes-projects');
 
@@ -104,6 +105,8 @@ projectRoutes.post('/', async (c) => {
 
 /**
  * GET /api/projects - List all projects (filtered by user in authenticated mode)
+ *
+ * Pagination query params: limit (default 50, max 200), offset (integer)
  */
 projectRoutes.get('/', async (c) => {
   const startTime = Date.now();
@@ -113,12 +116,18 @@ projectRoutes.get('/', async (c) => {
     const userId = c.get('userId') ?? null;
     const storage = getStorage(userId);
 
-    const projects = await storage.listProjects(userId ?? undefined);
+    const allProjects = await storage.listProjects(userId ?? undefined);
+
+    const pagination = parsePagination(c.req.query() as Record<string, string>);
+    const offset = pagination.offset ?? 0;
+    const page = allProjects.slice(offset, offset + pagination.limit);
+    const nextOffset = offset + pagination.limit < allProjects.length ? offset + pagination.limit : undefined;
+    const nextCursor = nextOffset !== undefined ? String(nextOffset) : undefined;
 
     const duration = Date.now() - startTime;
-    logger.debug({ count: projects.length, userId, duration }, 'Projects listed via API');
+    logger.debug({ count: page.length, total: allProjects.length, userId, duration }, 'Projects listed via API');
 
-    return c.json({ projects });
+    return c.json(paginatedResponse(page, pagination, nextCursor, allProjects.length));
   } catch (error) {
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1030,6 +1039,133 @@ projectRoutes.delete('/:projectId/api-key', async (c) => {
     }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, error: errorMessage, duration }, 'Failed to revoke Game Client API Key');
+    return c.json({ error: 'Failed to revoke Game Client API Key', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * POST /api/projects/:projectId/api-keys - Generate a new named Game Client API Key
+ *
+ * Supports multiple named, revocable keys per project. Returns the raw key exactly once.
+ * Only the SHA-256 hash is stored in project settings.
+ * Body: { name: string }
+ */
+const CreateNamedApiKeySchema = z.object({
+  name: z.string().min(1).max(100),
+});
+
+projectRoutes.post('/:projectId/api-keys', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorage(userId);
+
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+
+    const body = await c.req.json();
+    const parsed = CreateNamedApiKeySchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
+    }
+
+    const { randomBytes, createHash } = await import('crypto');
+    const rawKey = 'gcak_' + randomBytes(32).toString('hex');
+    const keyHash = createHash('sha256').update(rawKey).digest('hex');
+    const keyId = 'gkey_' + randomBytes(8).toString('hex');
+
+    const existingKeys = project.settings?.game_client_api_keys ?? [];
+    const updatedKeys = [
+      ...existingKeys,
+      { id: keyId, name: parsed.data.name, hash: keyHash },
+    ];
+
+    await storage.updateProject(projectId, {
+      settings: { game_client_api_keys: updatedKeys } as Parameters<typeof storage.updateProject>[1]['settings'],
+    });
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, keyId, keyName: parsed.data.name, duration }, 'Named Game Client API Key generated');
+
+    return c.json({ api_key: rawKey, id: keyId, name: parsed.data.name }, 201);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage, duration }, 'Failed to generate named Game Client API Key');
+    return c.json({ error: 'Failed to generate Game Client API Key', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * GET /api/projects/:projectId/api-keys - List named Game Client API Keys (metadata only, no hashes)
+ */
+projectRoutes.get('/:projectId/api-keys', async (c) => {
+  const projectId = c.req.param('projectId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorage(userId);
+
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+
+    const keys = (project.settings?.game_client_api_keys ?? []).map(({ id, name }) => ({ id, name }));
+    return c.json({ keys });
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, error: errorMessage }, 'Failed to list named API keys');
+    return c.json({ error: 'Failed to list API keys', details: errorMessage }, 500);
+  }
+});
+
+/**
+ * DELETE /api/projects/:projectId/api-keys/:keyId - Revoke a named Game Client API Key by its ID
+ */
+projectRoutes.delete('/:projectId/api-keys/:keyId', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+  const keyId = c.req.param('keyId');
+
+  try {
+    const userId = c.get('userId') ?? undefined;
+    const storage = getStorage(userId);
+
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+
+    const existingKeys = project.settings?.game_client_api_keys ?? [];
+    const targetKey = existingKeys.find((k) => k.id === keyId);
+    if (!targetKey) {
+      return c.json({ error: 'API key not found' }, 404);
+    }
+
+    const updatedKeys = existingKeys.filter((k) => k.id !== keyId);
+    await storage.updateProject(projectId, {
+      settings: { game_client_api_keys: updatedKeys } as Parameters<typeof storage.updateProject>[1]['settings'],
+    });
+
+    const duration = Date.now() - startTime;
+    logger.info({ projectId, keyId, keyName: targetKey.name, duration }, 'Named Game Client API Key revoked');
+
+    return c.json({ success: true, id: keyId });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, keyId, error: errorMessage, duration }, 'Failed to revoke named Game Client API Key');
     return c.json({ error: 'Failed to revoke Game Client API Key', details: errorMessage }, 500);
   }
 });

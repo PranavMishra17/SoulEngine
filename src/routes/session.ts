@@ -6,8 +6,10 @@ import {
   endSession,
   getSession,
   getSessionStats,
+  verifyGameClientKey,
   SessionError,
 } from '../session/manager.js';
+import { checkSessionLifecycleAuth } from '../middleware/auth.js';
 import { StorageNotFoundError } from '../storage/index.js';
 import { getStorage } from '../storage/factory.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
@@ -63,22 +65,47 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
       const { project_id, npc_id, player_id, player_info, mode } = parsed.data;
       const userId = c.get('userId') ?? null;
 
-      // BYOK Security: Check Game Client API Key if configured — only for unauthenticated game clients
-      // Dashboard users (userId set via Supabase JWT) bypass this check
+      // BYOK Security: Check Game Client API Key if configured — only for unauthenticated game clients.
+      // Dashboard users (userId set via Supabase JWT) bypass this check.
+      // Key comparison uses timingSafeEqual to prevent timing-oracle attacks.
       const storage = getStorage(userId);
       const project = await storage.getProject(project_id);
 
-      if (!userId && project.settings?.game_client_api_key_hash) {
+      if (!userId) {
         const clientApiKey = c.req.header('x-api-key');
-        if (!clientApiKey) {
-          logger.warn({ projectId: project_id }, 'Missing Game Client API Key');
-          return c.json({ error: 'Unauthorized - Game Client API Key required' }, 401);
-        }
-        const { createHash } = await import('crypto');
-        const incomingHash = createHash('sha256').update(clientApiKey).digest('hex');
-        if (incomingHash !== project.settings.game_client_api_key_hash) {
-          logger.warn({ projectId: project_id }, 'Invalid Game Client API Key');
-          return c.json({ error: 'Unauthorized - invalid Game Client API Key' }, 401);
+        const settings = project.settings;
+
+        // Check whether any key is configured (legacy single-hash or named-keys array)
+        const hasLegacyKey = !!settings?.game_client_api_key_hash;
+        const hasNamedKeys = !!(settings?.game_client_api_keys?.length);
+
+        if (hasLegacyKey || hasNamedKeys) {
+          if (!clientApiKey) {
+            logger.warn({ projectId: project_id }, 'Missing Game Client API Key');
+            return c.json({ error: 'Unauthorized - Game Client API Key required' }, 401);
+          }
+
+          let keyAccepted = false;
+
+          // Check legacy single-key hash
+          if (hasLegacyKey) {
+            keyAccepted = verifyGameClientKey(clientApiKey, settings!.game_client_api_key_hash!);
+          }
+
+          // Check named keys array (supports multiple revocable keys)
+          if (!keyAccepted && hasNamedKeys) {
+            for (const entry of settings!.game_client_api_keys!) {
+              if (verifyGameClientKey(clientApiKey, entry.hash)) {
+                keyAccepted = true;
+                break;
+              }
+            }
+          }
+
+          if (!keyAccepted) {
+            logger.warn({ projectId: project_id }, 'Invalid Game Client API Key');
+            return c.json({ error: 'Unauthorized - invalid Game Client API Key' }, 401);
+          }
         }
       }
 
@@ -105,12 +132,36 @@ export function createSessionRoutes(llmProvider: LLMProvider): Hono {
 
   /**
    * POST /api/session/:sessionId/end - End a session
+   *
+   * Requires the same authority as /start:
+   *  - Dashboard users: must be the session owner (userId match)
+   *  - Game clients: must supply x-session-token minted at session start
+   *  - Local/dev: no auth required
    */
   sessionRoutes.post('/:sessionId/end', async (c) => {
     const startTime = Date.now();
     const sessionId = c.req.param('sessionId');
 
     try {
+      // Load session to verify auth before acting on it
+      const stored = getSession(sessionId);
+      if (!stored) {
+        logger.warn({ sessionId }, 'Session not found');
+        return c.json({ error: 'Session not found' }, 404);
+      }
+
+      // Lifecycle auth check
+      const authError = checkSessionLifecycleAuth(
+        stored.state.user_id,
+        stored.sessionTokenHash,
+        c.get('userId'),
+        c.req.header('x-session-token')
+      );
+      if (authError) {
+        logger.warn({ sessionId }, 'Lifecycle auth failed for end');
+        return c.json({ error: authError.error }, authError.status);
+      }
+
       let exitConvoUsed = false;
 
       // Body is optional
