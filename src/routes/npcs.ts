@@ -313,6 +313,188 @@ npcRoutes.get('/', async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Batch endpoints (registered BEFORE /:npcId so static paths match first)
+// ---------------------------------------------------------------------------
+
+/**
+ * Outer wrapper: just needs items to be a non-empty unknown array.
+ * Each item is validated individually so partial success is possible.
+ */
+const BatchCreateOuterSchema = z.object({
+  items: z.array(z.unknown()).min(1, 'items must have at least one element'),
+});
+
+/**
+ * Outer wrapper for batch update.
+ * id is required; data is validated per-item.
+ */
+const BatchUpdateOuterSchema = z.object({
+  items: z.array(z.object({ id: z.string().min(1) }).passthrough()).min(1, 'items must have at least one element'),
+});
+
+/**
+ * POST /api/projects/:projectId/npcs/batch
+ *
+ * Create multiple NPC definitions in a single request.
+ * Returns a per-item result array. A validation or storage failure for one
+ * item does NOT prevent other items from being processed.
+ *
+ * Response body:
+ *   { results: Array<{ index, status: 'created', data } | { index, status: 'error', error }> }
+ */
+npcRoutes.post('/batch', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  if (!projectId) {
+    return c.json({ error: 'Project ID is required' }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  // Validate outer structure only — per-item validation happens below
+  const outerParsed = BatchCreateOuterSchema.safeParse(body);
+  if (!outerParsed.success) {
+    logger.warn({ projectId, errors: outerParsed.error.issues }, 'Invalid batch create NPC request');
+    return c.json({ error: 'Invalid request', details: outerParsed.error.issues }, 400);
+  }
+
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
+
+  // Verify project exists and ownership
+  try {
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return c.json({ error: 'Failed to verify project', details: errorMessage }, 500);
+  }
+
+  const results = await Promise.all(
+    outerParsed.data.items.map(async (rawItem, index) => {
+      // Per-item schema validation
+      const itemParsed = CreateNPCSchema.safeParse(rawItem);
+      if (!itemParsed.success) {
+        return {
+          index,
+          status: 'error' as const,
+          error: itemParsed.error.issues.map(i => i.message).join('; '),
+        };
+      }
+      try {
+        const definition = await storage.createDefinition(projectId, itemParsed.data);
+        return { index, status: 'created' as const, data: definition };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn({ projectId, index, error: errorMessage }, 'Batch NPC create: item failed');
+        return { index, status: 'error' as const, error: errorMessage };
+      }
+    })
+  );
+
+  const duration = Date.now() - startTime;
+  const created = results.filter(r => r.status === 'created').length;
+  logger.info({ projectId, total: results.length, created, duration }, 'Batch NPC create complete');
+
+  return c.json({ results });
+});
+
+/**
+ * PUT /api/projects/:projectId/npcs/batch
+ *
+ * Update multiple NPC definitions in a single request.
+ * Each item must include an `id` (the NPC ID) and a `data` object (partial update).
+ * Returns a per-item result array.
+ *
+ * Response body:
+ *   { results: Array<{ index, id, status: 'updated', data } | { index, id, status: 'error', error }> }
+ */
+npcRoutes.put('/batch', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  if (!projectId) {
+    return c.json({ error: 'Project ID is required' }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  // Validate outer structure only
+  const outerParsed = BatchUpdateOuterSchema.safeParse(body);
+  if (!outerParsed.success) {
+    logger.warn({ projectId, errors: outerParsed.error.issues }, 'Invalid batch update NPC request');
+    return c.json({ error: 'Invalid request', details: outerParsed.error.issues }, 400);
+  }
+
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
+
+  // Verify project exists and ownership
+  try {
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return c.json({ error: 'Failed to verify project', details: errorMessage }, 500);
+  }
+
+  const results = await Promise.all(
+    outerParsed.data.items.map(async (rawItem, index) => {
+      const npcId = rawItem.id;
+      // Per-item data validation
+      const { id: _id, ...rawData } = rawItem;
+      void _id;
+      const dataParsed = UpdateNPCSchema.safeParse(rawData);
+      if (!dataParsed.success) {
+        return {
+          index,
+          id: npcId,
+          status: 'error' as const,
+          error: dataParsed.error.issues.map(i => i.message).join('; '),
+        };
+      }
+      try {
+        const definition = await storage.updateDefinition(
+          projectId,
+          npcId,
+          dataParsed.data as Parameters<typeof storage.updateDefinition>[2]
+        );
+        return { index, id: npcId, status: 'updated' as const, data: definition };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn({ projectId, npcId, index, error: errorMessage }, 'Batch NPC update: item failed');
+        return { index, id: npcId, status: 'error' as const, error: errorMessage };
+      }
+    })
+  );
+
+  const duration = Date.now() - startTime;
+  const updated = results.filter(r => r.status === 'updated').length;
+  logger.info({ projectId, total: results.length, updated, duration }, 'Batch NPC update complete');
+
+  return c.json({ results });
+});
+
 /**
  * GET /api/projects/:projectId/npcs/:npcId - Get an NPC by ID
  */
@@ -856,3 +1038,5 @@ npcRoutes.post('/:npcId/reset', async (c) => {
     return c.json({ error: 'Failed to reset NPC', details: errorMessage }, 500);
   }
 });
+
+// (Batch endpoints are registered earlier in this file, before /:npcId routes)

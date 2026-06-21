@@ -21,6 +21,7 @@ import { historyRoutes } from './routes/history.js';
 import { waitlistRoutes } from './routes/waitlist.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
 import { getStarterPackMetaList } from './data/starter-packs.js';
+import { createEventsRoute } from './routes/events.js';
 
 // HTTP helpers
 import { applyVersioning } from './http/versioning.js';
@@ -149,6 +150,9 @@ function buildApiRoutes(llmProviderArg: LLMProvider | null): Hono {
 
   // History routes (don't require LLM)
   api.route('/instances', historyRoutes);
+
+  // SSE event stream for text clients (no auth required — session_id gates access)
+  api.route('/events', createEventsRoute());
 
   return api;
 }

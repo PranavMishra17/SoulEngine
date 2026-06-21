@@ -129,6 +129,97 @@ knowledgeRoutes.put('/', async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Batch category upsert
+// ---------------------------------------------------------------------------
+
+/**
+ * Outer wrapper for batch category upsert.
+ * Validates that items is a non-empty array; per-item validation happens below.
+ */
+const BatchUpsertOuterSchema = z.object({
+  items: z.array(z.unknown()).min(1, 'items must have at least one element'),
+});
+
+/**
+ * POST /api/projects/:projectId/knowledge/categories/batch
+ *
+ * Upsert multiple knowledge categories in a single request.
+ * Each item is processed independently — an error on one does not prevent
+ * others from being saved.
+ *
+ * Response body:
+ *   { results: Array<{ index, id, status: 'upserted' } | { index, id, status: 'error', error }> }
+ */
+knowledgeRoutes.post('/categories/batch', async (c) => {
+  const startTime = Date.now();
+  const projectId = c.req.param('projectId');
+
+  if (!projectId) {
+    return c.json({ error: 'Project ID is required' }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  // Validate outer structure only
+  const outerParsed = BatchUpsertOuterSchema.safeParse(body);
+  if (!outerParsed.success) {
+    logger.warn({ projectId, errors: outerParsed.error.issues }, 'Invalid batch upsert categories request');
+    return c.json({ error: 'Invalid request', details: outerParsed.error.issues }, 400);
+  }
+
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
+
+  // Verify project exists and ownership
+  try {
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return c.json({ error: 'Project not found' }, 404);
+    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return c.json({ error: 'Failed to verify project', details: errorMessage }, 500);
+  }
+
+  const results = await Promise.all(
+    outerParsed.data.items.map(async (rawItem, index) => {
+      // Per-item schema validation
+      const itemParsed = KnowledgeCategorySchema.safeParse(rawItem);
+      if (!itemParsed.success) {
+        const id = (rawItem as Record<string, unknown>)?.id as string | undefined;
+        return {
+          index,
+          id: id ?? `item_${index}`,
+          status: 'error' as const,
+          error: itemParsed.error.issues.map(i => i.message).join('; '),
+        };
+      }
+      try {
+        await storage.upsertCategory(projectId, itemParsed.data);
+        return { index, id: itemParsed.data.id, status: 'upserted' as const };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn({ projectId, categoryId: itemParsed.data.id, index, error: errorMessage }, 'Batch upsert categories: item failed');
+        return { index, id: itemParsed.data.id, status: 'error' as const, error: errorMessage };
+      }
+    })
+  );
+
+  const duration = Date.now() - startTime;
+  const upserted = results.filter(r => r.status === 'upserted').length;
+  logger.info({ projectId, total: results.length, upserted, duration }, 'Batch category upsert complete');
+
+  return c.json({ results });
+});
+
 /**
  * GET /api/projects/:projectId/knowledge/categories/:categoryId - Get a specific category
  */
