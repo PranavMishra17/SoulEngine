@@ -204,18 +204,27 @@ class CooldownTracker {
 export const cooldownTracker = new CooldownTracker();
 
 /**
- * Process an exit_convo result and apply any necessary cooldowns
+ * Process an exit_convo result and apply any necessary cooldowns.
+ *
+ * @param exitResult - The result of the exit_convo tool call
+ * @param projectId - The project ID
+ * @param playerId - Client-supplied player ID (untrusted)
+ * @param npcId - The NPC ID
+ * @param principal - OPTIONAL: Trusted principal (user ID, API key hash, IP).
+ *                    When provided, the cooldown is keyed on this instead of
+ *                    playerId, preventing bypass via player_id rotation.
  */
 export function processExitResult(
   exitResult: ExitConvoResult,
   projectId: string,
   playerId: string,
-  npcId: string
+  npcId: string,
+  principal?: string
 ): void {
   if (exitResult.applyCooldown && exitResult.cooldownSeconds) {
     cooldownTracker.applyCooldown(
       projectId,
-      playerId,
+      principal ?? playerId,
       npcId,
       exitResult.cooldownSeconds
     );
@@ -223,15 +232,24 @@ export function processExitResult(
 }
 
 /**
- * Check if a conversation can be started (not on cooldown)
+ * Check if a conversation can be started (not on cooldown).
+ *
+ * @param projectId - The project ID
+ * @param playerId - Client-supplied player ID (untrusted)
+ * @param npcId - The NPC ID
+ * @param principal - OPTIONAL: Trusted principal (user ID, API key hash, IP).
+ *                    When provided, the cooldown check is keyed on this instead
+ *                    of playerId, preventing bypass via player_id rotation.
  */
 export function canStartConversation(
   projectId: string,
   playerId: string,
-  npcId: string
+  npcId: string,
+  principal?: string
 ): { allowed: boolean; remainingSeconds?: number } {
-  if (cooldownTracker.isOnCooldown(projectId, playerId, npcId)) {
-    const remaining = cooldownTracker.getRemainingCooldown(projectId, playerId, npcId);
+  const keyPart = principal ?? playerId;
+  if (cooldownTracker.isOnCooldown(projectId, keyPart, npcId)) {
+    const remaining = cooldownTracker.getRemainingCooldown(projectId, keyPart, npcId);
     return { allowed: false, remainingSeconds: remaining };
   }
   return { allowed: true };
