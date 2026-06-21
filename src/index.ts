@@ -22,9 +22,12 @@ import { waitlistRoutes } from './routes/waitlist.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
 import { getStarterPackMetaList } from './data/starter-packs.js';
 
+// HTTP helpers
+import { applyVersioning } from './http/versioning.js';
+
 // Providers
 import { createLlmProvider, getDefaultModel } from './providers/llm/factory.js';
-import type { LLMProviderType } from './providers/llm/interface.js';
+import type { LLMProvider, LLMProviderType } from './providers/llm/interface.js';
 
 // MCP
 import { mcpToolRegistry } from './mcp/registry.js';
@@ -36,6 +39,119 @@ import { optionalAuthMiddleware, isAuthEnabled } from './middleware/auth.js';
 
 const logger = createLogger('server');
 const config = getConfig();
+
+/**
+ * Get API key for the specified LLM provider
+ */
+function getLlmApiKey(providerType: LLMProviderType): string | undefined {
+  switch (providerType) {
+    case 'gemini':
+      return config.providers.geminiApiKey;
+    case 'openai':
+      return config.providers.openaiApiKey;
+    case 'anthropic':
+      return config.providers.anthropicApiKey;
+    case 'grok':
+      return config.providers.grokApiKey;
+    default:
+      return undefined;
+  }
+}
+
+// Initialize LLM provider using factory
+const defaultLlmType = config.defaultLlmProvider;
+const llmApiKey = getLlmApiKey(defaultLlmType);
+const llmProvider: LLMProvider | null = llmApiKey
+  ? createLlmProvider({
+    provider: defaultLlmType,
+    apiKey: llmApiKey,
+    model: getDefaultModel(defaultLlmType),
+  })
+  : null;
+
+if (!llmProvider) {
+  logger.warn({ provider: defaultLlmType }, 'No API key configured for default LLM provider - LLM/conversation features will not work');
+} else {
+  logger.info({ provider: defaultLlmType, model: getDefaultModel(defaultLlmType) }, 'LLM provider initialized');
+}
+
+/**
+ * Build the versioned API sub-app.
+ *
+ * This factory produces the Hono sub-app that holds all resource routes.
+ * It is mounted under BOTH the canonical path (/api/v1) and the legacy path
+ * (/api) via applyVersioning() below.
+ *
+ * The legacy mount wraps every response with Deprecation / Link headers so
+ * existing clients receive a migration signal while canonical clients get
+ * clean responses.
+ */
+function buildApiRoutes(llmProviderArg: LLMProvider | null): Hono {
+  const api = new Hono();
+
+  // Optional auth for project/session/instances routes
+  api.use('/projects/*', optionalAuthMiddleware);
+  api.use('/session/*', optionalAuthMiddleware);
+  api.use('/instances/*', optionalAuthMiddleware);
+
+  // Project routes
+  api.route('/projects', projectRoutes);
+
+  // Starter pack catalog
+  api.get('/starter-packs', (c) => {
+    return c.json(getStarterPackMetaList());
+  });
+
+  // Unity waitlist (public, no auth required)
+  api.route('/waitlist', waitlistRoutes);
+
+  // Project-scoped routes: knowledge, NPCs, MCP tools
+  const projectScoped = new Hono();
+  projectScoped.route('/knowledge', knowledgeRoutes);
+  projectScoped.route('/npcs', npcRoutes);
+  projectScoped.route('/mcp-tools', mcpToolsRoutes);
+  api.route('/projects/:projectId', projectScoped);
+
+  // Session + conversation routes (LLM-dependent)
+  if (llmProviderArg) {
+    const sessionRoutes = createSessionRoutes(llmProviderArg);
+    api.route('/session', sessionRoutes);
+
+    api.post('/session/:sessionId/message', async (c) => {
+      const sessionId = c.req.param('sessionId');
+      const conversationApp = createConversationRoutes(llmProviderArg, mcpToolRegistry);
+      const url = new URL(c.req.url);
+      url.pathname = `/${sessionId}/message`;
+      const newRequest = new Request(url.toString(), c.req.raw);
+      return conversationApp.fetch(newRequest, c.env);
+    });
+
+    api.get('/session/:sessionId/history', async (c) => {
+      const sessionId = c.req.param('sessionId');
+      const conversationApp = createConversationRoutes(llmProviderArg, mcpToolRegistry);
+      const url = new URL(c.req.url);
+      url.pathname = `/${sessionId}/history`;
+      const newRequest = new Request(url.toString(), c.req.raw);
+      return conversationApp.fetch(newRequest, c.env);
+    });
+
+    const cycleRoutes = createCycleRoutes(llmProviderArg);
+    api.route('/instances', cycleRoutes);
+  } else {
+    // Return 503 for session/conversation endpoints when LLM is not configured
+    api.all('/session/*', (c) => {
+      return c.json({ error: { code: 'LLM_NOT_CONFIGURED', message: `LLM provider not configured. Set ${config.defaultLlmProvider.toUpperCase()}_API_KEY environment variable.` } }, 503);
+    });
+    api.all('/instances/*', (c) => {
+      return c.json({ error: { code: 'LLM_NOT_CONFIGURED', message: `LLM provider not configured. Set ${config.defaultLlmProvider.toUpperCase()}_API_KEY environment variable.` } }, 503);
+    });
+  }
+
+  // History routes (don't require LLM)
+  api.route('/instances', historyRoutes);
+
+  return api;
+}
 
 /**
  * Main application setup
@@ -68,7 +184,7 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
 }));
 
-// Health check endpoint
+// Health check endpoint (not versioned — infrastructure)
 app.get('/health', (c) => {
   return c.json({
     status: 'ok',
@@ -90,7 +206,7 @@ app.get('/api/health', (c) => {
   });
 });
 
-// Public configuration endpoint (returns non-sensitive config for frontend)
+// Public configuration endpoint (not versioned — returns non-sensitive config for frontend)
 app.get('/api/config', (c) => {
   return c.json({
     auth: {
@@ -103,114 +219,21 @@ app.get('/api/config', (c) => {
   });
 });
 
-// Always apply optional auth — extracts userId if present, allows through if not
-// Logged-in users → Supabase storage, logged-out users → local file storage
-app.use('/api/projects/*', optionalAuthMiddleware);
-app.use('/api/session/*', optionalAuthMiddleware);
-app.use('/api/instances/*', optionalAuthMiddleware);
-
 if (isAuthEnabled()) {
   logger.info('Authentication enabled - hybrid storage active (logged-in→Supabase, logged-out→local)');
 } else {
   logger.info('Authentication disabled - running in development mode');
 }
 
-// API routes
-app.route('/api/projects', projectRoutes);
+// Build the shared API sub-app once and mount it under both paths.
+const sharedApiRoutes = buildApiRoutes(llmProvider);
 
-// Starter pack catalog
-app.get('/api/starter-packs', (c) => {
-  return c.json(getStarterPackMetaList());
+// Mount API routes under both /api/v1 (canonical) and /api (legacy with deprecation headers).
+// /api/health and /api/config are infrastructure endpoints registered above and are
+// intentionally excluded from the versioned API surface.
+applyVersioning(app, '/api/v1', '/api', (v1) => {
+  v1.route('/', sharedApiRoutes);
 });
-
-// Unity waitlist (public, no auth required)
-app.route('/api/waitlist', waitlistRoutes);
-
-// Create a sub-app for project-scoped routes
-const projectScoped = new Hono();
-
-// Mount knowledge, NPC, and MCP tools routes under project scope
-projectScoped.route('/knowledge', knowledgeRoutes);
-projectScoped.route('/npcs', npcRoutes);
-projectScoped.route('/mcp-tools', mcpToolsRoutes);
-
-// Mount the project-scoped routes
-app.route('/api/projects/:projectId', projectScoped);
-
-/**
- * Get API key for the specified LLM provider
- */
-function getLlmApiKey(providerType: LLMProviderType): string | undefined {
-  switch (providerType) {
-    case 'gemini':
-      return config.providers.geminiApiKey;
-    case 'openai':
-      return config.providers.openaiApiKey;
-    case 'anthropic':
-      return config.providers.anthropicApiKey;
-    case 'grok':
-      return config.providers.grokApiKey;
-    default:
-      return undefined;
-  }
-}
-
-// Initialize LLM provider using factory
-const defaultLlmType = config.defaultLlmProvider;
-const llmApiKey = getLlmApiKey(defaultLlmType);
-const llmProvider = llmApiKey
-  ? createLlmProvider({
-    provider: defaultLlmType,
-    apiKey: llmApiKey,
-    model: getDefaultModel(defaultLlmType),
-  })
-  : null;
-
-if (!llmProvider) {
-  logger.warn({ provider: defaultLlmType }, 'No API key configured for default LLM provider - LLM/conversation features will not work');
-} else {
-  logger.info({ provider: defaultLlmType, model: getDefaultModel(defaultLlmType) }, 'LLM provider initialized');
-}
-
-// Session routes - only fully functional with LLM provider
-if (llmProvider) {
-  const sessionRoutes = createSessionRoutes(llmProvider);
-  app.route('/api/session', sessionRoutes);
-
-  // Mount conversation routes under session
-  app.post('/api/session/:sessionId/message', async (c) => {
-    const sessionId = c.req.param('sessionId');
-    const conversationApp = createConversationRoutes(llmProvider, mcpToolRegistry);
-    const url = new URL(c.req.url);
-    url.pathname = `/${sessionId}/message`;
-    const newRequest = new Request(url.toString(), c.req.raw);
-    return conversationApp.fetch(newRequest, c.env);
-  });
-
-  app.get('/api/session/:sessionId/history', async (c) => {
-    const sessionId = c.req.param('sessionId');
-    const conversationApp = createConversationRoutes(llmProvider, mcpToolRegistry);
-    const url = new URL(c.req.url);
-    url.pathname = `/${sessionId}/history`;
-    const newRequest = new Request(url.toString(), c.req.raw);
-    return conversationApp.fetch(newRequest, c.env);
-  });
-
-  // Cycle routes for instances
-  const cycleRoutes = createCycleRoutes(llmProvider);
-  app.route('/api/instances', cycleRoutes);
-} else {
-  // Return 503 for session/conversation endpoints when LLM is not configured
-  app.all('/api/session/*', (c) => {
-    return c.json({ error: `LLM provider not configured. Set ${config.defaultLlmProvider.toUpperCase()}_API_KEY environment variable.` }, 503);
-  });
-  app.all('/api/instances/*', (c) => {
-    return c.json({ error: `LLM provider not configured. Set ${config.defaultLlmProvider.toUpperCase()}_API_KEY environment variable.` }, 503);
-  });
-}
-
-// History routes (don't require LLM)
-app.route('/api/instances', historyRoutes);
 
 // Static file serving - check for file first
 app.get('/*', async (c) => {

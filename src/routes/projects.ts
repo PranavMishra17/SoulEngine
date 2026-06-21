@@ -8,6 +8,7 @@ import {
 } from '../storage/index.js';
 import { getStorage } from '../storage/factory.js';
 import { requireProjectOwnership } from '../middleware/ownership.js';
+import { parsePagination, paginatedResponse } from '../http/pagination.js';
 
 const logger = createLogger('routes-projects');
 
@@ -104,6 +105,8 @@ projectRoutes.post('/', async (c) => {
 
 /**
  * GET /api/projects - List all projects (filtered by user in authenticated mode)
+ *
+ * Pagination query params: limit (default 50, max 200), offset (integer)
  */
 projectRoutes.get('/', async (c) => {
   const startTime = Date.now();
@@ -113,12 +116,18 @@ projectRoutes.get('/', async (c) => {
     const userId = c.get('userId') ?? null;
     const storage = getStorage(userId);
 
-    const projects = await storage.listProjects(userId ?? undefined);
+    const allProjects = await storage.listProjects(userId ?? undefined);
+
+    const pagination = parsePagination(c.req.query() as Record<string, string>);
+    const offset = pagination.offset ?? 0;
+    const page = allProjects.slice(offset, offset + pagination.limit);
+    const nextOffset = offset + pagination.limit < allProjects.length ? offset + pagination.limit : undefined;
+    const nextCursor = nextOffset !== undefined ? String(nextOffset) : undefined;
 
     const duration = Date.now() - startTime;
-    logger.debug({ count: projects.length, userId, duration }, 'Projects listed via API');
+    logger.debug({ count: page.length, total: allProjects.length, userId, duration }, 'Projects listed via API');
 
-    return c.json({ projects });
+    return c.json(paginatedResponse(page, pagination, nextCursor, allProjects.length));
   } catch (error) {
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
