@@ -17,6 +17,7 @@ import type { ToolCall, ToolResult } from '../types/mcp.js';
 import type { MoodVector } from '../types/npc.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, ExitConvoResult } from '../mcp/exit-handler.js';
+import { resolveRateLimitPrincipal } from '../security/principal.js';
 import type { MindResult, MindActivity } from '../types/mind.js';
 
 const logger = createLogger('routes-conversation');
@@ -92,11 +93,19 @@ export function createConversationRoutes(
 
       const { state } = stored;
 
-      // 3. Rate limiting
+      // 3. Rate limiting — key on a trusted principal, not the client-supplied player_id
+      const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+      const rateLimitPrincipal = resolveRateLimitPrincipal({
+        userId: state.user_id,
+        gameKeyHash: undefined, // game-key is validated at session start, hash not re-available here
+        ip: clientIp,
+        playerId: state.player_id,
+      });
       const rateLimit = rateLimiter.checkLimit(
         state.project_id,
         state.player_id,
-        state.definition_id
+        state.definition_id,
+        rateLimitPrincipal
       );
 
       if (!rateLimit.allowed) {

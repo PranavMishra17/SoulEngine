@@ -52,9 +52,11 @@
 | 1.7 | Close worst local↔cloud drift (knowledge desc, ID regex, version scheme, def history) | L | 0.4 | G | `src/storage/supabase/knowledge.ts`, `src/storage/{local,supabase}/definitions.ts`, `src/storage/validation.ts` | conf + reg | done |
 | 1.8 | Enforce token budget on prompt assembly | M | — | H | `src/core/context.ts`, `src/core/knowledge.ts` | unit | done |
 | 1.9 | Thread `userId` through session + voice state | M | 0.4 | I | `src/session/manager.ts`, `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/types/session.ts` | reg | done |
-| 1.10 | Wire the trusted principal into rate-limit/cooldown CALL SITES (1.6 added the param; callers still pass only `player_id`) | S | 1.6 | — | `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/mcp/exit-handler.ts` | reg | todo |
-| 1.11 | Supabase session persistence + resume (1.5 shipped local only; cloud path is stubbed) | M | 1.5 | — | `src/storage/supabase/sessions.ts`, `sql/*` | e2e | todo |
-| 1.12 | SQL: add `npc_instance_history` UNIQUE (instance_id, version) + persist knowledge `description` column (assumed/needed by 1.4/1.7) | S | 1.4, 1.7 | — | `sql/01-schema.sql`, `sql/04-definition-history.sql` | manual | todo |
+| 1.10 | Wire the trusted principal into rate-limit/cooldown CALL SITES (1.6 added the param; callers still pass only `player_id`) | S | 1.6 | — | `src/routes/conversation.ts`, `src/voice/pipeline.ts`, `src/mcp/exit-handler.ts`, `src/security/principal.ts` | reg | done |
+| 1.11 | Supabase session persistence + resume (1.5 shipped local only; cloud path is stubbed) | M | 1.5 | — | `src/storage/supabase/sessions.ts`, `sql/07-session-and-integrity.sql` | e2e | done |
+| 1.12 | SQL: add `npc_instance_history` UNIQUE (instance_id, version) + knowledge `description` column | S | 1.4, 1.7 | — | `sql/07-session-and-integrity.sql` | reg | done |
+| 1.13 | Wire principal into the WS `canStartConversation` cooldown check (`ws/handler.ts` was outside 1.10's edit scope) | S | 1.10 | — | `src/ws/handler.ts` | reg | todo |
+| 1.14 | Map the knowledge `description` column in the Supabase TS layer (column added in 1.12; reads/writes still omit it) | S | 1.12 | — | `src/storage/supabase/knowledge.ts` | reg | todo |
 
 ---
 
@@ -133,12 +135,12 @@
 | Tier | Items | Done | Status |
 |---|---|---|---|
 | 0 | 8 | 8 | **complete** |
-| 1 | 12 | 9 | core done; 3 follow-ups open (1.10-1.12) |
+| 1 | 14 | 12 | core + follow-ups done; 2 minor loose ends open (1.13-1.14) |
 | 2 | 8 | 0 | not started |
 | 3 | 7 | 0 | not started |
 | 4 | 6 | 0 | not started |
 | 5 | 7 | 0 | not started |
 | 6 | 7 | 0 | not started |
-| **Total** | **55** | **17** | — |
+| **Total** | **57** | **20** | — |
 
 > Update the relevant row's `Status` and this table as items complete. Each `done` item must have a matching `FIXED` row in [`ERRORS.md`](ERRORS.md) with a regression-test path.

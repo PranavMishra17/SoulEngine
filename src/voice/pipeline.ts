@@ -17,6 +17,7 @@ import { runMindAgentLoop } from '../core/mind.js';
 import { isRecallTool } from '../core/tools.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, processExitResult } from '../mcp/exit-handler.js';
+import { resolveRateLimitPrincipal } from '../security/principal.js';
 import { SentenceDetector } from './sentence-detector.js';
 import { encodeTtsAudio } from './audio.js';
 
@@ -65,6 +66,11 @@ export interface VoicePipelineConfig {
   events: VoicePipelineEvents;
   /** Conversation mode - determines which providers to initialize */
   mode: ConversationMode;
+  /**
+   * Client IP address from the WebSocket upgrade request (e.g. x-forwarded-for).
+   * Used as a fallback principal for rate limiting when the user is not authenticated.
+   */
+  clientIp?: string;
 }
 
 /**
@@ -131,6 +137,9 @@ export class VoicePipeline {
   // Deferred mind context: recall tool results stored here for injection into NEXT turn's prompt
   private deferredMindContext: string = '';
 
+  // Client IP from the WebSocket upgrade (used for rate-limit principal resolution)
+  private readonly clientIp: string | undefined;
+
   constructor(config: VoicePipelineConfig) {
     this.sessionId = config.sessionId;
     this.sttProvider = config.sttProvider;
@@ -140,6 +149,7 @@ export class VoicePipeline {
     this.voiceConfig = config.voiceConfig;
     this.events = config.events;
     this.mode = config.mode;
+    this.clientIp = config.clientIp;
     this.sentenceDetector = new SentenceDetector();
 
     logger.info({ sessionId: this.sessionId, mode: this.mode }, 'VoicePipeline created');
@@ -652,12 +662,19 @@ export class VoicePipeline {
 
     const { state } = stored;
 
-    // Security pipeline
+    // Security pipeline — resolve trusted principal before calling
+    const rateLimitPrincipal = resolveRateLimitPrincipal({
+      userId: state.user_id,
+      gameKeyHash: undefined, // game-key validated at session start, hash not re-available here
+      ip: this.clientIp,
+      playerId: state.player_id,
+    });
     const securityContext = await this.runSecurityPipeline(
       text,
       state.project_id,
       state.player_id,
-      state.definition_id
+      state.definition_id,
+      rateLimitPrincipal
     );
 
     if (!securityContext) {
@@ -680,17 +697,25 @@ export class VoicePipeline {
     addMessageToSession(this.sessionId, userMessage);
 
     // Process turn with LLM
-    await this.processTurn(text, context, securityContext);
+    await this.processTurn(text, context, securityContext, rateLimitPrincipal);
   }
 
   /**
    * Run the security pipeline on input
+   *
+   * @param input - The raw input text
+   * @param projectId - The project ID
+   * @param playerId - Client-supplied player ID (untrusted)
+   * @param npcId - The NPC ID
+   * @param principal - Trusted principal resolved by the caller (user ID, IP, etc.)
+   *                    Used to key the rate limit so player_id rotation cannot bypass it.
    */
   private async runSecurityPipeline(
     input: string,
     projectId: string,
     playerId: string,
-    npcId: string
+    npcId: string,
+    principal: string
   ): Promise<SecurityContext | null> {
     // 1. Sanitize
     const sanitizeResult = sanitize(input);
@@ -701,8 +726,8 @@ export class VoicePipeline {
       );
     }
 
-    // 2. Rate limit
-    const rateLimitResult = rateLimiter.checkLimit(projectId, playerId, npcId);
+    // 2. Rate limit — key on the trusted principal, not player_id
+    const rateLimitResult = rateLimiter.checkLimit(projectId, playerId, npcId, principal);
     if (!rateLimitResult.allowed) {
       logger.warn({ sessionId: this.sessionId, resetAt: rateLimitResult.resetAt }, 'Rate limit exceeded');
       this.events.onError('RATE_LIMIT', 'Too many messages. Please wait before sending more.');
@@ -735,11 +760,17 @@ export class VoicePipeline {
    * - Recall tools (recall_npc / recall_knowledge / recall_memories): results deferred to NEXT turn.
    * - MCP/project tools (request_credentials, lock_door, etc.): trigger a follow-up speech.
    * - exit_convo: ends the session after Speaker finishes (or immediately if moderation forced it).
+   *
+   * @param _userInput - The user's input text
+   * @param context - The session context
+   * @param securityContext - The security context
+   * @param principal - Trusted principal (used for cooldown keying on exit_convo)
    */
   private async processTurn(
     _userInput: string,
     context: SessionContext,
-    securityContext: SecurityContext
+    securityContext: SecurityContext,
+    principal: string
   ): Promise<void> {
     this.turnState = {
       abortController: new AbortController(),
@@ -886,7 +917,8 @@ export class VoicePipeline {
           exitResult,
           context.project.id,
           sessionStore.get(this.sessionId)?.state.player_id || '',
-          context.definition.id
+          context.definition.id,
+          principal
         );
 
         try {
