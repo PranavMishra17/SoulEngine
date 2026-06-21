@@ -138,14 +138,13 @@ export function createConversationRoutes(
       const { definition, instance } = sessionContext;
 
       // 7. Assemble slim system prompt for Speaker (no knowledge, no tools)
-      // Note: userId not tracked in session state yet, using null for now
       const systemPrompt = await assembleSlimSystemPrompt(
         definition,
         instance,
         securityContext,
         {},
         state.player_info,
-        null
+        state.user_id
       );
 
       // 8. Add player message to history
@@ -219,7 +218,7 @@ export function createConversationRoutes(
         securityContext,
         projectTools,
         mindAbortController.signal,
-        null, // userId not tracked in session state yet
+        state.user_id,
       ).catch((err) => {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         logger.error({ sessionId, error: msg }, 'Mind agent loop failed');

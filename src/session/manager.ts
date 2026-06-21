@@ -7,7 +7,7 @@ import {
 import { getStorageForUser } from '../storage/hybrid.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import type { Tool } from '../types/mcp.js';
-import { validateAnchorIntegrity } from '../security/anchor-guard.js';
+import { validateAnchorIntegrity, enforceAnchorImmutability } from '../security/anchor-guard.js';
 import { resolveKnowledge } from '../core/knowledge.js';
 import { summarizeConversation, NPCPerspective } from '../core/summarizer.js';
 import { createMemory, calculateSalience, pruneSTM } from '../core/memory.js';
@@ -147,6 +147,7 @@ export async function startSession(
       player_info: effectivePlayerInfo,
       mode: effectiveMode,
       token_usage: emptyTokenUsage(),
+      user_id: userId ?? null,
     };
 
     // Cache the original anchor for integrity checking later
@@ -282,15 +283,27 @@ export async function endSession(
     const neutralMood: MoodVector = { valence: 0.5, arousal: 0.5, dominance: 0.5 };
     instance.current_mood = blendMoods(instance.current_mood, neutralMood, 0.1);
 
-    // Validate anchor integrity
+    // Validate and enforce anchor integrity
     const anchorValid = validateAnchorIntegrity(originalAnchor, definition.core_anchor);
     if (!anchorValid) {
-      logger.warn({ sessionId }, 'Anchor integrity violation detected at session end');
-      // The anchor guard already logs the violation - we continue with save
+      logger.warn({ sessionId }, 'Anchor integrity violation detected at session end — restoring original anchor');
+      // Restore the original anchor
+      const restoredDefinition = enforceAnchorImmutability(definition, originalAnchor);
+      await storage.updateDefinition(state.project_id, state.definition_id, restoredDefinition);
     }
 
     // Save instance state
     const saveResult = await storage.saveInstance(instance);
+
+    // Persist session state for resumption (non-fatal if it fails)
+    try {
+      await storage.persistSession(state);
+    } catch (persistErr) {
+      logger.warn(
+        { sessionId, error: persistErr instanceof Error ? persistErr.message : 'Unknown' },
+        'Failed to persist session state (non-fatal) — session will not be resumable'
+      );
+    }
 
     // Save usage and transcript — wrapped in try/catch, must never throw
     try {
@@ -561,4 +574,71 @@ function estimateEmotionalIntensity(history: Message[]): number {
  */
 export function getSessionStats() {
   return sessionStore.getStats();
+}
+
+/**
+ * Resume a previously ended session by loading its persisted state.
+ *
+ * Sessions are persisted when endSession is called. This function reconstructs
+ * the session in memory from the persisted state, allowing clients to reconnect
+ * and continue a conversation.
+ */
+export async function resumeSession(
+  sessionId: SessionID,
+  userId?: string | null
+): Promise<SessionStartResult> {
+  const startTime = Date.now();
+  logger.info({ sessionId }, 'Resuming session');
+
+  const storage = getStorageForUser(userId);
+
+  try {
+    // Load the persisted session state from storage
+    const persistedState = await storage.loadPersistedSession(sessionId);
+
+    if (!persistedState) {
+      throw new SessionError(
+        'Session not found or no persisted state available',
+        'SESSION_NOT_FOUND'
+      );
+    }
+
+    // Load the current definition and instance
+    const [definition, project] = await Promise.all([
+      storage.getDefinition(persistedState.project_id, persistedState.definition_id),
+      storage.getProject(persistedState.project_id),
+    ]);
+
+    // Cache the original anchor for integrity checking
+    const originalAnchor: CoreAnchor = {
+      backstory: definition.core_anchor.backstory,
+      principles: [...definition.core_anchor.principles],
+      trauma_flags: [...definition.core_anchor.trauma_flags],
+    };
+
+    // Restore the session to the in-memory store
+    sessionStore.create(sessionId, persistedState, originalAnchor, userId);
+
+    const duration = Date.now() - startTime;
+    logger.info({ sessionId, duration }, 'Session resumed');
+
+    return {
+      session_id: sessionId,
+      npc_name: definition.name,
+      npc_description: definition.description,
+      mood: persistedState.instance.current_mood,
+      project_name: project.name,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof SessionError) {
+      logger.warn({ sessionId, error: error.message, code: error.code, duration }, 'Session resume failed');
+      throw error;
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ sessionId, error: errorMessage, duration }, 'Session resume failed');
+    throw new SessionError(`Failed to resume session: ${errorMessage}`, 'SESSION_RESUME_FAILED');
+  }
 }

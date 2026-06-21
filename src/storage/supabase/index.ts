@@ -14,6 +14,7 @@ export * from './mcp-tools.js';
 export * from './secrets.js';
 export * from './images.js';
 export * from './usage.js';
+export * from './sessions.js';
 
 // Export client utilities
 export { getSupabaseAdmin, createUserClient, verifyToken, isSupabaseEnabled } from './client.js';
