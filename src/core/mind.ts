@@ -15,7 +15,7 @@ import { formatTier1Npc, formatTier2Npc, formatTier3Npc } from './context.js';
 import { resolveCategoryKnowledge } from './knowledge.js';
 import { retrieveSTM, retrieveLTM, formatMemoriesForPrompt } from './memory.js';
 import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
-import { getDefinition } from '../storage/index.js';
+import { getStorage } from '../storage/factory.js';
 
 const logger = createLogger('npc-mind');
 
@@ -143,6 +143,7 @@ export async function executeMindTool(
   projectId: string,
   knowledgeBase: KnowledgeBase | null,
   toolRegistry: MCPToolRegistry,
+  userId?: string | null,
 ): Promise<MindToolResult> {
   const baseResult: Pick<MindToolResult, 'tool_name' | 'arguments'> = {
     tool_name: toolCall.name,
@@ -158,9 +159,10 @@ export async function executeMindTool(
       }
 
       // Search network entries by loading each definition and checking name
+      const storage = getStorage(userId);
       for (const entry of definition.network ?? []) {
         try {
-          const knownDef = await getDefinition(projectId, entry.npc_id);
+          const knownDef = await storage.getDefinition(projectId, entry.npc_id);
           if (knownDef.name.toLowerCase() === queryName) {
             let formatted: string;
             switch (entry.familiarity_tier) {
@@ -294,6 +296,7 @@ export async function runMindAgentLoop(
   securityContext: SecurityContext,
   projectTools: Record<string, Tool>,
   signal: AbortSignal,
+  userId?: string | null,
 ): Promise<MindResult> {
   const startTime = Date.now();
   const toolsCalled: MindToolResult[] = [];
@@ -313,10 +316,11 @@ export async function runMindAgentLoop(
     );
 
     // 2. Resolve network NPC names for constrained recall_npc enum
+    const storage = getStorage(userId);
     const networkNames: string[] = [];
     for (const entry of definition.network ?? []) {
       try {
-        const knownDef = await getDefinition(projectId, entry.npc_id);
+        const knownDef = await storage.getDefinition(projectId, entry.npc_id);
         networkNames.push(knownDef.name);
       } catch {
         // Skip unresolvable entries — they'll just be absent from the enum
@@ -399,6 +403,7 @@ export async function runMindAgentLoop(
         projectId,
         knowledgeBase,
         toolRegistry,
+        userId,
       );
       logger.info({ tool: tc.name, status: toolResult.status, durationMs: Date.now() - toolStart }, 'Mind tool executed');
       toolsCalled.push(toolResult);

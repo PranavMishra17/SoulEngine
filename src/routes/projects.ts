@@ -6,7 +6,8 @@ import {
   StorageNotFoundError,
   StorageValidationError,
 } from '../storage/index.js';
-import { getStorageForUser } from '../storage/hybrid.js';
+import { getStorage } from '../storage/factory.js';
+import { requireProjectOwnership } from '../middleware/ownership.js';
 
 const logger = createLogger('routes-projects');
 
@@ -84,10 +85,10 @@ projectRoutes.post('/', async (c) => {
     }
 
     // Get user ID from auth context (null if logged out → local storage)
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    const project = await storage.createProject(parsed.data.name, userId);
+    const project = await storage.createProject(parsed.data.name, userId ?? undefined);
 
     const duration = Date.now() - startTime;
     logger.info({ projectId: project.id, userId, duration }, 'Project created via API');
@@ -109,10 +110,10 @@ projectRoutes.get('/', async (c) => {
 
   try {
     // Get user ID from auth context to filter projects (undefined in dev mode = all projects)
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    const projects = await storage.listProjects(userId);
+    const projects = await storage.listProjects(userId ?? undefined);
 
     const duration = Date.now() - startTime;
     logger.debug({ count: projects.length, userId, duration }, 'Projects listed via API');
@@ -134,10 +135,14 @@ projectRoutes.get('/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
     const project = await storage.getProject(projectId);
+
+    // Verify ownership
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, duration }, 'Project retrieved via API');
@@ -173,8 +178,13 @@ projectRoutes.put('/:projectId', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
+
+    // Verify project exists and ownership
+    const existingProject = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, existingProject);
+    if (ownershipError) return ownershipError;
 
     // Only include fields that are present in the request
     const updates: Parameters<typeof storage.updateProject>[1] = {};
@@ -215,11 +225,13 @@ projectRoutes.get('/:projectId/keys', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     // Load keys and return masked status
     const keys = await storage.loadApiKeys(projectId);
@@ -261,11 +273,13 @@ projectRoutes.put('/:projectId/keys', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists
-    await storage.getProject(projectId);
+    // Verify project exists and ownership
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const body = await c.req.json();
     const parsed = UpdateApiKeysSchema.safeParse(body);
@@ -336,11 +350,13 @@ projectRoutes.post('/:projectId/import-keys', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify target project belongs to this user
-    await storage.getProject(projectId);
+    // Verify target project exists and ownership
+    const targetProject = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, targetProject);
+    if (ownershipError) return ownershipError;
 
     const body = await c.req.json();
     const fromProjectId = body?.from_project_id;
@@ -353,8 +369,10 @@ projectRoutes.post('/:projectId/import-keys', async (c) => {
       return c.json({ error: 'Cannot import from the same project' }, 400);
     }
 
-    // Verify source project belongs to this user
-    await storage.getProject(fromProjectId);
+    // Verify source project exists and ownership
+    const sourceProject = await storage.getProject(fromProjectId);
+    const sourceOwnershipError = requireProjectOwnership(c, sourceProject);
+    if (sourceOwnershipError) return sourceOwnershipError;
 
     const sourceKeys = await storage.loadApiKeys(fromProjectId);
     const targetKeys = await storage.loadApiKeys(projectId);
@@ -396,8 +414,13 @@ projectRoutes.delete('/:projectId', async (c) => {
   const projectId = c.req.param('projectId');
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
+
+    // Verify project exists and ownership before deleting
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     await storage.deleteProject(projectId);
 
@@ -428,11 +451,14 @@ projectRoutes.get('/:projectId/voices', async (c) => {
   const provider = c.req.query('provider') || 'cartesia';
 
   try {
-    const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const userId = c.get('userId') ?? null;
+    const storage = getStorage(userId);
 
-    // Verify project exists and load API keys
-    await storage.getProject(projectId);
+    // Verify project exists, ownership, and load API keys
+    const project = await storage.getProject(projectId);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
+
     const apiKeys = await storage.loadApiKeys(projectId);
 
     let voices: Array<{ id: string; name: string; description?: string; preview_url?: string }> = [];
@@ -541,7 +567,7 @@ projectRoutes.get('/:projectId/stats', async (c) => {
 
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
 
     // Verify project exists
     const project = await storage.getProject(projectId);
@@ -638,7 +664,7 @@ projectRoutes.post('/:projectId/generate-npc-content', async (c) => {
 
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
 
     // Verify project exists and get API keys
     await storage.getProject(projectId);
@@ -827,7 +853,7 @@ projectRoutes.post('/:projectId/load-starter-pack', async (c) => {
     }
 
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
 
     // Verify project exists
     await storage.getProject(projectId);
@@ -941,7 +967,7 @@ projectRoutes.post('/:projectId/api-key', async (c) => {
 
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
 
     // Verify project exists and belongs to this user
     await storage.getProject(projectId);
@@ -978,7 +1004,7 @@ projectRoutes.delete('/:projectId/api-key', async (c) => {
 
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
 
     // Verify project exists and belongs to this user
     const project = await storage.getProject(projectId);
@@ -1016,7 +1042,7 @@ projectRoutes.get('/:projectId/api-key/status', async (c) => {
 
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
     const project = await storage.getProject(projectId);
 
     return c.json({ configured: !!project.settings?.game_client_api_key_hash });
@@ -1037,7 +1063,7 @@ projectRoutes.get('/:projectId/usage', async (c) => {
   const projectId = c.req.param('projectId');
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
     // Verify project exists
     await storage.getProject(projectId);
     const usage = await storage.getProjectUsage(projectId);
@@ -1059,7 +1085,7 @@ projectRoutes.get('/:projectId/transcripts', async (c) => {
   const projectId = c.req.param('projectId');
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
     await storage.getProject(projectId);
     const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100);
     const transcripts = await storage.listConversationTranscripts(projectId, limit);
@@ -1082,7 +1108,7 @@ projectRoutes.get('/:projectId/transcripts/:transcriptId', async (c) => {
   const transcriptId = c.req.param('transcriptId');
   try {
     const userId = c.get('userId') ?? undefined;
-    const storage = getStorageForUser(userId);
+    const storage = getStorage(userId);
     await storage.getProject(projectId);
     const transcript = await storage.getConversationTranscript(projectId, transcriptId);
     if (!transcript) {

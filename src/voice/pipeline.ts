@@ -796,6 +796,7 @@ export class VoicePipeline {
         securityContext,
         projectTools,
         mindAbortController.signal,
+        null, // userId not tracked in voice sessions yet
       ).catch((err) => {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         logger.error({ sessionId: this.sessionId, error: msg }, 'Mind agent loop failed in voice pipeline');

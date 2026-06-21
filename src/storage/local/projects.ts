@@ -84,6 +84,7 @@ export async function createProject(name: string, _userId?: string): Promise<Pro
       created_at: new Date().toISOString(),
       settings: getDefaultSettings(),
       limits: getDefaultLimits(),
+      user_id: null,
     };
 
     // Write project config
@@ -124,6 +125,11 @@ export async function getProject(projectId: string): Promise<Project> {
   try {
     const content = await fs.readFile(configPath, 'utf-8');
     const project = yaml.load(content) as Project;
+
+    // Ensure user_id is set (for backwards compatibility with old local files)
+    if (!('user_id' in project)) {
+      project.user_id = null;
+    }
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, duration }, 'Project loaded');

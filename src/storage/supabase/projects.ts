@@ -75,6 +75,7 @@ export async function createProject(name: string, userId?: string): Promise<Proj
       created_at: data.created_at,
       settings: data.settings as ProjectSettings,
       limits: data.limits as ProjectLimits,
+      user_id: data.user_id ?? null,
     };
 
     const duration = Date.now() - startTime;
@@ -118,6 +119,7 @@ export async function getProject(projectId: string): Promise<Project> {
       created_at: data.created_at,
       settings: data.settings as ProjectSettings,
       limits: data.limits as ProjectLimits,
+      user_id: data.user_id ?? null,
     };
 
     const duration = Date.now() - startTime;
@@ -179,6 +181,7 @@ export async function updateProject(
       created_at: data.created_at,
       settings: data.settings as ProjectSettings,
       limits: data.limits as ProjectLimits,
+      user_id: data.user_id ?? null,
     };
 
     const duration = Date.now() - startTime;
@@ -256,6 +259,7 @@ export async function listProjects(userId?: string): Promise<Project[]> {
       created_at: row.created_at,
       settings: row.settings as ProjectSettings,
       limits: row.limits as ProjectLimits,
+      user_id: row.user_id ?? null,
     }));
 
     const duration = Date.now() - startTime;

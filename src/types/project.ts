@@ -33,5 +33,6 @@ export interface Project {
   created_at: string;
   settings: ProjectSettings;
   limits: ProjectLimits;
+  user_id?: string | null;
 }
 
