@@ -19,7 +19,7 @@
 | ERR-005 | P0 | storage | Storage split-brain — static vs per-request backend selectors disagree | `index.ts` `NODE_ENV` switch (core) vs `hybrid.ts` `userId` switch (routes) | 0.4 | `tests/regression/err-005-storage-selector.test.ts` (pending) | OPEN |
 | ERR-006 | P0 | storage/security | BYOK secrets unrotatable + non-portable across backends | no `key_version`; different ciphertext formats; `ENCRYPTION_KEY` change bricks all keys | 0.5 | `tests/regression/err-006-secrets-roundtrip.test.ts` (pending) | OPEN |
 | ERR-007 | P0 | frontend/css | Landing renders old indigo brand; session panel tokens transparent | `--accent-primary-rgb` undefined (falls back to indigo); 5 phantom `--*` tokens | 0.6 | `tests/unit/err-007-css-tokens.test.ts` (grep undefined `var(--…)`) (pending) | OPEN |
-| ERR-008 | P0 | storage | Concurrent local usage appends lose token/cost data | unlocked read-modify-write in `appendProjectUsage` | 0.8 | `tests/regression/err-008-usage-append-race.test.ts` (pending) | OPEN |
+| ERR-008 | P0 | storage | Concurrent local usage appends lose token/cost data | unlocked read-modify-write in `appendProjectUsage` | 0.8 | `tests/regression/err-008-usage-append-race.test.ts` | FIXED |
 | ERR-009 | P2 | core/voice | Deferred recall context lost on voice reconnect; stale double-injection possible | stored on per-pipeline field, not session state; cleared late | 1.3 | `tests/regression/err-009-deferred-recall.test.ts` (pending) | OPEN |
 | ERR-010 | P1 | storage | Supabase silently destroys knowledge category `description` | hardcoded `description:''` on read + write | 1.7 | `tests/regression/err-010-knowledge-desc.test.ts` (pending) | OPEN |
 | ERR-011 | P1 | storage | Instance `version` is timestamp locally, int in Supabase — snapshots non-portable | divergent version schemes across backends | 1.7 | `tests/conformance/err-011-version-scheme.test.ts` (pending) | OPEN |
@@ -49,4 +49,12 @@ When fixing:
 
 ## Resolved (FIXED) — detail log
 
-_(empty — append a short paragraph per FIXED error: what broke, why, how the test guards it.)_
+### ERR-008: Concurrent local usage appends lose token/cost data
+
+**What broke:** `appendProjectUsage` in `src/storage/local/usage.ts` performed an unlocked read-modify-write: read current totals via `getProjectUsage()`, merge with session usage, then `fs.writeFile`. When multiple concurrent conversation turns called this function for the same project, they all read the same stale totals, calculated their individual increments, and the last write clobbered all previous writes. Result: silently undercounted token and cost accounting.
+
+**Root cause:** No synchronization mechanism for the read-modify-write operation. The Supabase backend implements this atomically via database RPC; only the local backend was broken.
+
+**Fix:** Added a per-project async lock (`Map<projectId, Promise<void>>`) that chains appends sequentially for each project while allowing different projects to run concurrently. Each append awaits the previous one for its project, ensuring serialized writes. The lock is cleaned up after each append to prevent unbounded Map growth. Also fixed a testability bug: changed `DATA_DIR` from a module-level constant to a function that reads `process.env.DATA_DIR` dynamically, allowing tests to override the data directory.
+
+**Test guard:** `tests/regression/err-008-usage-append-race.test.ts` fires 20 concurrent `appendProjectUsage` calls for the same project, each adding distinct token amounts. The test asserts the final total equals the sum of all increments (fails before the fix due to lost updates, passes after).

@@ -11,10 +11,17 @@ import * as path from 'path';
 
 const logger = createLogger('local-usage');
 
-const DATA_DIR = process.env.DATA_DIR || './data';
+// Per-project async lock to serialize concurrent usage appends within a single process.
+// Cross-process safety (e.g., multiple server instances) requires the cloud backend,
+// which implements atomic RPC via database transactions.
+const appendLocks = new Map<string, Promise<void>>();
+
+function getDataDir(): string {
+    return process.env.DATA_DIR || './data';
+}
 
 function getProjectDir(projectId: string): string {
-    return path.join(DATA_DIR, 'projects', projectId);
+    return path.join(getDataDir(), 'projects', projectId);
 }
 
 function getUsageFile(projectId: string): string {
@@ -42,27 +49,44 @@ export async function appendProjectUsage(
     projectId: string,
     sessionUsage: SessionTokenUsage
 ): Promise<void> {
-    try {
-        const current = await getProjectUsage(projectId);
-        const updated: ProjectUsageTotals = {
-            total_conversations: current.total_conversations + 1,
-            text_input_tokens: current.text_input_tokens + sessionUsage.text_input_tokens,
-            text_output_tokens: current.text_output_tokens + sessionUsage.text_output_tokens,
-            voice_input_chars: current.voice_input_chars + sessionUsage.voice_input_chars,
-            voice_output_chars: current.voice_output_chars + sessionUsage.voice_output_chars,
-            updated_at: new Date().toISOString(),
-        };
-        const dir = getProjectDir(projectId);
-        await fs.mkdir(dir, { recursive: true });
-        await fs.writeFile(getUsageFile(projectId), JSON.stringify(updated, null, 2), 'utf-8');
-        logger.debug({ projectId }, 'Project usage updated');
-    } catch (error) {
-        logger.warn(
-            { projectId, error: error instanceof Error ? error.message : 'Unknown' },
-            'Failed to append project usage (non-fatal)'
-        );
-        // Don't throw — usage tracking must not break session cleanup
-    }
+    // Chain onto the tail of this project's append queue to serialize writes
+    const prevAppend = appendLocks.get(projectId) || Promise.resolve();
+    const currentAppend = prevAppend
+        .catch(() => {
+            // Ignore errors from previous appends in the chain — each append handles its own errors
+        })
+        .then(async () => {
+            try {
+                const current = await getProjectUsage(projectId);
+                const updated: ProjectUsageTotals = {
+                    total_conversations: current.total_conversations + 1,
+                    text_input_tokens: current.text_input_tokens + sessionUsage.text_input_tokens,
+                    text_output_tokens: current.text_output_tokens + sessionUsage.text_output_tokens,
+                    voice_input_chars: current.voice_input_chars + sessionUsage.voice_input_chars,
+                    voice_output_chars: current.voice_output_chars + sessionUsage.voice_output_chars,
+                    updated_at: new Date().toISOString(),
+                };
+                const dir = getProjectDir(projectId);
+                await fs.mkdir(dir, { recursive: true });
+                await fs.writeFile(getUsageFile(projectId), JSON.stringify(updated, null, 2), 'utf-8');
+                logger.debug({ projectId }, 'Project usage updated');
+            } catch (error) {
+                logger.warn(
+                    { projectId, error: error instanceof Error ? error.message : 'Unknown' },
+                    'Failed to append project usage (non-fatal)'
+                );
+                // Don't throw — usage tracking must not break session cleanup
+            }
+        });
+
+    appendLocks.set(projectId, currentAppend);
+
+    // Clean up the lock after this append completes to avoid unbounded Map growth
+    await currentAppend.finally(() => {
+        if (appendLocks.get(projectId) === currentAppend) {
+            appendLocks.delete(projectId);
+        }
+    });
 }
 
 export async function saveConversationTranscript(transcript: ConversationTranscript): Promise<void> {

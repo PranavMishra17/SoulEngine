@@ -29,7 +29,7 @@
 | 0.5 | Rotatable + portable secrets (shared envelope, `key_version`, re-encrypt routine) | M | — | **C** | `src/storage/local/secrets.ts`, `src/storage/supabase/secrets.ts` | unit + reg | todo |
 | 0.6 | Fix visible token bugs (`--accent-primary-rgb`; phantom tokens) + CI grep for undefined vars | S | — | **D** | `web/css/pages.css`, `web/css/conversation-modes.css:6` | unit(css-lint) + manual | todo |
 | 0.7 | Reconcile Unity docs with reality (SDK is built; `/api/sync` is the real blocker) | S | — | **E** | `documentation/UNITY_REPACKAGE.md`, `README.md:42` | manual | todo |
-| 0.8 | Serialize local usage append (lock/append-only) — stop losing token/cost data | S | — | **F** | `src/storage/local/usage.ts:41-66` | reg | todo |
+| 0.8 | Serialize local usage append (lock/append-only) — stop losing token/cost data | S | — | **F** | `src/storage/local/usage.ts:41-66` | reg | done |
 
 **Tier 0 dispatch plan (waves):**
 - **Wave 1 (parallel, 6 agents in 6 worktrees):** A `{0.1→0.2}` · B `{0.3→0.4}` · C `{0.5}` · D `{0.6}` · E `{0.7}` · F `{0.8}`.
@@ -128,13 +128,13 @@
 
 | Tier | Items | Done | Status |
 |---|---|---|---|
-| 0 | 8 | 0 | not started |
+| 0 | 8 | 1 | in progress |
 | 1 | 8 | 0 | not started |
 | 2 | 8 | 0 | not started |
 | 3 | 7 | 0 | not started |
 | 4 | 6 | 0 | not started |
 | 5 | 7 | 0 | not started |
 | 6 | 7 | 0 | not started |
-| **Total** | **51** | **0** | — |
+| **Total** | **51** | **1** | — |
 
 > Update the relevant row's `Status` and this table as items complete. Each `done` item must have a matching `FIXED` row in [`ERRORS.md`](ERRORS.md) with a regression-test path.
