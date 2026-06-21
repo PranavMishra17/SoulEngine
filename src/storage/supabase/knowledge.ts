@@ -55,7 +55,6 @@ function rowsToKnowledgeBase(rows: Array<{ name: string; entries: unknown }>): K
     
     categories[row.name] = {
       id: row.name,
-      description: '',
       depths,
     };
   }
@@ -335,7 +334,6 @@ export async function getCategory(
 
   return {
     id: data.name,
-    description: '',
     depths,
   };
 }
