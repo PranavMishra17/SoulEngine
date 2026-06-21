@@ -11,8 +11,13 @@ import type { TTSProviderType } from '../providers/tts/interface.js';
 import { createLlmProvider, getDefaultModel, getDefaultLlmProviderType, isLlmProviderSupported } from '../providers/llm/factory.js';
 import type { LLMProviderType, LLMProvider } from '../providers/llm/interface.js';
 import { getConfig } from '../config.js';
-import type { VoiceConfig, ConversationMode } from '../types/voice.js';
-import { CONVERSATION_MODES } from '../types/voice.js';
+import type { VoiceConfig, ConversationMode, ProtocolAudioFormats } from '../types/voice.js';
+import {
+  CONVERSATION_MODES,
+  VOICE_PROTOCOL_VERSION,
+  TTS_OUTPUT_FORMATS,
+  STT_INPUT_FORMAT,
+} from '../types/voice.js';
 import type { MindActivity } from '../types/mind.js';
 
 const logger = createLogger('ws-handler');
@@ -60,6 +65,13 @@ interface ReadyMessage {
   npc_name: string;
   voice_config: VoiceConfig;
   mode: ConversationMode;
+  /** Wire-protocol version. Clients may use this for compatibility gating. */
+  protocol_version: string;
+  /**
+   * Authoritative audio format for both directions. Clients must not hardcode
+   * per-provider rates; use these values from the handshake instead.
+   */
+  audio_format: ProtocolAudioFormats;
 }
 
 interface TranscriptMessage {
@@ -143,6 +155,49 @@ interface VoiceConnection {
  * Map of active voice connections
  */
 const activeConnections = new Map<string, VoiceConnection>();
+
+/**
+ * Parameters required to build a `ready` handshake message.
+ */
+export interface BuildReadyMessageParams {
+  sessionId: string;
+  npcName: string;
+  voiceConfig: VoiceConfig;
+  mode: ConversationMode;
+  /**
+   * The TTS provider key used for this session (e.g. 'cartesia', 'elevenlabs').
+   * Determines the output audio format reported to the client.
+   */
+  ttsProvider: string;
+}
+
+/**
+ * Build the `ready` handshake message sent to clients after a successful `init`.
+ *
+ * This is a pure function so it can be unit-tested without a live WebSocket.
+ * The returned object includes the protocol version and authoritative audio
+ * format for both directions (input = what the client must send to the STT
+ * pipeline; output = what the server will stream back as TTS audio).
+ */
+export function buildReadyMessage(params: BuildReadyMessageParams): ReadyMessage {
+  const { sessionId, npcName, voiceConfig, mode, ttsProvider } = params;
+
+  // Fall back to cartesia defaults for unknown providers so the field is always present.
+  const outputFormat = TTS_OUTPUT_FORMATS[ttsProvider] ?? TTS_OUTPUT_FORMATS['cartesia'];
+
+  return {
+    type: 'ready',
+    session_id: sessionId,
+    npc_name: npcName,
+    voice_config: voiceConfig,
+    mode,
+    protocol_version: VOICE_PROTOCOL_VERSION,
+    audio_format: {
+      input: STT_INPUT_FORMAT,
+      output: outputFormat,
+    },
+  };
+}
 
 /**
  * Provider API key config for voice WebSocket handler.
@@ -517,14 +572,14 @@ async function handleInitMessage(
 
     logger.info({ sessionId }, 'handleInitMessage: sending ready message');
 
-    // Send ready message with mode
-    sendMessage(ws, {
-      type: 'ready',
-      session_id: sessionId,
-      npc_name: context.definition.name,
-      voice_config: voiceConfig,
+    // Send ready message with protocol version and authoritative audio format
+    sendMessage(ws, buildReadyMessage({
+      sessionId,
+      npcName: context.definition.name,
+      voiceConfig,
       mode,
-    });
+      ttsProvider: ttsProviderType,
+    }));
 
     logger.info({ sessionId, npcName: context.definition.name }, 'handleInitMessage: complete');
   } catch (error) {
