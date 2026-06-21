@@ -148,7 +148,7 @@ export async function getOrCreateInstance(
 }
 
 /**
- * Save an instance state (with optional history archival)
+ * Save an instance state (with optional history archival and optimistic locking)
  */
 export async function saveInstance(
   instance: NPCInstance
@@ -175,13 +175,23 @@ export async function saveInstance(
 
     // Archive current state if history is enabled
     if (config.stateHistoryEnabled && currentData?.state) {
-      await supabase
+      // Insert history with unique constraint on (instance_id, version)
+      // This prevents duplicate version rows even under concurrent saves
+      const { error: historyError } = await supabase
         .from('npc_instance_history')
         .insert({
           instance_id: instanceId,
           version: currentVersion,
           state: currentData.state,
         });
+
+      // If we get a unique constraint violation, another save beat us - fail cleanly
+      if (historyError) {
+        if (historyError.code === '23505') { // PostgreSQL unique violation
+          throw new StorageError(`Concurrent modification detected: version ${currentVersion} already archived`);
+        }
+        throw new StorageError(`Failed to archive history: ${historyError.message}`);
+      }
 
       // Prune old history: fetch all IDs once, delete oldest in one pass
       const { data: allHistory } = await supabase
@@ -200,20 +210,46 @@ export async function saveInstance(
       }
     }
 
-    // Upsert the instance
-    const { error } = await supabase
-      .from('npc_instances')
-      .upsert({
-        id: instanceId,
-        project_id: projectId,
-        definition_id: instance.definition_id,
-        player_id: instance.player_id,
-        state: instance,
-        version: newVersion,
-      });
+    // For new instances, use insert
+    if (currentVersion === 0) {
+      const { error } = await supabase
+        .from('npc_instances')
+        .insert({
+          id: instanceId,
+          project_id: projectId,
+          definition_id: instance.definition_id,
+          player_id: instance.player_id,
+          state: instance,
+          version: newVersion,
+        });
 
-    if (error) {
-      throw new StorageError(`Database error: ${error.message}`);
+      if (error) {
+        throw new StorageError(`Database error: ${error.message}`);
+      }
+    } else {
+      // For existing instances, use UPDATE with WHERE clause on version for optimistic locking
+      const { data: updateResult, error: updateError } = await supabase
+        .from('npc_instances')
+        .update({
+          project_id: projectId,
+          definition_id: instance.definition_id,
+          player_id: instance.player_id,
+          state: instance,
+          version: newVersion,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', instanceId)
+        .eq('version', currentVersion)
+        .select();
+
+      if (updateError) {
+        throw new StorageError(`Database error: ${updateError.message}`);
+      }
+
+      // If no rows were updated, the version changed (concurrent modification)
+      if (!updateResult || updateResult.length === 0) {
+        throw new StorageError(`Concurrent modification detected: instance version changed from ${currentVersion}`);
+      }
     }
 
     const timestamp = new Date().toISOString();
@@ -227,7 +263,7 @@ export async function saveInstance(
   } catch (error) {
     const duration = Date.now() - startTime;
     if (error instanceof StorageError) throw error;
-    
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ projectId, instanceId, error: errorMessage, duration }, 'Failed to save instance');
     throw new StorageError(`Failed to save instance: ${errorMessage}`);

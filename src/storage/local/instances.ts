@@ -9,6 +9,38 @@ import { getDefinition } from './definitions.js';
 const logger = createLogger('instance-storage');
 
 /**
+ * Per-instance save locks to prevent concurrent writes
+ */
+const saveLocks = new Map<string, Promise<void>>();
+
+/**
+ * Acquire a lock for an instance save operation
+ */
+async function withInstanceLock<T>(
+  instanceKey: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  // Wait for any pending operation on this instance
+  while (saveLocks.has(instanceKey)) {
+    await saveLocks.get(instanceKey);
+  }
+
+  // Create a new lock
+  let releaseLock: () => void;
+  const lockPromise = new Promise<void>(resolve => {
+    releaseLock = resolve;
+  });
+  saveLocks.set(instanceKey, lockPromise);
+
+  try {
+    return await fn();
+  } finally {
+    saveLocks.delete(instanceKey);
+    releaseLock!();
+  }
+}
+
+/**
  * Generate a unique instance ID
  */
 function generateInstanceId(npcId: string, playerId: string): string {
@@ -80,10 +112,34 @@ function createInitialInstance(
 }
 
 /**
- * Generate a version timestamp for history
+ * Get the path to the version counter file
  */
-function generateVersionTimestamp(): string {
-  return new Date().toISOString().replace(/[:.]/g, '-');
+function getVersionCounterPath(projectId: string, instanceId: string): string {
+  return path.join(getInstanceDir(projectId, instanceId), 'version.txt');
+}
+
+/**
+ * Read the current version counter
+ */
+async function readVersionCounter(projectId: string, instanceId: string): Promise<number> {
+  const versionPath = getVersionCounterPath(projectId, instanceId);
+  try {
+    const content = await fs.readFile(versionPath, 'utf-8');
+    return parseInt(content.trim(), 10) || 0;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return 0;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Write the version counter
+ */
+async function writeVersionCounter(projectId: string, instanceId: string, version: number): Promise<void> {
+  const versionPath = getVersionCounterPath(projectId, instanceId);
+  await fs.writeFile(versionPath, String(version), 'utf-8');
 }
 
 /**
@@ -91,8 +147,9 @@ function generateVersionTimestamp(): string {
  */
 async function archiveCurrentState(
   projectId: string,
-  instanceId: string
-): Promise<string | null> {
+  instanceId: string,
+  version: number
+): Promise<number | null> {
   const config = getConfig();
 
   if (!config.stateHistoryEnabled) {
@@ -109,8 +166,7 @@ async function archiveCurrentState(
     // Ensure history directory exists
     await fs.mkdir(historyDir, { recursive: true });
 
-    // Generate version filename
-    const version = generateVersionTimestamp();
+    // Use integer version for filename
     const historyPath = path.join(historyDir, `${version}.json`);
 
     // Copy current to history
@@ -142,10 +198,17 @@ async function pruneHistory(
 
   try {
     const entries = await fs.readdir(historyDir);
-    const jsonFiles = entries.filter(e => e.endsWith('.json')).sort();
+    const jsonFiles = entries.filter(e => e.endsWith('.json'));
+
+    // Sort by version number (integer) to get oldest first
+    const sortedFiles = jsonFiles.sort((a, b) => {
+      const versionA = parseInt(a.replace('.json', ''), 10);
+      const versionB = parseInt(b.replace('.json', ''), 10);
+      return versionA - versionB;
+    });
 
     // Remove oldest files if over limit
-    const toRemove = jsonFiles.slice(0, Math.max(0, jsonFiles.length - maxVersions));
+    const toRemove = sortedFiles.slice(0, Math.max(0, sortedFiles.length - maxVersions));
 
     for (const file of toRemove) {
       await fs.unlink(path.join(historyDir, file));
@@ -241,35 +304,49 @@ export async function getOrCreateInstance(
 export async function saveInstance(
   instance: NPCInstance
 ): Promise<StorageVersionResult> {
-  const startTime = Date.now();
   const { project_id: projectId, id: instanceId } = instance;
+  const instanceKey = `${projectId}:${instanceId}`;
 
-  try {
-    // Archive current state before overwriting
-    const archivedVersion = await archiveCurrentState(projectId, instanceId);
+  return withInstanceLock(instanceKey, async () => {
+    const startTime = Date.now();
 
-    // Ensure directory exists
-    const instanceDir = getInstanceDir(projectId, instanceId);
-    await fs.mkdir(instanceDir, { recursive: true });
+    try {
+      // Ensure directory exists
+      const instanceDir = getInstanceDir(projectId, instanceId);
+      await fs.mkdir(instanceDir, { recursive: true });
 
-    // Write new state
-    const currentPath = getCurrentStatePath(projectId, instanceId);
-    await fs.writeFile(currentPath, JSON.stringify(instance, null, 2), 'utf-8');
+      // Read current version counter
+      const currentVersion = await readVersionCounter(projectId, instanceId);
+      const newVersion = currentVersion + 1;
 
-    const version = generateVersionTimestamp();
-    const duration = Date.now() - startTime;
-    logger.info({ projectId, instanceId, version, archivedVersion, duration }, 'Instance saved');
+      // Archive current state before overwriting (if it exists)
+      let archivedVersion: number | null = null;
+      if (currentVersion > 0) {
+        archivedVersion = await archiveCurrentState(projectId, instanceId, currentVersion);
+      }
 
-    return {
-      version,
-      timestamp: new Date().toISOString(),
-    };
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ projectId, instanceId, error: errorMessage, duration }, 'Failed to save instance');
-    throw new StorageError(`Failed to save instance: ${errorMessage}`);
-  }
+      // Write new state
+      const currentPath = getCurrentStatePath(projectId, instanceId);
+      await fs.writeFile(currentPath, JSON.stringify(instance, null, 2), 'utf-8');
+
+      // Update version counter
+      await writeVersionCounter(projectId, instanceId, newVersion);
+
+      const timestamp = new Date().toISOString();
+      const duration = Date.now() - startTime;
+      logger.info({ projectId, instanceId, version: newVersion, archivedVersion, duration }, 'Instance saved');
+
+      return {
+        version: String(newVersion),
+        timestamp,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ projectId, instanceId, error: errorMessage, duration }, 'Failed to save instance');
+      throw new StorageError(`Failed to save instance: ${errorMessage}`);
+    }
+  });
 }
 
 /**
@@ -288,19 +365,19 @@ export async function getInstanceHistory(
 
     for (const entry of entries) {
       if (entry.endsWith('.json')) {
-        const version = entry.replace('.json', '');
+        const versionStr = entry.replace('.json', '');
         const stat = await fs.stat(path.join(historyDir, entry));
 
         versions.push({
-          version,
+          version: versionStr,
           timestamp: stat.mtime.toISOString(),
           filename: entry,
         });
       }
     }
 
-    // Sort by version (which is timestamp-based), newest first
-    versions.sort((a, b) => b.version.localeCompare(a.version));
+    // Sort by version (integer), newest first
+    versions.sort((a, b) => parseInt(b.version, 10) - parseInt(a.version, 10));
 
     const duration = Date.now() - startTime;
     logger.debug({ projectId, instanceId, count: versions.length, duration }, 'Instance history loaded');
