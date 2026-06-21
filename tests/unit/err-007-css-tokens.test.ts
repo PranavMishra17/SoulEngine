@@ -6,12 +6,14 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { globSync } from 'glob';
 
 describe('CSS Design Tokens', () => {
   it('should not reference undefined CSS custom properties without fallbacks', () => {
     const webCssDir = path.join(process.cwd(), 'web', 'css');
-    const cssFiles = globSync('**/*.css', { cwd: webCssDir, absolute: true });
+    const cssFiles = fs
+      .readdirSync(webCssDir)
+      .filter((f) => f.endsWith('.css'))
+      .map((f) => path.join(webCssDir, f));
 
     expect(cssFiles.length).toBeGreaterThan(0);
 
