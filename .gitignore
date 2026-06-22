@@ -7,3 +7,4 @@ dist/
 !/.claude/agents/
 !/.claude/commands/
 /data/projects
+/data/sessions

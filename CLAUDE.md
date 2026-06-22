@@ -91,7 +91,8 @@ The project runs against a tracked backlog using spec-driven, test-first develop
 
 ## Git Conventions
 
-- **Commit on a feature branch**, never directly on `main`.
+- **Code** goes on a feature branch + PR (the human merges). **Docs/markdown** (`*.md`: AUDIT, backlog, ERRORS, specs, README, etc.) are **committed directly to `main` — NEVER open a PR for docs.**
+- **Don't sprawl new `.md` files.** Update the existing doc (e.g. fold a UI audit + Tier-3 plan into `AUDIT.md`'s existing sections) instead of creating parallel files. Prefer editing over adding.
 - **Tests run on every commit** via the pre-commit hook (`npm run precommit` = typecheck + Vitest). A red suite blocks the commit — fix it, don't bypass it.
 - **Human-readable messages**: a commit or PR must make sense to someone with zero project context. Describe the behavior change. Do NOT reference backlog/tier IDs (no `[0.4]`, no "Tier 0").
 - **No AI attribution anywhere**: never add Claude/AI as author, co-author, or any mention in commit messages, PR titles/bodies, or code comments. Author is the human git identity.

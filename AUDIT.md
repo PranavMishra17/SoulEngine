@@ -100,19 +100,25 @@ Tiers are **dependency-ordered**. Each item is sized `S`/`M`/`L`/`XL` and tagged
 | 2.7 | **Add batch create/update** for NPCs and knowledge (starter-pack import is N round-trips today). | S | `src/routes/npcs.ts`, `src/routes/knowledge.ts` |
 | 2.8 | **Publish a versioned `/ws/voice` protocol spec** with `protocol_version` and an authoritative `audio_format` (sample rate/encoding/channels) in the `ready` message — the client currently *guesses* TTS sample rate by provider name. | M | `src/ws/handler.ts`, `web/js/api.js`, `web/js/pages/playground.js:1240` |
 
-### Tier 3 — Frontend / UX Rewrite (authoring studio)
+### Tier 3 — Frontend / UX Rewrite: the Authoring Studio
 
-> Verdict from two subagents: **rewrite the UI layer, keep the design tokens.** "Keep the paint, rebuild the floor plan." See §5 for the full UX audit and proposed IA.
+> Verdict: **rewrite the JS/UX layer, keep the design tokens.** The full UX audit — including the **live running-app walkthrough**, the **4 runtime bugs (L1–L4)**, the **reusable workflow map**, and the **design direction** — is in §5. Phases below; build only after goahead.
 
-| # | Item | Size | Files |
+| # | Item | Size | Dep |
 |---|---|---|---|
-| 3.1 | **Freeze the reusable contract first:** extract `web/js/api.js` (endpoint catalog) and `VoiceClient` (WS taxonomy + audio/VAD constants) into a documented, framework-agnostic client spec. This is the SDK foundation; stop it drifting before any rewrite. | M | `web/js/api.js`, `web/js/pages/playground.js:1014-1020,1241-1242` |
-| 3.2 | **Rewrite the NPC-editor IA** from 9 tabs → 3 guided stages (Identity → Personality & Voice → Knowledge & Behavior) + an Advanced drawer, with an AI-seeded "first NPC in 60 s" path and in-place dependency creation (no cross-screen round-trips). | XL | `web/js/pages/npc-editor.js` (2,523 LOC), `web/index.html` |
-| 3.3 | **Consolidate the design system:** one `.tabs`/`.accordion`/`.card`/chip primitive; delete the 4 parallel tab systems, the `-v2` abandoned redesigns, and the `display:none` "compat" classes. Migrate `pages-app.css` hardcoded colors back onto tokens (sheds ~30–40% of its 5,389 lines). | L | `web/css/pages-app.css`, `web/css/components.css` |
-| 3.4 | **Accessibility pass:** component-level `:focus-visible` everywhere; real ARIA tab pattern; lift `--color-text-tertiary/-muted` contrast; bump 9–10px labels; add `prefers-reduced-motion`. | M | `web/css/*` |
-| 3.5 | **Mobile/tablet story (<1024px):** collapse editor sidebar to a top tab-bar/accordion and playground panels to a drawer; reduce 11 ad-hoc breakpoints to 3–4 named ones. | M | `web/css/pages-app.css`, `web/css/pages.css` |
-| 3.6 | **Kill the duplication tax** (only if any current JS survives the rewrite): one `utils.js` for `escapeHtml` (×7), `resolveAvatarUrl` (×5), `downloadJson`/`importJsonFile` (×3); add a router teardown hook (leaks today). | M | `web/js/**` |
-| 3.7 | **Fix two confirmed boot bugs** regardless of rewrite timing: register the missing `/projects/new` route; move diff-modal wiring out of the module-load `DOMContentLoaded`. | S | `web/js/app.js`, `web/js/pages/npc-editor.js:2476` |
+| 3.0 | Tech-decision spike (reactive-vanilla vs Preact/Vite); lock tokens; extract one `utils.js` (`escapeHtml` ×7, `resolveAvatarUrl` ×5, etc.); add router teardown hooks | M | — |
+| 3.1 | **App shell** — project switcher, section nav, resolved project name; remove the marketing header from in-app | L | 3.0 |
+| 3.2 | **Shared components** — ARIA Tabs, Collection, Modal/focus-trap, Drawer, StatusPill, Slider; delete the 4 parallel tab systems + duplicate cards/chips | L | 3.0 |
+| 3.3 | **Settings** rebuild with graceful key-status (fixes L1) + per-provider test/status | M | 3.2 |
+| 3.4 | **Collections** — Knowledge + Tools on one component; raw JSON behind Advanced | M | 3.2 |
+| 3.5 | **NPC Studio** — 3 guided stages (Identity → Personality & Voice → Knowledge & Behavior) + Advanced drawer + AI-seed + in-place dependency creation (replaces the 9-tab, ~91-control editor) | XL | 3.2, 3.4 |
+| 3.6 | **Playground** — one chat column + one drawer; voice on demand; uses WS `audio_format`; no 500 pre-flight (degrades L2) | L | 3.2, 3.3 |
+| 3.7 | **Project Home** + first-run checklist + 60-second path; Version history as a top-bar action (fixes the diff-modal binding bug) | M | 3.1, 3.5 |
+| 3.8 | **Accessibility + responsive** pass — focus-visible, ARIA, contrast, reduced-motion, <1024px | M | 3.1–3.7 |
+| L1 | Backend: `GET /:id/keys` must not 500 on unreadable secrets — graceful key-status (breaks Settings + Playground today) | S | — |
+| L2 | Backend: `GET /:id/voices` must not 500 without a TTS key — empty list + prompt (breaks Voice tab today) | S | — |
+| L3 | Single coherent auth state in local mode (no simultaneous Sign In + Sign Out) | S | 3.1 |
+| L4 | Breadcrumb/app-shell always resolves the real project name (never literal "Project") | S | 3.1 |
 
 ### Tier 4 — Voice / Realtime Productization
 
@@ -267,6 +273,37 @@ No build, no framework; **state = global mutable vars + the DOM**; every page is
 ## 5. Frontend UI/UX Audit & Proposed Redesign
 
 **The core problem is information architecture, not styling.** The design-token layer (~115 custom properties, full type/space/radius/shadow scales, a light-theme block) is genuinely good and worth keeping. What sits on top of it is the issue: a 5,389-line page stylesheet that bypasses the tokens, four parallel tab systems, abandoned in-place redesigns, and an authoring flow that dumps ~120 controls across 9 tabs on a first-time user with zero scaffolding.
+
+### Live audit (running app, 2026-06-21)
+
+The app was run locally (`npm run dev`, local mode) and **every page driven in a browser** (live DOM, computed styles, a11y tree, console, network). Image screenshots could not be captured (the sandbox headless renderer timed out and the Chrome-extension session was unavailable at audit time) — findings are grounded in the live DOM/computed styles; re-run `npm run dev` for visuals. **Overall UX score: 42/100** — strong visual foundation (dark `#0d0d0d`, DM Sans + JetBrains Mono, ember accent, geometric glyphs) undermined by IA, workflow, and 4 runtime bugs.
+
+**Runtime bugs found by driving the app:**
+
+| # | Sev | Bug | Fix |
+|---|---|---|---|
+| L1 | P0 | `GET /:id/keys` → **500** (secret decrypt failure) breaks **Settings + Playground** pre-flight | key-status must degrade to a recoverable state (`{configured, readable:false, reason}`), never 500 |
+| L2 | P1 | `GET /:id/voices` → **500** without a readable TTS key breaks the editor **Voice tab** | return empty list + "configure a key" prompt; don't 500 |
+| L3 | P2 | Header shows **Sign In + Sign Out + avatar simultaneously** in local mode | one coherent auth state (hide auth in local mode) |
+| L4 | P2 | Breadcrumb renders literal **"Project"** on Knowledge/MCP/Playground but "BLAST" on Settings | resolve the project name once in the app shell |
+
+*(L1/L2 surfaced here via a key mismatch on existing data, but the graceful-degradation gap is real: a fresh project with no TTS key still 500s `/voices`, and any `ENCRYPTION_KEY` change bricks Settings.)*
+
+**Density confirmed live:** NPC editor = **9 tabs, ~91 controls** (33 inputs, 15 sliders, 5 selects, 36 buttons), **no ARIA tab semantics**, an emoji `🔊` mixed into the geometric-glyph tabs. Playground = **8 panels at idle** + a 2×2 input/output mode matrix. Dashboard = **8+ stacked sections**. No app shell (marketing header reused in-app); raw project ids shown on cards; `{ } Edit JSON` surfaced to newcomers; Knowledge & MCP Tools are duplicate CRUD pages.
+
+### Reusable workflow map (re-run after fixes for the round-2 re-audit)
+
+Walk these against the live app and confirm each friction point is gone:
+- **W1 — Zero-to-talking NPC:** land → create project → create NPC → talk. *Friction:* blank 9-tab editor, blocked by no API keys, Settings 500s (L1). **Target: talking NPC in <60s.**
+- **W2 — Personality & voice:** Personality (6 sliders + preset) → Voice. *Friction:* Voice tab 500s (L2); raw Big Five, no archetype-first; inverted "Memory Retention" slider.
+- **W3 — Knowledge + tools + relationships:** *Friction:* each must be built on a separate page first (circular dependency); target = create inline from the Studio.
+- **W4 — Test a conversation:** pick NPC → 2×2 mode → identity → start. *Friction:* 8 competing panels; pre-flight 500 (L1). Target = one chat column + one drawer.
+- **W5 — Providers / keys:** Settings → API Keys. *Friction:* key-status 500 (L1); emoji tabs; no per-provider "test key".
+- **W6 — Iterate / roll back:** History tab. *Friction:* diff-modal buttons unbound; versioning bolted onto the editor → make it a top-bar action.
+
+### The Authoring Studio — design direction
+
+Commit to one aesthetic: **"the Instrument Panel"** — a calm, high-contrast dark control room for cognition, built on the existing tokens (near-black canvas, warm ink, ember accent reserved for *state and action*, DM Sans UI + JetBrains Mono data + one distinctive display face for titles). One glyph language (drop the stray `🔊`/`⚙`/`🔑` emojis), accent discipline, motion behind `prefers-reduced-motion`. Not a generic dashboard template.
 
 ### Where config is "all over the place"
 1. **Circular cross-screen dependencies.** Setting an NPC's Knowledge Access requires leaving to build categories on the Knowledge page first; same for MCP Tools and Network. The editor assumes the rest of the project already exists.

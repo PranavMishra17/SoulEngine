@@ -79,17 +79,30 @@
 
 ---
 
-## Tier 3 — Frontend / UX Rewrite  `(verdict: rewrite UI, keep tokens — AUDIT §5)`
+## Tier 3 — Frontend / UX Rewrite: the Authoring Studio
+
+> **Full plan + live audit + workflow map:** see [`AUDIT.md`](AUDIT.md) §5 (Frontend UI/UX) and the §3 Tier 3 table. Verdict: rewrite the JS/UX layer, keep the design tokens. **Awaiting goahead before building.**
 
 | ID | Title | Size | Depends-on | Test req | Status |
 |---|---|---|---|---|---|
-| 3.1 | Freeze reusable contract (extract `api.js` + `VoiceClient` to a documented client spec) | M | — | unit | todo |
-| 3.2 | Rewrite NPC-editor IA → 3 guided stages + Advanced drawer + "first NPC in 60s" | XL | 3.1 | e2e+manual | todo |
-| 3.3 | Consolidate design system (one tabs/accordion/card/chip; delete `-v2`/dead) | L | — | manual | todo |
-| 3.4 | Accessibility pass (focus-visible, ARIA tabs, contrast, reduced-motion) | M | 3.3 | manual(a11y) | todo |
-| 3.5 | Mobile/tablet story (<1024px) + breakpoint tokens | M | 3.3 | manual | todo |
-| 3.6 | Kill duplication (one `utils.js`; router teardown hook) | M | 3.1 | unit | todo |
-| 3.7 | Fix boot bugs: register `/projects/new`; move diff-modal wiring out of `DOMContentLoaded` | S | — | reg | todo |
+| 3.0 | Tech decision spike (vanilla-reactive vs Preact/Vite); lock tokens; extract `utils.js`; router teardown hooks | M | — | unit | todo |
+| 3.1 | App shell (project switcher, section nav, resolved project name); remove marketing header in-app | L | 3.0 | e2e+manual | todo |
+| 3.2 | Shared components (ARIA Tabs, Collection, Modal/focus-trap, Drawer, StatusPill, Slider); delete the 4 tab systems + dup cards | L | 3.0 | unit+manual | todo |
+| 3.3 | Settings rebuild with graceful key-status (fixes L1) + per-provider test/status | M | 3.2 | reg | todo |
+| 3.4 | Collections (Knowledge + Tools on one component; JSON behind Advanced) | M | 3.2 | e2e | todo |
+| 3.5 | NPC Studio — 3 guided stages + Advanced drawer + AI-seed + inline dependency creation | XL | 3.2, 3.4 | e2e+manual | todo |
+| 3.6 | Playground — one chat column + one drawer; voice on demand; uses WS `audio_format`; no 500 pre-flight | L | 3.2, 3.3 | e2e+manual | todo |
+| 3.7 | Project Home + first-run checklist + 60s path; Version history as top-bar action (fixes ERR-015) | M | 3.1, 3.5 | e2e | todo |
+| 3.8 | Accessibility + responsive pass (focus-visible, ARIA, contrast, reduced-motion, <1024px) | M | 3.1-3.7 | manual(a11y) | todo |
+
+### Live UI bugs found by the running-app audit (fix before/with the relevant phase)
+
+| ID | Title | Size | Test req | Status |
+|---|---|---|---|---|
+| L1 | `GET /:id/keys` 500s on unreadable secrets → graceful key-status state (breaks Settings + Playground) | S | reg(e2e) | todo |
+| L2 | `GET /:id/voices` 500s without a readable TTS key → degrade to empty list + prompt (breaks Voice tab) | S | reg(e2e) | todo |
+| L3 | Header shows Sign In + Sign Out simultaneously in local mode → single coherent auth state | S | manual | todo |
+| L4 | Breadcrumb renders literal "Project" on some pages → always resolve the real project name | S | manual | todo |
 
 ---
 
@@ -142,11 +155,11 @@
 | 0 | 8 | 8 | **complete** |
 | 1 | 14 | 14 | **complete** |
 | 2 | 12 | 11 | **contract shipped**; remaining-routes pagination open (2.12) |
-| 3 | 7 | 0 | not started (frontend rewrite) |
+| 3 | 13 | 0 | **planned** (Authoring Studio) — awaiting goahead; incl. 4 live UI bugs (L1-L4) |
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
 | 5 | 7 | 0 | not started (deferred per request — features/testing first) |
 | 6 | 7 | 0 | not started |
-| **Total** | **62** | **38** | — |
+| **Total** | **68** | **38** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
