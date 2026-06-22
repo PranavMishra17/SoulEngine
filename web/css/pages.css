@@ -601,24 +601,51 @@
   border-radius: 50%;
   background: var(--color-bg-primary);
   border: 2px solid var(--color-text-secondary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.lx-layer-act .lx-layer-body::before {
-  border-color: var(--color-accent-primary);
-  background: var(--color-accent-primary);
-  box-shadow: 0 0 0 5px rgba(224, 120, 80, 0.16);
+/* Pillar colours on the timeline dots — matches the hero pillar tabs */
+.lx-layer[data-pillar="core"] .lx-layer-body::before {
+  border-color: var(--color-pillar-core);
+  background: var(--color-pillar-core);
+  box-shadow: 0 0 0 5px rgba(241, 166, 196, 0.15);
+}
+
+.lx-layer[data-pillar="daily"] .lx-layer-body::before {
+  border-color: var(--color-pillar-daily);
+  background: var(--color-pillar-daily);
+  box-shadow: 0 0 0 5px rgba(245, 194, 122, 0.15);
+}
+
+.lx-layer[data-pillar="weekly"] .lx-layer-body::before {
+  border-color: var(--color-pillar-weekly);
+  background: var(--color-pillar-weekly);
+  box-shadow: 0 0 0 5px rgba(245, 226, 122, 0.15);
+}
+
+.lx-layer[data-pillar="persona"] .lx-layer-body::before {
+  border-color: var(--color-pillar-persona);
+  background: var(--color-pillar-persona);
+  box-shadow: 0 0 0 5px rgba(131, 224, 198, 0.15);
+}
+
+.lx-layer[data-pillar="mcp"] .lx-layer-body::before {
+  border-color: var(--color-pillar-mcp);
+  background: var(--color-pillar-mcp);
+  box-shadow: 0 0 0 5px rgba(182, 166, 242, 0.15);
 }
 
 .lx-layer:hover .lx-layer-body::before,
 .lx-layer.is-lit .lx-layer-body::before {
-  border-color: var(--color-accent-primary);
-  box-shadow: 0 0 0 5px rgba(224, 120, 80, 0.14);
+  transform: scale(1.3);
 }
 
-.lx-layer.is-lit .lx-layer-body h3 {
-  color: var(--color-accent-primary);
-}
+/* Tint the "when" label with the pillar colour too — subtle, neat */
+.lx-layer[data-pillar="core"] .lx-layer-when { color: var(--color-pillar-core); }
+.lx-layer[data-pillar="daily"] .lx-layer-when { color: var(--color-pillar-daily); }
+.lx-layer[data-pillar="weekly"] .lx-layer-when { color: var(--color-pillar-weekly); }
+.lx-layer[data-pillar="persona"] .lx-layer-when { color: var(--color-pillar-persona); }
+.lx-layer[data-pillar="mcp"] .lx-layer-when { color: var(--color-pillar-mcp); }
 
 .lx-layer-body h3 {
   font-family: var(--font-display);
@@ -898,6 +925,167 @@
   top: 0;
   font-family: var(--font-wordmark);
   font-weight: 600;
+}
+
+/* --- Conversation loop (How it works) --- */
+.lx-convo {
+  max-width: 460px;
+  margin: var(--space-12) auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lx-convo-row { display: flex; }
+.lx-convo-user { justify-content: flex-end; }
+.lx-convo-npc { justify-content: flex-start; }
+
+.lx-bubble {
+  max-width: 82%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: 16px;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  opacity: 0;
+}
+
+.lx-convo-user .lx-bubble {
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border);
+  border-bottom-right-radius: 4px;
+  animation: convoUser 7s ease-in-out infinite;
+}
+
+.lx-convo-npc .lx-bubble {
+  background: rgba(224, 120, 80, 0.12);
+  border: 1px solid rgba(224, 120, 80, 0.35);
+  border-bottom-left-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  animation: convoNpc 7s ease-in-out infinite;
+}
+
+@keyframes convoUser {
+  0%, 4% { opacity: 0; transform: translateY(8px); }
+  10%, 46% { opacity: 1; transform: none; }
+  54%, 100% { opacity: 0.25; transform: none; }
+}
+
+@keyframes convoNpc {
+  0%, 50% { opacity: 0; transform: translateY(8px); }
+  58%, 94% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(8px); }
+}
+
+.lx-voicebars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.lx-voicebars i {
+  width: 3px;
+  height: 4px;
+  background: var(--color-accent-primary);
+  border-radius: 2px;
+  animation: voiceEq 0.9s ease-in-out infinite;
+}
+
+.lx-voicebars i:nth-child(2) { animation-delay: 0.15s; }
+.lx-voicebars i:nth-child(3) { animation-delay: 0.3s; }
+.lx-voicebars i:nth-child(4) { animation-delay: 0.45s; }
+.lx-voicebars i:nth-child(5) { animation-delay: 0.6s; }
+
+@keyframes voiceEq {
+  0%, 100% { height: 4px; }
+  50% { height: 16px; }
+}
+
+/* --- NPC dropped into an engine (Built for developers) --- */
+.lx-engine {
+  position: relative;
+  max-width: 560px;
+  height: 190px;
+  margin: var(--space-12) auto 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(224, 120, 80, 0.07), transparent 60%),
+    linear-gradient(rgba(236, 230, 220, 0.04) 1px, transparent 1px) 0 0 / 100% 28px,
+    linear-gradient(90deg, rgba(236, 230, 220, 0.04) 1px, transparent 1px) 0 0 / 28px 100%;
+}
+
+.lx-engine-label {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.lx-engine-npc {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  animation: engineDrop 0.9s cubic-bezier(0.5, 1.5, 0.5, 1) both;
+}
+
+.lx-engine-dot {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent-primary);
+  box-shadow: 0 0 14px rgba(224, 120, 80, 0.7);
+  animation: engineWander 11s ease-in-out 0.9s infinite;
+}
+
+.lx-engine-dot::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-accent-primary);
+  opacity: 0;
+  animation: engineRing 2.6s ease-out 0.9s infinite;
+}
+
+@keyframes engineDrop {
+  0% { transform: translateY(-200px); opacity: 0; }
+  60% { opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes engineWander {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(150px, 30px); }
+  40% { transform: translate(-120px, 52px); }
+  60% { transform: translate(90px, -38px); }
+  80% { transform: translate(-150px, -20px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes engineRing {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-convo-user .lx-bubble,
+  .lx-convo-npc .lx-bubble { opacity: 1; animation: none; transform: none; }
+  .lx-voicebars i { animation: none; height: 10px; }
+  .lx-engine-npc { animation: none; }
+  .lx-engine-dot { animation: none; }
+  .lx-engine-dot::before { animation: none; opacity: 0; }
 }
 
 /* --- Responsive --- */

@@ -110,7 +110,7 @@ function initWordmarks() {
     }
     if (whip) {
       const fs = Math.max(40, Math.min(72, Math.round(window.innerWidth * 0.07)));
-      mountWordmark(whip, { fontSize: fs });
+      mountWordmark(whip, { fontSize: fs, loop: true });
     }
   };
 
@@ -234,24 +234,33 @@ function initNavScrollEffect() {
   const nav = document.getElementById('main-nav');
   if (!nav) return;
 
-  let ticking = false;
+  const getScroll = () => Math.max(
+    window.pageYOffset || 0,
+    document.documentElement.scrollTop || 0,
+    document.body.scrollTop || 0
+  );
 
-  const handleScroll = () => {
+  let ticking = false;
+  const apply = () => {
+    const y = getScroll();
+    const max = Math.max(1, (document.documentElement.scrollHeight || 0) - window.innerHeight);
+    const pct = Math.max(0, Math.min(100, (y / max) * 100));
+    nav.style.setProperty('--nav-progress', pct + '%');
+    nav.classList.toggle('scrolled', y > 40);
+    ticking = false;
+  };
+
+  const onScroll = () => {
     if (!ticking) {
-      window.requestAnimationFrame(() => {
-        if (window.pageYOffset > 50) {
-          nav.classList.add('scrolled');
-        } else {
-          nav.classList.remove('scrolled');
-        }
-        ticking = false;
-      });
       ticking = true;
+      window.requestAnimationFrame(apply);
     }
   };
 
-  window.addEventListener('scroll', handleScroll, { passive: true });
-  handleScroll();
+  // Capture phase catches scroll whether it fires on window, document, or body.
+  window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+  apply();
 }
 
 function initBewareTrigger() {

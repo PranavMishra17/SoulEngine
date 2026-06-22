@@ -308,6 +308,17 @@
           <p>Every turn fuses the NPC's whole context into one live prompt and streams the reply straight through the
             voice pipeline &mdash; no perceptible wait, no canned lines.</p>
         </div>
+        <div class="lx-convo" aria-hidden="true">
+          <div class="lx-convo-row lx-convo-user">
+            <div class="lx-bubble">Any rooms left tonight?</div>
+          </div>
+          <div class="lx-convo-row lx-convo-npc">
+            <div class="lx-bubble">
+              <span class="lx-voicebars"><i></i><i></i><i></i><i></i><i></i></span>
+              For you? Corner room, top of the stairs.
+            </div>
+          </div>
+        </div>
         <div class="lx-flow">
           <div class="lx-flow-track"><span class="lx-flow-pulse"></span></div>
           <div class="lx-stage">
@@ -340,6 +351,10 @@
           <h2>Drop a living NPC into any engine.</h2>
           <p>One HTTP call to talk, one socket for real-time voice. Bring your own models; ship it sandboxed per game.
           </p>
+        </div>
+        <div class="lx-engine" aria-hidden="true">
+          <span class="lx-engine-label">your engine</span>
+          <span class="lx-engine-npc"><span class="lx-engine-dot"></span></span>
         </div>
         <div class="lx-dev-grid">
           <div class="lx-code" aria-hidden="true">

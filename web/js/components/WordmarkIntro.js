@@ -66,6 +66,7 @@ export function mountWordmark(container, opts = {}) {
 
   let reduce = false;
   try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { reduce = false; }
+  const loop = opts.loop === true;
 
   container.innerHTML = '';
   container.classList.add('wm-host');
@@ -141,6 +142,20 @@ export function mountWordmark(container, opts = {}) {
     rafId = requestAnimationFrame(frame);
   }
 
+  function resetToStart() {
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i];
+      b.style.transition = 'none';
+      b.style.height = BASE_H + 'px';
+      b.style.opacity = '1';
+      b.style.background = i < SOUL_COUNT ? INK : EMBER;
+      const l = letters[i];
+      l.style.transition = 'none';
+      l.style.opacity = '0';
+      l.style.transform = 'translate(-50%, 50%) scale(0.2)';
+    }
+  }
+
   function run() {
     runWave(WAVE_LOOPS * LOOP_PERIOD + 0.6, () => {
       // settle: resize + recolor to resting bars
@@ -162,6 +177,13 @@ export function mountWordmark(container, opts = {}) {
             b.style.opacity = '0';
             b.style.height = '0px';
           }, idx * 70))(i);
+        }
+        // loop: hold the resolved wordmark, fade out, then run the wave again
+        if (loop) {
+          later(() => {
+            letters.forEach((l) => { l.style.transition = 'opacity 0.4s ease'; l.style.opacity = '0'; });
+            later(() => { resetToStart(); run(); }, 440);
+          }, letters.length * 70 + 2800);
         }
       }, 520);
     });
