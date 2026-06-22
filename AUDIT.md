@@ -311,9 +311,56 @@ Walk these against the live app and confirm each friction point is gone:
 - **W5 — Providers / keys:** Settings → API Keys. *Friction:* key-status 500 (L1); emoji tabs; no per-provider "test key".
 - **W6 — Iterate / roll back:** History tab. *Friction:* diff-modal buttons unbound; versioning bolted onto the editor → make it a top-bar action.
 
-### The Authoring Studio — design direction
+### Creative direction — a serious rethink (the node-graph IS the product)
 
-Commit to one aesthetic: **"the Instrument Panel"** — a calm, high-contrast dark control room for cognition, built on the existing tokens (near-black canvas, warm ink, ember accent reserved for *state and action*, DM Sans UI + JetBrains Mono data + one distinctive display face for titles). One glyph language (drop the stray `🔊`/`⚙`/`🔑` emojis), accent discipline, motion behind `prefers-reduced-motion`. Not a generic dashboard template.
+**Ruthless read of the current app:** outside the landing page it is *boilerplate accreted feature-by-feature* — a competent but inert dark dashboard. Forms in panels, panels in tabs, tabs in pages. Nothing on screen says you are authoring **living minds**; nothing moves, reacts, or invites. It is a database with a dark theme. The single moment that feels alive and on-brand is the **landing's node-graph**: cursor-reactive, edges that breathe, nodes that **shift color when you hover the pillars below**. That is the soul of SoulEngine — and the app throws it away the moment you sign in.
+
+**The bet:** make the **node-graph the organizing metaphor, identity, and interaction model** of the whole studio — not a decoration, the spine. SoulEngine = an engine of connected minds; the UI should *be* that graph.
+
+- **Identity / icon system** — retire the geometric glyphs (◇◈◔) and the stray emojis (`🔊`/`⚙`/`🔑`) for one **node-derived language**: a mind = a node; a relationship = an edge; knowledge/tools = satellites orbiting a node; memory = accreting rings; mood = node hue + pulse. Every icon is cut from the same node/edge vocabulary, so the product looks like one thing.
+- **The project AS a living graph** — Project Home is an interactive node-graph of the project: each NPC a node (hue = current mood, size = memory depth), edges = the social network, clusters = shared knowledge/tools. Cursor-reactive and color-shifting like the landing. Click a node → its Studio opens; the graph *is* the navigation. This is immersive, fluid, fun to sit in, **and directive** — you instantly see the shape and gaps of your world ("this node has no edges, no knowledge").
+- **Motion as meaning, not garnish** — reserve animation for moments that carry information: a node *wakes* (brightens, ripples) when you start talking to it; an edge *pulses* when a relationship is referenced; rings accrete when a memory forms; the Mind "thinking" shows a traveling pulse along edges. One orchestrated load stagger. All of it behind `prefers-reduced-motion` with a calm static fallback.
+- **Color = state** — keep the calm near-black "instrument panel" base (warm ink, ember = action/danger only), but let **node color carry NPC state** (mood/relationship/activity), exactly the landing's hover-color idea generalized. Dominant neutral, living accents.
+- **Directive by default** — empty states are a single glowing node that pulses "add your first mind"; the first-run path lights up the graph node-by-node as you build. The UI teaches the model by showing it.
+
+**Net:** keep the *calm dark instrument-panel base* (it's good), but make it **breathe through the node-graph** — that's the difference between "another dashboard" and a tool people *want* to stay in. Two restraint dials to set with the user (see MCQs): how far the graph becomes literal navigation, and how much ambient motion runs by default.
+
+### Browser validation playbook (close the loop without manual checking)
+
+The exact, repeatable recipe to drive the live app, screenshot, scroll, and self-validate — so a re-audit needs **zero manual clicking**. Use after any UI change and for the round-2 re-audit.
+
+**0. Run the app.** `npm run dev` (or Preview MCP `preview_start "soulengine"`) → `http://localhost:3000`. Local mode, no Supabase needed. **For clean Settings/Voice visuals, put the *real* `ENCRYPTION_KEY` in `.env`** — otherwise the existing project's secrets won't decrypt and you'll see the L1/L2 error states (fine for bug-repro, misleading for design review). To avoid that entirely, validate against a **fresh project** (no stored secrets).
+
+**1. Connect a browser (Claude-in-Chrome).** `list_connected_browsers` → if >1, ask the user to pick (MCQ) or call `switch_browser` (broadcasts a Connect prompt; user clicks Connect in the right Chromium). Then `tabs_context_mcp{createIfEmpty:true}` → grab the `tabId`. *Gotcha:* `tabs_context_mcp` errors `No group with id …` until a browser is actually selected via `switch_browser`/`select_browser` — connect first.
+
+**2. Drive each page (one `browser_batch` per page):**
+```
+browser_batch([
+  { navigate:   { url: "http://localhost:3000<ROUTE>", tabId } },
+  { computer:   { action: "wait", duration: 2, tabId } },
+  { computer:   { action: "screenshot", tabId, save_to_disk: true } }   // save_to_disk → shareable
+])
+```
+- **Below the fold:** `computer{action:"scroll", scroll_direction:"down", scroll_amount:5, coordinate:[780,400], tabId}` then screenshot; repeat to the bottom.
+- **Sub-nav / tabs:** click by coordinate from the last screenshot (e.g. editor left-rail items, Settings "API Keys" tab), or `find{query:"...", tabId}` → click the returned `ref`.
+- **Catch runtime bugs:** after loading, `read_console_messages{tabId, onlyErrors:true, pattern:"error|failed|500"}` and `read_network_requests{tabId, urlPattern:"/api/", limit:100}` (look for 4xx/5xx). This is how L1/L2 were caught.
+- **Precise styles** (color/spacing/contrast/fonts): the Preview MCP's `preview_inspect`/`preview_eval` are more exact than a screenshot. (Note: Preview MCP `screenshot` times out in this sandbox — use Claude-in-Chrome for pixels, Preview MCP for DOM/style assertions.)
+
+**3. Route table (sample ids — swap for a fresh project as needed):**
+
+| Page | Route |
+|---|---|
+| Landing | `/` |
+| Projects | `/projects` |
+| Dashboard | `/projects/proj_mjxnqpq3_njvz3n` |
+| NPC list | `/projects/proj_mjxnqpq3_njvz3n/npcs` |
+| NPC editor (9 sections) | `/projects/proj_mjxnqpq3_njvz3n/npcs/npc_mjxqkqbn_18i72y` |
+| Knowledge | `/projects/proj_mjxnqpq3_njvz3n/knowledge` |
+| MCP Tools | `/projects/proj_mjxnqpq3_njvz3n/mcp-tools` |
+| Playground | `/projects/proj_mjxnqpq3_njvz3n/playground` |
+| Settings (Project / API Keys tabs) | `/projects/proj_mjxnqpq3_njvz3n/settings` |
+
+**4. Validate against targets.** For each page assert the round-2 acceptance from the workflow map (W1–W6) + L1–L4 fixed: no 500s in console/network, breadcrumb shows the real project name, one ARIA tab system, component focus-visible present, no emoji-in-glyphs, talking-NPC path reachable. Screenshot every page, compare to the prior set, and report deltas — the loop closes itself.
 
 ### Where config is "all over the place"
 1. **Circular cross-screen dependencies.** Setting an NPC's Knowledge Access requires leaving to build categories on the Knowledge page first; same for MCP Tools and Network. The editor assumes the rest of the project already exists.
