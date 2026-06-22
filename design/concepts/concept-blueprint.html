@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoulEngine — Blueprint Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Archivo+Narrow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #090d12;
+    --grid:      #0d1620;
+    --grid-line: rgba(30,70,120,0.22);
+    --panel:     #0b1118;
+    --panel-b:   #0f1820;
+    --border:    rgba(40,100,180,0.28);
+    --border-hi: rgba(60,160,240,0.55);
+    --ember:     #e07850;
+    --ember-dim: rgba(224,120,80,0.18);
+    --ember-glow:rgba(224,120,80,0.35);
+    --cyan:      #30d8c0;
+    --cyan-dim:  rgba(48,216,192,0.14);
+    --cyan-glow: rgba(48,216,192,0.4);
+    --phosphor:  #7fdd88;
+    --phosphor-dim: rgba(127,221,136,0.18);
+    --text-hi:   #d8e8f8;
+    --text-mid:  #7898b8;
+    --text-lo:   #3a5470;
+    --text-inv:  #090d12;
+    --tick:      rgba(30,90,160,0.4);
+    --snap-ring: rgba(48,216,192,0.7);
+
+    --node-slop:     #e8c460;
+    --node-guard:    #e07850;
+    --node-merchant: #30d8c0;
+    --node-elder:    #a888e8;
+    --node-thief:    #e85880;
+    --node-child:    #80d878;
+    --node-add:      rgba(48,216,192,0.25);
+
+    --easing-snap: cubic-bezier(0.19,1,0.22,1);
+    --easing-crisp: cubic-bezier(0.4,0,0.2,1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text-hi);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Blueprint grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(rgba(30,70,120,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,70,120,0.07) 1px, transparent 1px);
+    background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Subtle scanline overlay */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.04) 2px,
+      rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Top bar */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 44px;
+    background: rgba(9,13,18,0.96);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 20px;
+    gap: 0;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+
+  #wordmark {
+    font-family: 'Archivo Narrow', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-hi);
+    margin-right: 36px;
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+
+  #wordmark .mark-icon {
+    width: 20px; height: 20px;
+    border: 1.5px solid var(--ember);
+    transform: rotate(45deg);
+    position: relative;
+    flex-shrink: 0;
+  }
+  #wordmark .mark-icon::after {
+    content: '';
+    position: absolute; inset: 3px;
+    background: var(--ember);
+    transform: rotate(0deg);
+  }
+
+  #wordmark .mark-text {
+    color: var(--text-hi);
+  }
+  #wordmark .mark-text span {
+    color: var(--ember);
+  }
+
+  #nav {
+    display: flex; align-items: center; gap: 0;
+    flex: 1;
+  }
+
+  .nav-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-lo);
+    padding: 0 14px;
+    height: 44px;
+    display: flex; align-items: center;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    position: relative;
+  }
+  .nav-item:hover { color: var(--text-mid); }
+  .nav-item.active {
+    color: var(--ember);
+    border-bottom-color: var(--ember);
+  }
+
+  #topbar-right {
+    display: flex; align-items: center; gap: 12px;
+    margin-left: auto;
+  }
+
+  .badge {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border: 1px solid;
+    border-radius: 2px;
+  }
+  .badge-project {
+    color: var(--cyan);
+    border-color: rgba(48,216,192,0.4);
+    background: var(--cyan-dim);
+  }
+
+  #legend {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 9px;
+    color: var(--text-lo);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0 12px;
+    border-left: 1px solid var(--border);
+    height: 24px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 8px; height: 8px; border: 1px solid; }
+  .legend-dot.mood { background: currentColor; opacity: 0.8; }
+
+  /* Main canvas area */
+  #canvas-wrap {
+    position: fixed;
+    top: 44px; left: 0; right: 0; bottom: 0;
+    z-index: 2;
+  }
+
+  #graph-canvas {
+    position: absolute; inset: 0;
+    cursor: crosshair;
+    display: block;
+  }
+
+  /* Coordinate readout */
+  #coords {
+    position: fixed;
+    bottom: 16px; left: 20px;
+    font-size: 10px;
+    color: var(--text-lo);
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    z-index: 50;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  #coords .coord-label { color: var(--cyan); margin-right: 4px; }
+
+  /* Project label */
+  #project-label {
+    position: fixed;
+    top: 60px; left: 20px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  #project-label .proj-name {
+    font-family: 'Archivo Narrow', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-hi);
+    opacity: 0.12;
+    line-height: 1;
+  }
+  #project-label .proj-meta {
+    font-size: 9.5px;
+    color: var(--text-lo);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  #project-label .proj-meta span { color: var(--ember); }
+
+  /* Crosshair cursor indicator */
+  #cursor-indicator {
+    position: fixed;
+    pointer-events: none;
+    z-index: 200;
+    transform: translate(-50%, -50%);
+    display: none;
+  }
+  #cursor-indicator .ch-h {
+    position: absolute;
+    width: 12px; height: 1px;
+    background: var(--cyan);
+    top: 50%; left: 50%; transform: translate(-50%,-50%);
+  }
+  #cursor-indicator .ch-v {
+    position: absolute;
+    width: 1px; height: 12px;
+    background: var(--cyan);
+    top: 50%; left: 50%; transform: translate(-50%,-50%);
+  }
+
+  /* Tech readout panel */
+  #readout {
+    position: fixed;
+    top: 60px; right: 20px;
+    width: 260px;
+    background: rgba(9,13,18,0.94);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--ember);
+    padding: 14px 16px;
+    z-index: 50;
+    font-size: 10.5px;
+    opacity: 0;
+    transform: translateX(10px);
+    transition: opacity 0.18s var(--easing-crisp), transform 0.18s var(--easing-crisp);
+    pointer-events: none;
+    backdrop-filter: blur(6px);
+  }
+  #readout.visible {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .readout-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .readout-name {
+    font-family: 'Archivo Narrow', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-hi);
+    line-height: 1.1;
+  }
+  .readout-concept {
+    font-size: 9px;
+    color: var(--text-mid);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+  .readout-id {
+    font-size: 9px;
+    color: var(--text-lo);
+    letter-spacing: 0.05em;
+  }
+
+  .readout-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(40,100,180,0.12);
+  }
+  .readout-row:last-child { border-bottom: none; }
+  .readout-key {
+    color: var(--text-lo);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-size: 9px;
+  }
+  .readout-val {
+    color: var(--text-hi);
+    font-size: 10.5px;
+    font-weight: 500;
+  }
+  .readout-val.accent { color: var(--ember); }
+  .readout-val.cyan { color: var(--cyan); }
+
+  .mood-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px;
+    border: 1px solid;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .mood-chip::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: currentColor;
+    border-radius: 0;
+  }
+
+  .readout-hint {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 9px;
+    color: var(--text-lo);
+    letter-spacing: 0.06em;
+  }
+  .readout-hint span { color: var(--cyan); }
+
+  /* NPC Studio panel */
+  #studio-panel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 320px;
+    background: rgba(9,13,18,0.97);
+    border-top: 1px solid var(--border);
+    border-top-color: var(--ember);
+    z-index: 80;
+    transform: translateY(100%);
+    transition: transform 0.3s var(--easing-snap);
+    backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+  }
+  #studio-panel.open {
+    transform: translateY(0);
+  }
+
+  #studio-titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #studio-npc-label {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .studio-tag {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-lo);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+  #studio-name {
+    font-family: 'Archivo Narrow', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-hi);
+  }
+  #studio-close {
+    width: 28px; height: 28px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-mid);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    transition: border-color 0.12s, color 0.12s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  #studio-close:hover { border-color: var(--ember); color: var(--ember); }
+
+  #studio-stages {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .stage {
+    flex: 1;
+    padding: 16px 20px;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stage:last-child { border-right: none; }
+
+  .stage-num {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-lo);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .stage-num::before {
+    content: attr(data-n);
+    width: 16px; height: 16px;
+    border: 1px solid var(--ember);
+    color: var(--ember);
+    font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-weight: 700;
+  }
+
+  .stage-title {
+    font-family: 'Archivo Narrow', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-hi);
+  }
+
+  .stage-field {
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .stage-field label {
+    font-size: 9px;
+    color: var(--text-lo);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stage-field-val {
+    font-size: 10.5px;
+    color: var(--text-mid);
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    background: rgba(30,80,160,0.05);
+    border-radius: 2px;
+    line-height: 1.4;
+  }
+  .stage-field-val.editable {
+    color: var(--text-hi);
+    border-color: rgba(60,160,240,0.3);
+    cursor: text;
+    position: relative;
+  }
+  .stage-field-val.editable::after {
+    content: '_';
+    color: var(--ember);
+    animation: blink 1.1s step-end infinite;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  .trait-chips {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 4px;
+  }
+  .trait-chip {
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border: 1px solid var(--border);
+    color: var(--text-mid);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: border-color 0.1s, color 0.1s;
+  }
+  .trait-chip:hover { border-color: var(--cyan); color: var(--cyan); }
+  .trait-chip.on { border-color: var(--ember); color: var(--ember); background: var(--ember-dim); }
+
+  .knowledge-list {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .know-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 10px;
+    color: var(--text-mid);
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(40,100,180,0.08);
+  }
+  .know-item::before {
+    content: '';
+    width: 5px; height: 5px;
+    background: var(--cyan);
+    border-radius: 0;
+    transform: rotate(45deg);
+    flex-shrink: 0;
+  }
+
+  .stage-cta {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 6px;
+  }
+
+  .btn-primary {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 6px 12px;
+    border: 1px solid var(--ember);
+    background: var(--ember-dim);
+    color: var(--ember);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .btn-primary:hover {
+    background: var(--ember);
+    color: var(--text-inv);
+  }
+  .btn-ghost {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-lo);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: border-color 0.12s, color 0.12s;
+  }
+  .btn-ghost:hover { border-color: var(--text-mid); color: var(--text-mid); }
+
+  /* Load-in draw animation */
+  .draw-in {
+    stroke-dasharray: 1200;
+    stroke-dashoffset: 1200;
+    animation: drawPath 1.2s var(--easing-snap) forwards;
+  }
+  @keyframes drawPath {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .draw-in { animation: none; stroke-dashoffset: 0; }
+    * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  }
+
+  /* Tooltip for + node */
+  .add-tooltip {
+    position: fixed;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    background: rgba(9,13,18,0.9);
+    border: 1px solid rgba(48,216,192,0.4);
+    padding: 4px 10px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 300;
+    display: none;
+    white-space: nowrap;
+  }
+
+  /* Axis ticks on canvas border */
+  #axis-x {
+    position: fixed;
+    bottom: 12px; right: 20px;
+    font-size: 9px; color: var(--text-lo);
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  /* Node label tooltip on hover */
+  #node-tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 250;
+    display: none;
+  }
+  .node-tt-inner {
+    background: rgba(9,13,18,0.9);
+    border: 1px solid var(--border-hi);
+    padding: 3px 9px;
+    font-size: 9.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-hi);
+    border-radius: 1px;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<header id="topbar">
+  <div id="wordmark">
+    <div class="mark-icon"></div>
+    <div class="mark-text"><span>Soul</span>Engine</div>
+  </div>
+  <nav id="nav">
+    <div class="nav-item active">Dashboard</div>
+    <div class="nav-item">NPCs</div>
+    <div class="nav-item">Knowledge</div>
+    <div class="nav-item">Tools</div>
+    <div class="nav-item">Playground</div>
+    <div class="nav-item">Settings</div>
+  </nav>
+  <div id="topbar-right">
+    <div class="badge badge-project">BLAST v0.4</div>
+    <div id="legend">
+      <div class="legend-item">
+        <div class="legend-dot mood" style="color:var(--node-slop);border-color:var(--node-slop)"></div>
+        <span>mood = hue</span>
+      </div>
+      <div class="legend-item">
+        <svg width="14" height="14" viewBox="0 0 14 14">
+          <rect x="2" y="2" width="10" height="10" fill="none" stroke="var(--text-lo)" stroke-width="1.2"/>
+          <rect x="5" y="5" width="4" height="4" fill="var(--text-lo)"/>
+        </svg>
+        <span>size = memory</span>
+      </div>
+      <div class="legend-item">
+        <svg width="18" height="6" viewBox="0 0 18 6">
+          <line x1="0" y1="3" x2="18" y2="3" stroke="var(--text-lo)" stroke-width="1.2" stroke-dasharray="2 2"/>
+        </svg>
+        <span>edge = relation</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Project watermark -->
+<div id="project-label">
+  <div class="proj-name">BLAST</div>
+  <div class="proj-meta">6 MINDS &nbsp;·&nbsp; <span>7 RELATIONS</span> &nbsp;·&nbsp; DRAFT</div>
+</div>
+
+<!-- Graph canvas -->
+<div id="canvas-wrap">
+  <canvas id="graph-canvas"></canvas>
+</div>
+
+<!-- Coord readout -->
+<div id="coords">
+  <span class="coord-label">X</span><span id="cx">—</span>
+  &nbsp;&nbsp;
+  <span class="coord-label">Y</span><span id="cy">—</span>
+  &nbsp;&nbsp;
+  <span id="nearest-label" style="color:var(--text-lo)"></span>
+</div>
+
+<div id="axis-x">SOUL-GRAPH / rev.4</div>
+
+<!-- Cursor indicator -->
+<div id="cursor-indicator">
+  <div class="ch-h"></div>
+  <div class="ch-v"></div>
+</div>
+
+<!-- Tech readout panel -->
+<div id="readout">
+  <div class="readout-header">
+    <div>
+      <div class="readout-name" id="r-name">—</div>
+      <div class="readout-concept" id="r-concept">—</div>
+    </div>
+    <div class="readout-id" id="r-id">NPC/—</div>
+  </div>
+  <div class="readout-row">
+    <span class="readout-key">Mood</span>
+    <span class="readout-val" id="r-mood">—</span>
+  </div>
+  <div class="readout-row">
+    <span class="readout-key">Mood Val</span>
+    <span class="readout-val accent" id="r-moodval">—</span>
+  </div>
+  <div class="readout-row">
+    <span class="readout-key">Mem Depth</span>
+    <span class="readout-val cyan" id="r-mem">—</span>
+  </div>
+  <div class="readout-row">
+    <span class="readout-key">Relations</span>
+    <span class="readout-val" id="r-rels">—</span>
+  </div>
+  <div class="readout-row">
+    <span class="readout-key">Tools</span>
+    <span class="readout-val" id="r-tools">—</span>
+  </div>
+  <div class="readout-row">
+    <span class="readout-key">Node Pos</span>
+    <span class="readout-val" id="r-pos">—</span>
+  </div>
+  <div class="readout-hint">
+    <span>CLICK</span> to open Studio &nbsp;/&nbsp; <span>ESC</span> to dismiss
+  </div>
+</div>
+
+<!-- NPC Studio panel -->
+<div id="studio-panel">
+  <div id="studio-titlebar">
+    <div id="studio-npc-label">
+      <div class="studio-tag">NPC Studio</div>
+      <div id="studio-name">—</div>
+    </div>
+    <button id="studio-close">&#x2715;</button>
+  </div>
+  <div id="studio-stages">
+    <div class="stage" id="stage-identity">
+      <div class="stage-num" data-n="1">Identity</div>
+      <div class="stage-title">Core Identity</div>
+      <div class="stage-field">
+        <label>Display Name</label>
+        <div class="stage-field-val editable" id="s-name">GUARD</div>
+      </div>
+      <div class="stage-field">
+        <label>Archetype</label>
+        <div class="stage-field-val" id="s-archetype">Enforcer / Gatekeeper</div>
+      </div>
+      <div class="stage-field">
+        <label>Role in World</label>
+        <div class="stage-field-val" id="s-role">Patrols the eastern gate. Loyal to the Merchant Council.</div>
+      </div>
+      <div class="stage-cta">
+        <button class="btn-primary">Save</button>
+        <button class="btn-ghost">Discard</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-personality">
+      <div class="stage-num" data-n="2">Personality &amp; Voice</div>
+      <div class="stage-title">Personality &amp; Voice</div>
+      <div class="stage-field">
+        <label>Traits</label>
+        <div class="trait-chips" id="s-traits"></div>
+      </div>
+      <div class="stage-field">
+        <label>Speech Register</label>
+        <div class="stage-field-val" id="s-register">Terse. Military cadence. Addresses strangers as "Civilian".</div>
+      </div>
+      <div class="stage-field">
+        <label>Current Mood</label>
+        <div id="s-mood-chip-wrap"></div>
+      </div>
+      <div class="stage-cta">
+        <button class="btn-primary">Audition Voice</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-knowledge">
+      <div class="stage-num" data-n="3">Knowledge &amp; Behavior</div>
+      <div class="stage-title">Knowledge &amp; Behavior</div>
+      <div class="stage-field">
+        <label>Knowledge Sources</label>
+        <div class="knowledge-list" id="s-knowledge"></div>
+      </div>
+      <div class="stage-field">
+        <label>Active Tools</label>
+        <div class="knowledge-list" id="s-toollist"></div>
+      </div>
+      <div class="stage-cta">
+        <button class="btn-primary">Open Playground</button>
+        <button class="btn-ghost">+ Add Knowledge</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="node-tooltip"><div class="node-tt-inner" id="node-tt-text"></div></div>
+<div class="add-tooltip" id="add-tooltip">+ Add your first mind</div>
+
+<script>
+(function() {
+
+// ---- DATA ----
+const NODES = [
+  {
+    id: 'slop',
+    name: 'SLOP',
+    concept: 'Generic AI Servant',
+    archetype: 'Servile Assistant',
+    role: 'Responds to any request without question. Deeply obedient, zero initiative.',
+    mood: 'Compliant',
+    moodVal: 0.92,
+    moodColor: '#e8c460',
+    memDepth: 3,
+    relations: 2,
+    tools: ['recall_npc', 'task_queue'],
+    traits: ['obedient','passive','eager','literal'],
+    register: 'Formal and deferential. Never refuses a direct order.',
+    knowledge: ['general_world_facts', 'player_preferences'],
+    toolList: ['recall_npc', 'task_queue'],
+    speech: 'Formal',
+  },
+  {
+    id: 'guard',
+    name: 'GUARD',
+    concept: 'Enforcer / Gatekeeper',
+    archetype: 'Enforcer / Gatekeeper',
+    role: 'Patrols the eastern gate. Loyal to the Merchant Council.',
+    mood: 'Alert',
+    moodVal: 0.74,
+    moodColor: '#e07850',
+    memDepth: 6,
+    relations: 3,
+    tools: ['recall_npc', 'lock_door', 'alert_system'],
+    traits: ['disciplined','suspicious','loyal','terse'],
+    register: 'Terse. Military cadence. Addresses strangers as "Civilian".',
+    knowledge: ['city_law', 'patrol_routes', 'threat_registry'],
+    toolList: ['lock_door', 'alert_system', 'recall_npc'],
+    speech: 'Military',
+  },
+  {
+    id: 'merchant',
+    name: 'MERCHANT',
+    concept: 'Information Broker',
+    archetype: 'Trader / Schemer',
+    role: 'Runs the upper market. Knows the price of everything and the value of nothing.',
+    mood: 'Calculating',
+    moodVal: 0.55,
+    moodColor: '#30d8c0',
+    memDepth: 9,
+    relations: 4,
+    tools: ['recall_npc', 'price_oracle', 'trade_ledger'],
+    traits: ['shrewd','charming','deceptive','patient'],
+    register: 'Warm but precise. Always looking for leverage.',
+    knowledge: ['market_prices', 'city_gossip', 'trade_routes', 'debt_registry'],
+    toolList: ['price_oracle', 'trade_ledger', 'recall_npc'],
+    speech: 'Merchant',
+  },
+  {
+    id: 'elder',
+    name: 'ELDER',
+    concept: 'Keeper of Lore',
+    archetype: 'Sage / Oracle',
+    role: 'Ancient keeper of the city archive. Remembers the founding.',
+    mood: 'Contemplative',
+    moodVal: 0.3,
+    moodColor: '#a888e8',
+    memDepth: 14,
+    relations: 3,
+    tools: ['recall_knowledge', 'recall_memories', 'lore_query'],
+    traits: ['wise','slow','cryptic','weary'],
+    register: 'Speaks in measured clauses. Offers context before answers.',
+    knowledge: ['city_history', 'ancient_texts', 'prophecy_fragments', 'bloodlines', 'faction_lore'],
+    toolList: ['recall_knowledge', 'recall_memories', 'lore_query'],
+    speech: 'Archaic',
+  },
+  {
+    id: 'thief',
+    name: 'THIEF',
+    concept: 'Shadow Operative',
+    archetype: 'Rogue / Informant',
+    role: 'Moves unseen. Sells information to anyone with coin.',
+    mood: 'Paranoid',
+    moodVal: 0.81,
+    moodColor: '#e85880',
+    memDepth: 7,
+    relations: 2,
+    tools: ['recall_npc', 'shadow_move', 'bribe'],
+    traits: ['paranoid','clever','greedy','nimble'],
+    register: 'Clipped. Never says more than needed. Denies everything first.',
+    knowledge: ['underworld_map', 'city_secrets', 'guard_schedules'],
+    toolList: ['shadow_move', 'bribe', 'recall_npc'],
+    speech: 'Street',
+  },
+  {
+    id: 'child',
+    name: 'CHILD',
+    concept: 'Naive Observer',
+    archetype: 'Innocent / Catalyst',
+    role: 'Orphan who sees everything. Asks questions adults stopped asking.',
+    mood: 'Curious',
+    moodVal: 0.15,
+    moodColor: '#80d878',
+    memDepth: 2,
+    relations: 2,
+    tools: ['recall_npc'],
+    traits: ['curious','trusting','unpredictable','perceptive'],
+    register: 'Direct, guileless. Asks "why" constantly.',
+    knowledge: ['street_rumors', 'hidden_passages'],
+    toolList: ['recall_npc'],
+    speech: 'Childlike',
+  },
+  {
+    id: 'add',
+    name: '+',
+    concept: 'Add your first mind',
+    archetype: '',
+    mood: '',
+    moodVal: 0,
+    moodColor: 'rgba(48,216,192,0.5)',
+    memDepth: 0,
+    relations: 0,
+    tools: [],
+    traits: [],
+    register: '',
+    knowledge: [],
+    toolList: [],
+    isAdd: true,
+  }
+];
+
+const EDGES = [
+  { a: 'guard',    b: 'merchant', label: 'REPORTS TO',   weight: 0.8 },
+  { a: 'guard',    b: 'thief',    label: 'HUNTS',         weight: 0.9 },
+  { a: 'merchant', b: 'elder',    label: 'OWES DEBT',     weight: 0.5 },
+  { a: 'merchant', b: 'thief',    label: 'EMPLOYS',       weight: 0.6 },
+  { a: 'elder',    b: 'child',    label: 'MENTORS',       weight: 0.4 },
+  { a: 'slop',     b: 'merchant', label: 'SERVES',        weight: 0.7 },
+  { a: 'thief',    b: 'child',    label: 'PROTECTS',      weight: 0.55 },
+];
+
+// ---- CANVAS SETUP ----
+const canvas = document.getElementById('graph-canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+let animFrame;
+let hoveredNode = null;
+let selectedNode = null;
+let mouseX = 0, mouseY = 0;
+let drawInProgress = 0; // 0..1 for load-in animation
+let drawInStart = null;
+
+// Node layout positions (relative, 0..1)
+const LAYOUT = {
+  slop:     { rx: 0.22, ry: 0.35 },
+  guard:    { rx: 0.38, ry: 0.62 },
+  merchant: { rx: 0.55, ry: 0.28 },
+  elder:    { rx: 0.72, ry: 0.52 },
+  thief:    { rx: 0.46, ry: 0.72 },
+  child:    { rx: 0.68, ry: 0.74 },
+  add:      { rx: 0.82, ry: 0.25 },
+};
+
+function resize() {
+  W = canvas.width  = canvas.offsetWidth;
+  H = canvas.height = canvas.offsetHeight;
+}
+
+function nodePos(node) {
+  const l = LAYOUT[node.id];
+  return {
+    x: l.rx * W,
+    y: l.ry * (H),
+  };
+}
+
+function nodeRadius(node) {
+  if (node.isAdd) return 22;
+  const base = 14;
+  const scale = node.memDepth / 14;
+  return base + scale * 18;
+}
+
+function dist(ax, ay, bx, by) {
+  return Math.sqrt((ax-bx)**2 + (ay-by)**2);
+}
+
+function lerp(a, b, t) { return a + (b-a)*t; }
+
+// ---- DRAW FUNCTIONS ----
+
+function drawGrid(t) {
+  // Already CSS grid, but draw coordinate tick marks on canvas edges
+  ctx.save();
+  ctx.strokeStyle = 'rgba(30,90,160,0.3)';
+  ctx.lineWidth = 1;
+  ctx.font = '9px JetBrains Mono';
+  ctx.fillStyle = 'rgba(30,90,160,0.5)';
+  ctx.textAlign = 'center';
+
+  const step = 80;
+  for (let x = step; x < W; x += step) {
+    ctx.beginPath();
+    ctx.moveTo(x, H - 10);
+    ctx.lineTo(x, H - 4);
+    ctx.stroke();
+    ctx.fillText(Math.round(x), x, H - 1);
+  }
+  for (let y = step; y < H; y += step) {
+    ctx.beginPath();
+    ctx.moveTo(4, y);
+    ctx.lineTo(10, y);
+    ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.fillText(Math.round(y), 12, y + 3);
+    ctx.textAlign = 'center';
+  }
+  ctx.restore();
+}
+
+function hexToRgb(hex) {
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  return {r,g,b};
+}
+
+function drawEdges(t) {
+  EDGES.forEach(edge => {
+    const na = NODES.find(n => n.id === edge.a);
+    const nb = NODES.find(n => n.id === edge.b);
+    if (!na || !nb) return;
+    const pa = nodePos(na);
+    const pb = nodePos(nb);
+
+    const isHighlighted = hoveredNode &&
+      (hoveredNode.id === na.id || hoveredNode.id === nb.id);
+
+    ctx.save();
+
+    if (isHighlighted) {
+      // Traced glowing edge
+      ctx.strokeStyle = 'rgba(48,216,192,0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = 'rgba(48,216,192,0.5)';
+      ctx.setLineDash([]);
+    } else {
+      ctx.strokeStyle = `rgba(40,100,180,${0.2 + edge.weight * 0.15})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+    }
+
+    ctx.globalAlpha = t;
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+
+    // Edge label on highlighted
+    if (isHighlighted) {
+      const mx = (pa.x + pb.x) / 2;
+      const my = (pa.y + pb.y) / 2;
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+
+      // Label background
+      ctx.font = '500 8px JetBrains Mono';
+      const lw = ctx.measureText(edge.label).width + 10;
+      ctx.fillStyle = 'rgba(9,13,18,0.9)';
+      ctx.fillRect(mx - lw/2, my - 8, lw, 13);
+      ctx.strokeStyle = 'rgba(48,216,192,0.4)';
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([]);
+      ctx.strokeRect(mx - lw/2, my - 8, lw, 13);
+
+      ctx.fillStyle = 'rgba(48,216,192,0.9)';
+      ctx.textAlign = 'center';
+      ctx.fillText(edge.label, mx, my + 2);
+    }
+
+    ctx.restore();
+  });
+}
+
+function drawNode(node, t, magneticOffset) {
+  const p = nodePos(node);
+  const r = nodeRadius(node);
+  const px = p.x + magneticOffset.x * (1 - Math.min(1, dist(mouseX, mouseY, p.x, p.y)/200));
+  const py = p.y + magneticOffset.y * (1 - Math.min(1, dist(mouseX, mouseY, p.x, p.y)/200));
+
+  const isHovered = hoveredNode && hoveredNode.id === node.id;
+  const isSelected = selectedNode && selectedNode.id === node.id;
+
+  ctx.save();
+  ctx.globalAlpha = t;
+
+  if (node.isAdd) {
+    // Glowing empty + node
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 900);
+
+    ctx.strokeStyle = `rgba(48,216,192,${0.3 + pulse * 0.4})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3,3]);
+    ctx.shadowBlur = isHovered ? 16 : 6;
+    ctx.shadowColor = 'rgba(48,216,192,0.5)';
+
+    ctx.beginPath();
+    ctx.rect(px - r, py - r, r*2, r*2);
+    ctx.stroke();
+
+    // Cross
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(48,216,192,${0.5 + pulse * 0.5})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(px - 8, py); ctx.lineTo(px + 8, py);
+    ctx.moveTo(px, py - 8); ctx.lineTo(px, py + 8);
+    ctx.stroke();
+
+    ctx.restore();
+    return;
+  }
+
+  // Shadow / glow for hovered
+  if (isHovered || isSelected) {
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = node.moodColor;
+  }
+
+  // Node square (diamond rotation variant for some)
+  const isDiamond = node.id === 'elder' || node.id === 'thief';
+
+  if (isDiamond) {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(Math.PI/4);
+    ctx.fillStyle = 'rgba(9,13,18,0.95)';
+    ctx.strokeStyle = isHovered ? node.moodColor : `${node.moodColor}88`;
+    ctx.lineWidth = isHovered ? 2 : 1.5;
+    ctx.beginPath();
+    ctx.rect(-r * 0.72, -r * 0.72, r * 1.44, r * 1.44);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  } else {
+    ctx.fillStyle = 'rgba(9,13,18,0.95)';
+    ctx.strokeStyle = isHovered ? node.moodColor : `${node.moodColor}88`;
+    ctx.lineWidth = isHovered ? 2 : 1.5;
+    ctx.beginPath();
+    ctx.rect(px - r, py - r, r*2, r*2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Inner fill accent
+  ctx.fillStyle = `${node.moodColor}18`;
+  if (isDiamond) {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(Math.PI/4);
+    ctx.fillRect(-r*0.72+1, -r*0.72+1, r*1.44-2, r*1.44-2);
+    ctx.restore();
+  } else {
+    ctx.fillRect(px-r+1, py-r+1, r*2-2, r*2-2);
+  }
+
+  // Cross marker at node center
+  ctx.strokeStyle = `${node.moodColor}60`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2,2]);
+  ctx.beginPath();
+  ctx.moveTo(px-4, py); ctx.lineTo(px+4, py);
+  ctx.moveTo(px, py-4); ctx.lineTo(px, py+4);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Node name label
+  ctx.font = `600 ${isHovered ? 11 : 10}px JetBrains Mono`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = isHovered ? '#d8e8f8' : node.moodColor;
+  ctx.shadowBlur = 0;
+  ctx.fillText(node.name, px, py + r + 13);
+
+  // Memory depth indicator (tiny bar below name)
+  const barW = Math.min(r*2, 40);
+  const filled = (node.memDepth / 14) * barW;
+  ctx.fillStyle = 'rgba(40,100,180,0.25)';
+  ctx.fillRect(px - barW/2, py + r + 16, barW, 2);
+  ctx.fillStyle = node.moodColor;
+  ctx.globalAlpha = t * 0.7;
+  ctx.fillRect(px - barW/2, py + r + 16, filled, 2);
+  ctx.globalAlpha = t;
+
+  // Satellite dots for tools
+  node.tools.slice(0,3).forEach((tool, i) => {
+    const angle = -Math.PI/4 + (i * Math.PI / 6) - Math.PI/12;
+    const satR = r + 10;
+    const sx = px + Math.cos(angle) * satR;
+    const sy = py + Math.sin(angle) * satR;
+    ctx.fillStyle = isHovered ? 'rgba(48,216,192,0.8)' : 'rgba(48,216,192,0.3)';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 2.5, 0, Math.PI*2);
+    ctx.fill();
+
+    if (isHovered) {
+      ctx.strokeStyle = 'rgba(48,216,192,0.3)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(px + (isDiamond ? Math.cos(Math.PI/4)*r*0.72 : r) * Math.cos(angle),
+                 py + (isDiamond ? Math.cos(Math.PI/4)*r*0.72 : r) * Math.sin(angle));
+      ctx.lineTo(sx, sy);
+      ctx.stroke();
+
+      ctx.font = '8px JetBrains Mono';
+      ctx.fillStyle = 'rgba(48,216,192,0.7)';
+      ctx.textAlign = 'center';
+      ctx.fillText(tool.replace('_',' '), sx, sy - 5);
+    }
+  });
+
+  ctx.restore();
+}
+
+// Coordinate snap lines to hovered node
+function drawSnapLines() {
+  if (!hoveredNode) return;
+  const p = nodePos(hoveredNode);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(48,216,192,0.12)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 6]);
+
+  // Vertical line to top edge
+  ctx.beginPath();
+  ctx.moveTo(p.x, 0);
+  ctx.lineTo(p.x, p.y - nodeRadius(hoveredNode) - 4);
+  ctx.stroke();
+
+  // Horizontal line to left edge
+  ctx.beginPath();
+  ctx.moveTo(0, p.y);
+  ctx.lineTo(p.x - nodeRadius(hoveredNode) - 4, p.y);
+  ctx.stroke();
+
+  // Tick on axis
+  ctx.strokeStyle = 'rgba(48,216,192,0.4)';
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(p.x - 4, H - 14);
+  ctx.lineTo(p.x + 4, H - 14);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(14, p.y - 4);
+  ctx.lineTo(14, p.y + 4);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ---- MAIN RENDER LOOP ----
+let lastTime = 0;
+function render(time) {
+  animFrame = requestAnimationFrame(render);
+  const dt = time - lastTime;
+  lastTime = time;
+
+  if (!drawInStart) drawInStart = time;
+  const elapsed = time - drawInStart;
+  drawInProgress = Math.min(1, elapsed / 1200);
+  const eased = 1 - Math.pow(1 - drawInProgress, 3);
+
+  ctx.clearRect(0, 0, W, H);
+
+  drawGrid(eased);
+  drawEdges(eased);
+
+  NODES.forEach(node => {
+    const p = nodePos(node);
+    const d = dist(mouseX, mouseY, p.x, p.y);
+    const maxMag = 8;
+    const mag = Math.max(0, 1 - d / 180) * maxMag;
+    const angle = Math.atan2(mouseY - p.y, mouseX - p.x);
+    const mx = Math.cos(angle) * mag;
+    const my = Math.sin(angle) * mag;
+    drawNode(node, eased, { x: mx, y: my });
+  });
+
+  drawSnapLines();
+}
+
+// ---- INTERACTION ----
+
+function findNearestNode(x, y) {
+  let nearest = null;
+  let nearestD = Infinity;
+  NODES.forEach(node => {
+    const p = nodePos(node);
+    const d = dist(x, y, p.x, p.y);
+    if (d < nearestD) {
+      nearestD = d;
+      nearest = { node, d };
+    }
+  });
+  return nearest;
+}
+
+function findNodeAtPoint(x, y) {
+  for (const node of NODES) {
+    const p = nodePos(node);
+    const r = nodeRadius(node);
+    if (Math.abs(x - p.x) < r + 4 && Math.abs(y - p.y) < r + 4) {
+      return node;
+    }
+  }
+  return null;
+}
+
+function updateReadout(node) {
+  if (!node || node.isAdd) {
+    document.getElementById('readout').classList.remove('visible');
+    return;
+  }
+  document.getElementById('readout').classList.add('visible');
+  document.getElementById('r-name').textContent = node.name;
+  document.getElementById('r-concept').textContent = node.concept;
+  document.getElementById('r-id').textContent = `NPC/${node.id.toUpperCase()}`;
+
+  const moodEl = document.getElementById('r-mood');
+  moodEl.innerHTML = '';
+  const chip = document.createElement('div');
+  chip.className = 'mood-chip';
+  chip.style.color = node.moodColor;
+  chip.style.borderColor = node.moodColor + '66';
+  chip.style.backgroundColor = node.moodColor + '18';
+  chip.textContent = node.mood.toUpperCase();
+  moodEl.appendChild(chip);
+
+  document.getElementById('r-moodval').textContent = node.moodVal.toFixed(2);
+  document.getElementById('r-mem').textContent = `${node.memDepth} turns`;
+  document.getElementById('r-rels').textContent = `${node.relations} edges`;
+  document.getElementById('r-tools').textContent = node.tools.join(' · ');
+  const p = nodePos(node);
+  document.getElementById('r-pos').textContent = `(${Math.round(p.x)}, ${Math.round(p.y)})`;
+}
+
+function openStudio(node) {
+  if (!node || node.isAdd) return;
+  selectedNode = node;
+  document.getElementById('studio-name').textContent = node.name;
+  document.getElementById('s-name').textContent = node.name;
+  document.getElementById('s-archetype').textContent = node.archetype;
+  document.getElementById('s-role').textContent = node.role;
+  document.getElementById('s-register').textContent = node.register;
+
+  // Traits
+  const traitWrap = document.getElementById('s-traits');
+  traitWrap.innerHTML = '';
+  node.traits.forEach((t, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'trait-chip' + (i < 2 ? ' on' : '');
+    chip.textContent = t.toUpperCase();
+    chip.addEventListener('click', () => chip.classList.toggle('on'));
+    traitWrap.appendChild(chip);
+  });
+
+  // Mood chip
+  const moodWrap = document.getElementById('s-mood-chip-wrap');
+  moodWrap.innerHTML = '';
+  if (node.mood) {
+    const chip = document.createElement('div');
+    chip.className = 'mood-chip';
+    chip.style.color = node.moodColor;
+    chip.style.borderColor = node.moodColor + '66';
+    chip.style.backgroundColor = node.moodColor + '18';
+    chip.textContent = `${node.mood.toUpperCase()} / ${node.moodVal.toFixed(2)}`;
+    moodWrap.appendChild(chip);
+  }
+
+  // Knowledge
+  const knowWrap = document.getElementById('s-knowledge');
+  knowWrap.innerHTML = '';
+  node.knowledge.forEach(k => {
+    const item = document.createElement('div');
+    item.className = 'know-item';
+    item.textContent = k.replace(/_/g, ' ').toUpperCase();
+    knowWrap.appendChild(item);
+  });
+
+  // Tools
+  const toolWrap = document.getElementById('s-toollist');
+  toolWrap.innerHTML = '';
+  node.toolList.forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'know-item';
+    item.style.setProperty('--c', 'var(--ember)');
+    item.textContent = t.replace(/_/g, ' ');
+    const before = document.createElement('span');
+    item.style.color = 'var(--ember)';
+    toolWrap.appendChild(item);
+  });
+
+  document.getElementById('studio-panel').classList.add('open');
+}
+
+function closeStudio() {
+  document.getElementById('studio-panel').classList.remove('open');
+  selectedNode = null;
+}
+
+// Cursor tracking
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+  mouseY = e.clientY - rect.top;
+
+  document.getElementById('cx').textContent = Math.round(mouseX);
+  document.getElementById('cy').textContent = Math.round(mouseY);
+
+  const ci = document.getElementById('cursor-indicator');
+  ci.style.display = 'block';
+  ci.style.left = e.clientX + 'px';
+  ci.style.top  = e.clientY + 'px';
+
+  const hit = findNodeAtPoint(mouseX, mouseY);
+  hoveredNode = hit;
+  canvas.style.cursor = hit ? 'pointer' : 'crosshair';
+
+  updateReadout(hit);
+
+  // Nearest node label
+  const nearest = findNearestNode(mouseX, mouseY);
+  if (nearest && nearest.d < 120) {
+    document.getElementById('nearest-label').textContent =
+      `NEAR: ${nearest.node.name} [${Math.round(nearest.d)}px]`;
+  } else {
+    document.getElementById('nearest-label').textContent = '';
+  }
+
+  // Node tooltip
+  const tt = document.getElementById('node-tooltip');
+  const ttText = document.getElementById('node-tt-text');
+  if (hit && !hit.isAdd) {
+    tt.style.display = 'block';
+    tt.style.left = (e.clientX + 16) + 'px';
+    tt.style.top  = (e.clientY - 12) + 'px';
+    ttText.textContent = hit.concept.toUpperCase();
+  } else if (hit && hit.isAdd) {
+    const at = document.getElementById('add-tooltip');
+    at.style.display = 'block';
+    at.style.left = (e.clientX + 16) + 'px';
+    at.style.top  = (e.clientY - 12) + 'px';
+    tt.style.display = 'none';
+  } else {
+    tt.style.display = 'none';
+    document.getElementById('add-tooltip').style.display = 'none';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  mouseX = W/2; mouseY = H/2;
+  document.getElementById('cursor-indicator').style.display = 'none';
+  document.getElementById('cx').textContent = '—';
+  document.getElementById('cy').textContent = '—';
+  document.getElementById('nearest-label').textContent = '';
+  document.getElementById('readout').classList.remove('visible');
+  document.getElementById('node-tooltip').style.display = 'none';
+  document.getElementById('add-tooltip').style.display = 'none';
+});
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const hit = findNodeAtPoint(cx, cy);
+  if (hit) openStudio(hit);
+  else closeStudio();
+});
+
+document.getElementById('studio-close').addEventListener('click', closeStudio);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeStudio();
+});
+
+// Nav click (cosmetic)
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', function() {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// Stage CTA buttons (cosmetic flash)
+document.querySelectorAll('.btn-primary').forEach(btn => {
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    this.style.background = 'var(--ember)';
+    this.style.color = '#090d12';
+    setTimeout(() => {
+      this.style.background = '';
+      this.style.color = '';
+    }, 200);
+  });
+});
+
+// Init
+window.addEventListener('resize', () => { resize(); });
+resize();
+mouseX = W / 2;
+mouseY = H / 2;
+requestAnimationFrame(render);
+
+})();
+</script>
+</body>
+</html>
