@@ -12,20 +12,41 @@
   left: 0;
   right: 0;
   height: var(--nav-height);
-  background: rgba(13, 13, 13, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--color-border);
+  background: rgba(12, 13, 16, 0.32);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom: 1px solid transparent;
   display: flex;
   align-items: center;
   padding: 0 var(--space-8);
   z-index: var(--z-sticky);
-  transition: all var(--transition-base);
+  transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, backdrop-filter 0.35s ease;
 }
 
 .main-nav.scrolled {
-  background: rgba(13, 13, 13, 0.95);
-  box-shadow: var(--shadow-lg);
+  background: rgba(12, 13, 16, 0.9);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  border-bottom-color: var(--color-border);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.4);
+}
+
+/* Scroll-progress line under the nav */
+.main-nav::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: var(--nav-progress, 0%);
+  background: linear-gradient(90deg, var(--color-accent-primary), #83e0c6);
+  box-shadow: 0 0 10px rgba(224, 120, 80, 0.5);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.main-nav.scrolled::after {
+  opacity: 1;
 }
 
 .nav-brand {
@@ -82,13 +103,54 @@
 }
 
 .brand-text {
-  font-family: var(--font-sans);
-  font-weight: var(--font-bold);
+  font-family: var(--font-wordmark);
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .brand-accent {
   color: var(--color-accent-primary);
   transition: text-shadow 0.22s ease;
+}
+
+/* Constellation brand mark (pinned V3: teal breathing core + pastel stars) */
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.brand-mark-core {
+  transform-origin: 36px 40px;
+  animation: brandBreathe 2.8s ease-in-out infinite;
+}
+
+.brand-mark-ring {
+  transform-origin: 36px 40px;
+  animation: brandRing 2.8s ease-out infinite;
+}
+
+.brand-mark-ring-2 {
+  animation-delay: 1.4s;
+}
+
+.brand-link:hover .brand-mark-core {
+  filter: drop-shadow(0 0 6px rgba(131, 224, 198, 0.6));
+}
+
+@keyframes brandBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.14); }
+}
+
+@keyframes brandRing {
+  0% { r: 7; opacity: 0.7; }
+  100% { r: 18; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark-core { animation: none; }
+  .brand-mark-ring { animation: none; opacity: 0; }
 }
 
 .nav-links {
