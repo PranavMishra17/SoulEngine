@@ -297,6 +297,24 @@
   gap: var(--space-5);
   max-width: 1300px;
   margin: 0 auto;
+  position: relative;
+}
+
+/* Constellation thread: visible only in the gaps between cards, echoing the node motif */
+.pillars-grid::before {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: calc(var(--space-6) + 24px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border-hover) 18%, var(--color-border-hover) 82%, transparent);
+  z-index: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 1200px) {
+  .pillars-grid::before { display: none; }
 }
 
 @media (max-width: 1200px) {
@@ -330,9 +348,20 @@
   padding: var(--space-6);
   position: relative;
   overflow: hidden;
+  z-index: 1;
   opacity: 0;
-  transform: translateY(30px);
-  transition: all var(--transition-slow);
+  transform: translateY(24px);
+  transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.25, 1),
+    transform 0.5s cubic-bezier(0.2, 0.8, 0.25, 1),
+    border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pillar-detail {
+    opacity: 1;
+    transform: none;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
 }
 
 .pillar-detail.visible {
@@ -386,7 +415,7 @@
 }
 
 .pillar-detail[data-pillar="core"] .pillar-detail-icon {
-  background: rgba(245, 165, 184, 0.15);
+  background: rgba(241, 166, 196, 0.15);
   color: var(--color-pillar-core);
 }
 
@@ -401,12 +430,12 @@
 }
 
 .pillar-detail[data-pillar="persona"] .pillar-detail-icon {
-  background: rgba(122, 224, 196, 0.15);
+  background: rgba(131, 224, 198, 0.15);
   color: var(--color-pillar-persona);
 }
 
 .pillar-detail[data-pillar="mcp"] .pillar-detail-icon {
-  background: rgba(196, 165, 245, 0.15);
+  background: rgba(182, 166, 242, 0.15);
   color: var(--color-pillar-mcp);
 }
 
@@ -458,6 +487,27 @@
   color: var(--color-text-secondary);
   max-width: 600px;
   margin: 0 auto var(--space-12);
+}
+
+/* Scroll-reveal — percussive; JS adds .reveal then toggles .visible */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.55s cubic-bezier(0.2, 0.8, 0.25, 1),
+    transform 0.55s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 /* Pipeline — dual column: NPC context left, voice pipeline right */
@@ -522,6 +572,16 @@
   color: var(--color-accent-primary);
   opacity: 0.5;
   transform: rotate(90deg);
+  animation: bridgePulse 2.4s ease-in-out infinite;
+}
+
+@keyframes bridgePulse {
+  0%, 100% { opacity: 0.4; transform: rotate(90deg) translateX(-2px); }
+  50% { opacity: 0.95; transform: rotate(90deg) translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-bridge-arrow { animation: none; }
 }
 
 /* NPC Context nodes */

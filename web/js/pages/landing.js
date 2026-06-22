@@ -21,6 +21,7 @@ export function initLandingPage() {
       initBrainVisualization();
       initPillarTabs();
       initPillarDetails();
+      initScrollReveal();
       initHeroButtons();
       initSmoothScroll();
       initNavScrollEffect();
@@ -118,7 +119,7 @@ function initPillarDetails() {
   });
 
   details.forEach((detail, index) => {
-    detail.style.transitionDelay = `${index * 0.1}s`;
+    detail.style.transitionDelay = `${index * 0.07}s`;
     observer.observe(detail);
 
     detail.addEventListener('mouseenter', () => {
@@ -134,6 +135,50 @@ function initPillarDetails() {
       }
     });
   });
+}
+
+function initScrollReveal() {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Staggered groups: each element fades/slides up as it scrolls in.
+  const staggered = ['.nc-node', '.vp-node', '.feature-card'];
+  const singles = ['.section-title', '.section-subtitle', '.section-cta .container'];
+
+  const all = [];
+
+  staggered.forEach(sel => {
+    document.querySelectorAll(sel).forEach((el, i) => {
+      el.classList.add('reveal');
+      el.style.transitionDelay = `${Math.min(i, 6) * 0.06}s`;
+      all.push(el);
+    });
+  });
+
+  singles.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.classList.add('reveal');
+      all.push(el);
+    });
+  });
+
+  if (!all.length) return;
+
+  // Reduced motion: CSS keeps everything visible; just mark and bail.
+  if (prefersReduced) {
+    all.forEach(el => el.classList.add('visible'));
+    return;
+  }
+
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        obs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+  all.forEach(el => observer.observe(el));
 }
 
 function initHeroButtons() {

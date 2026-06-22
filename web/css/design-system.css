@@ -9,7 +9,7 @@
 
 :root {
   /* Color Palette - Deep Space Obsidian */
-  --color-bg-primary: #0d0d0d;
+  --color-bg-primary: #0c0d10;
   --color-bg-secondary: #141414;
   --color-bg-tertiary: #1a1a1a;
   --color-bg-elevated: #212121;
@@ -38,11 +38,11 @@
   --color-accent-secondary-muted: rgba(201, 168, 108, 0.15);
 
   /* Pillar colors - Pastel tones */
-  --color-pillar-core: #f5a5b8;      /* Light Pink */
+  --color-pillar-core: #f1a6c4;      /* Pink (pinned identity) */
   --color-pillar-daily: #f5c27a;     /* Light Orange */
   --color-pillar-weekly: #f5e27a;    /* Light Yellow */
-  --color-pillar-persona: #7ae0c4;   /* Light Sea-Green */
-  --color-pillar-mcp: #c4a5f5;       /* Light Purple */
+  --color-pillar-persona: #83e0c6;   /* Teal (pinned identity) */
+  --color-pillar-mcp: #b6a6f2;       /* Lavender (pinned identity) */
 
   /* Semantic colors */
   --color-success: #5cb87a;
@@ -65,7 +65,8 @@
   --color-brain-edge: rgba(168, 160, 153, 0.25);
 
   /* Typography */
-  --font-display: 'Playfair Display', 'Georgia', serif;
+  --font-display: 'Fraunces', 'Georgia', serif;
+  --font-wordmark: 'Fraunces', 'Georgia', serif;
   --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 

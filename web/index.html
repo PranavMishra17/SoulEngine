@@ -7,7 +7,7 @@
   <title>SoulEngine - Memory-Driven NPCs for Games</title>
   <meta name="description"
     content="Create game characters that remember, evolve, and speak. Memory-driven NPCs with voice interaction and real-time personality evolution.">
-  <meta name="theme-color" content="#0d0d0d">
+  <meta name="theme-color" content="#0c0d10">
 
   <!-- Favicon -->
   <link rel="icon" type="image/jpeg" href="/img/log.png">
@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
 
   <!-- Stylesheets -->
@@ -42,7 +42,24 @@
     <nav class="main-nav" id="main-nav">
       <div class="nav-brand">
         <a href="/" class="brand-link">
-          <img src="/img/logg.jpg" alt="SoulEngine" class="brand-icon-img">
+          <svg class="brand-mark" viewBox="0 0 80 72" width="38" height="34" aria-hidden="true" focusable="false">
+            <g stroke="rgba(220,222,232,0.22)" stroke-width="1.2" fill="none">
+              <line x1="36" y1="40" x2="20" y2="22" />
+              <line x1="36" y1="40" x2="16" y2="50" />
+              <line x1="36" y1="40" x2="52" y2="20" />
+              <line x1="52" y1="20" x2="62" y2="46" />
+              <line x1="36" y1="40" x2="44" y2="56" />
+            </g>
+            <circle class="brand-mark-ring" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6" stroke-width="1.3" />
+            <circle class="brand-mark-ring brand-mark-ring-2" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6"
+              stroke-width="1.3" />
+            <circle cx="20" cy="22" r="2.6" fill="#b6a6f2" />
+            <circle cx="16" cy="50" r="3.2" fill="#f1a6c4" />
+            <circle cx="52" cy="20" r="3" fill="#f1a6c4" />
+            <circle cx="62" cy="46" r="3.4" fill="#b6a6f2" />
+            <circle cx="44" cy="56" r="2.6" fill="#83e0c6" />
+            <circle class="brand-mark-core" cx="36" cy="40" r="5.4" fill="#83e0c6" />
+          </svg>
           <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
         </a>
       </div>
@@ -244,35 +261,71 @@
         </div>
         <div class="pillars-grid">
           <div class="pillar-detail" data-pillar="core">
-            <div class="pillar-detail-icon">&#9672;</div>
+            <div class="pillar-detail-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
+                <circle cx="12" cy="12" r="3.4" fill="currentColor" />
+              </svg>
+            </div>
             <span class="pillar-detail-tag">Permanent</span>
             <h3>Core Anchor</h3>
             <p>Immutable psychological DNA. Backstory, principles, and worldview that define the character's foundation
               and never change.</p>
           </div>
           <div class="pillar-detail" data-pillar="daily">
-            <div class="pillar-detail-icon">&#9681;</div>
+            <div class="pillar-detail-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+                <line x1="7" y1="15" x2="17" y2="9" stroke="currentColor" stroke-width="1.2" opacity="0.5" />
+                <circle cx="7" cy="15" r="3" fill="currentColor" />
+                <circle cx="17" cy="9" r="2.4" fill="currentColor" opacity="0.7" />
+              </svg>
+            </div>
             <span class="pillar-detail-tag">Per Session</span>
             <h3>Daily Pulse</h3>
             <p>Mood vectors and single-sentence takeaways. Emotional continuity across short timespans with valence,
               arousal, dominance.</p>
           </div>
           <div class="pillar-detail" data-pillar="weekly">
-            <div class="pillar-detail-icon">&#9684;</div>
+            <div class="pillar-detail-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+                <path d="M12 5 L18 17 L6 17 Z" stroke="currentColor" stroke-width="1.2" opacity="0.45" />
+                <circle cx="12" cy="5" r="2.6" fill="currentColor" />
+                <circle cx="18" cy="17" r="2.6" fill="currentColor" />
+                <circle cx="6" cy="17" r="2.6" fill="currentColor" />
+              </svg>
+            </div>
             <span class="pillar-detail-tag">Cycles</span>
             <h3>Weekly Whisper</h3>
             <p>Cyclic memory pruning with salience scoring. High-impact events persist while trivial interactions
               naturally fade.</p>
           </div>
           <div class="pillar-detail" data-pillar="persona">
-            <div class="pillar-detail-icon">&#9671;</div>
+            <div class="pillar-detail-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+                <circle cx="9" cy="13" r="3.4" fill="currentColor" opacity="0.4" />
+                <line x1="9" y1="13" x2="15" y2="9" stroke="currentColor" stroke-width="1.2" opacity="0.5" />
+                <circle cx="15" cy="9" r="3.6" fill="currentColor" />
+              </svg>
+            </div>
             <span class="pillar-detail-tag">Evolution</span>
             <h3>Persona Shift</h3>
             <p>Major personality recalibration. Big Five traits evolve within bounded limits based on accumulated
               experiences.</p>
           </div>
           <div class="pillar-detail" data-pillar="mcp">
-            <div class="pillar-detail-icon">&#11043;</div>
+            <div class="pillar-detail-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+                <g stroke="currentColor" stroke-width="1.2" opacity="0.5">
+                  <line x1="12" y1="12" x2="5" y2="7" />
+                  <line x1="12" y1="12" x2="19" y2="9" />
+                  <line x1="12" y1="12" x2="13" y2="19" />
+                </g>
+                <circle cx="12" cy="12" r="3" fill="currentColor" />
+                <circle cx="5" cy="7" r="1.8" fill="currentColor" opacity="0.8" />
+                <circle cx="19" cy="9" r="1.8" fill="currentColor" opacity="0.8" />
+                <circle cx="13" cy="19" r="1.8" fill="currentColor" opacity="0.8" />
+              </svg>
+            </div>
             <span class="pillar-detail-tag">Agency</span>
             <h3>MCP Actions</h3>
             <p>NPCs act in the world. Lock doors, call guards, refuse service. Real consequences from autonomous
@@ -421,37 +474,77 @@
 
           <div class="features-grid">
             <div class="feature-card">
-              <div class="feature-icon">&#9672;</div>
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.3" stroke-dasharray="3 3" opacity="0.55" />
+                  <circle cx="12" cy="12" r="3.2" fill="currentColor" />
+                </svg>
+              </div>
               <h3>Transient Sessions</h3>
               <p>Everything lives in RAM during a conversation. Persisted only when the session ends — zero database
                 writes mid-chat.</p>
             </div>
             <div class="feature-card">
-              <div class="feature-icon">&#9671;</div>
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+                  <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.3" opacity="0.5" />
+                  <circle cx="5" cy="12" r="2" fill="currentColor" opacity="0.55" />
+                  <circle cx="12" cy="12" r="2.2" fill="currentColor" opacity="0.75" />
+                  <circle cx="19" cy="12" r="2.8" fill="currentColor" />
+                </svg>
+              </div>
               <h3>State History</h3>
               <p>Git-like versioning for NPC state. Roll back personality or memories to any prior checkpoint if
                 something goes wrong in production.</p>
             </div>
             <div class="feature-card feature-card-highlight">
-              <div class="feature-icon">&#9670;</div>
-              <h3>Unity Asset Package <span class="feature-tag">Coming Soon</span></h3>
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+                  <path d="M12 4 L19 8 V16 L12 20 L5 16 V8 Z" stroke="currentColor" stroke-width="1.3" opacity="0.5" />
+                  <circle cx="12" cy="12" r="3.2" fill="currentColor" />
+                </svg>
+              </div>
+              <h3>Unity Asset Package <span class="feature-tag">In Development</span></h3>
               <p>A native Unity package to plug SoulEngine directly into your game. Drop-in NPC prefabs, session
                 lifecycle hooks, and voice pipeline wired out of the box.</p>
             </div>
             <div class="feature-card">
-              <div class="feature-icon">&#9684;</div>
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+                  <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" stroke-width="1.3" opacity="0.5" />
+                  <circle cx="6" cy="12" r="3.2" fill="currentColor" />
+                  <circle cx="18" cy="12" r="3.2" fill="currentColor" />
+                </svg>
+              </div>
               <h3>REST + WebSocket API</h3>
               <p>Language-agnostic integration. Text conversation over REST, real-time voice over WebSocket. Works with
                 any engine or platform.</p>
             </div>
             <div class="feature-card">
-              <div class="feature-icon">&#9681;</div>
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+                  <g stroke="currentColor" stroke-width="1.3" opacity="0.45">
+                    <line x1="12" y1="12" x2="6" y2="6" />
+                    <line x1="12" y1="12" x2="18" y2="6" />
+                    <line x1="12" y1="12" x2="12" y2="19" />
+                  </g>
+                  <circle cx="12" cy="12" r="3" fill="currentColor" />
+                  <circle cx="6" cy="6" r="1.7" fill="currentColor" opacity="0.7" />
+                  <circle cx="18" cy="6" r="1.7" fill="currentColor" opacity="0.7" />
+                  <circle cx="12" cy="19" r="1.7" fill="currentColor" opacity="0.7" />
+                </svg>
+              </div>
               <h3>Bring Your Own AI</h3>
               <p>Swap LLM, STT, and TTS providers per project. Configure API keys per project so different games use
                 different providers independently.</p>
             </div>
             <div class="feature-card">
-              <div class="feature-icon">&#9733;</div>
+              <div class="feature-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true">
+                  <rect x="4.5" y="4.5" width="15" height="15" rx="3" stroke="currentColor" stroke-width="1.3" opacity="0.5" />
+                  <circle cx="12" cy="12" r="3.2" fill="currentColor" />
+                </svg>
+              </div>
               <h3>Full Isolation</h3>
               <p>Each project is completely sandboxed — its own NPCs, knowledge base, tools, and API keys. Multi-game
                 deployment without collision.</p>
@@ -478,7 +571,25 @@
           <div class="footer-grid">
             <div class="footer-brand">
               <div class="footer-brand-header">
-                <img src="/img/logg.jpg" alt="SoulEngine" class="brand-icon-img">
+                <svg class="brand-mark" viewBox="0 0 80 72" width="44" height="40" aria-hidden="true" focusable="false">
+                  <g stroke="rgba(220,222,232,0.22)" stroke-width="1.2" fill="none">
+                    <line x1="36" y1="40" x2="20" y2="22" />
+                    <line x1="36" y1="40" x2="16" y2="50" />
+                    <line x1="36" y1="40" x2="52" y2="20" />
+                    <line x1="52" y1="20" x2="62" y2="46" />
+                    <line x1="36" y1="40" x2="44" y2="56" />
+                  </g>
+                  <circle class="brand-mark-ring" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6"
+                    stroke-width="1.3" />
+                  <circle class="brand-mark-ring brand-mark-ring-2" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6"
+                    stroke-width="1.3" />
+                  <circle cx="20" cy="22" r="2.6" fill="#b6a6f2" />
+                  <circle cx="16" cy="50" r="3.2" fill="#f1a6c4" />
+                  <circle cx="52" cy="20" r="3" fill="#f1a6c4" />
+                  <circle cx="62" cy="46" r="3.4" fill="#b6a6f2" />
+                  <circle cx="44" cy="56" r="2.6" fill="#83e0c6" />
+                  <circle class="brand-mark-core" cx="36" cy="40" r="5.4" fill="#83e0c6" />
+                </svg>
                 <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
               </div>
               <p>NPCs with memory, motive, and agency. Stateless intelligence with layered psychological cycles.</p>
