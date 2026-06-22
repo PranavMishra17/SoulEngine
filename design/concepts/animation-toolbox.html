@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SoulEngine — Motif Animation Toolbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0c0d10; --grid:#16181d; --grid-strong:#1d2027;
+    --ink:#e9e4da; --muted:#7c8089; --faint:#4a4e57;
+    --ember:#e07850; --cyan:#36d6c0;
+    --curious:#5fd3e0; --alert:#e0a23c; --reflective:#9b7be0; --warm:#e06f8f; --wary:#4aa0e0; --playful:#5fd08a;
+    --panel:#101216; --line:#22252c;
+    --font:'Archivo',system-ui,sans-serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--font);overflow:hidden}
+  /* ---- top bar ---- */
+  header{position:fixed;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:24px;
+    padding:0 20px;border-bottom:1px solid var(--line);background:rgba(12,13,16,.8);backdrop-filter:blur(6px);z-index:10}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.04em}
+  .brand .mark{width:18px;height:18px;border:2px solid var(--ember);transform:rotate(45deg);position:relative}
+  .brand .mark::after{content:"";position:absolute;inset:3px;background:var(--ember);opacity:.55}
+  .brand b{color:var(--ember);font-weight:700}
+  .title{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+  .rev{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.1em}
+  /* ---- layout ---- */
+  #stage{position:fixed;inset:52px 320px 0 0}
+  canvas{display:block;width:100%;height:100%}
+  /* ---- toolbox panel ---- */
+  aside{position:fixed;top:52px;right:0;bottom:0;width:320px;border-left:1px solid var(--line);
+    background:var(--panel);overflow-y:auto;padding:18px 16px 40px}
+  aside h2{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    margin:0 0 12px;font-weight:600}
+  .sect{margin-bottom:22px}
+  .sect+.sect{border-top:1px solid var(--line);padding-top:18px}
+  .anim{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;margin-bottom:7px;
+    border:1px solid var(--line);border-radius:7px;background:#0e1014;cursor:pointer;transition:border-color .15s,background .15s}
+  .anim:hover{border-color:#33373f;background:#12151a}
+  .anim .nm{display:flex;flex-direction:column;gap:2px}
+  .anim .nm span{font-size:13px;font-weight:600}
+  .anim .nm small{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.02em}
+  .anim .go{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ember);
+    border:1px solid var(--ember);border-radius:4px;padding:4px 8px;white-space:nowrap;opacity:.85}
+  .anim:hover .go{opacity:1;background:rgba(224,120,80,.1)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0;font-size:12.5px;color:var(--muted)}
+  .row input[type=range]{flex:1;accent-color:var(--ember)}
+  .toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:var(--ink)}
+  .toggle input{accent-color:var(--ember);width:15px;height:15px}
+  .legend{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.9}
+  .legend .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:middle}
+  .hint{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:6px;line-height:1.6}
+  @media (prefers-reduced-motion: reduce){ .anim .go::after{content:" (static)"} }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="mark"></span>Soul<b>Engine</b></div>
+  <span class="title">Motif Animation Toolbox</span>
+  <span class="rev">grid&nbsp;node-graph&nbsp;/&nbsp;run&nbsp;an&nbsp;animation&nbsp;→</span>
+</header>
+
+<div id="stage"><canvas id="c"></canvas></div>
+
+<aside>
+  <div class="sect">
+    <h2>Animations — click to run</h2>
+    <div class="anim" data-anim="reveal"><div class="nm"><span>Grid reveal</span><small>nodes + edges draw in</small></div><div class="go">RUN</div></div>
+    <div class="anim" data-anim="wake"><div class="nm"><span>Node wake</span><small>halo + ring pulse</small></div><div class="go">RUN</div></div>
+    <div class="anim" data-anim="edge"><div class="nm"><span>Edge pulse</span><small>relationship fires along grid</small></div><div class="go">RUN</div></div>
+    <div class="anim" data-anim="mood"><div class="nm"><span>Mood shift</span><small>node hue transitions</small></div><div class="go">RUN</div></div>
+    <div class="anim" data-anim="memory"><div class="nm"><span>Memory rings</span><small>rings accrete on a node</small></div><div class="go">RUN</div></div>
+    <div class="anim" data-anim="think"><div class="nm"><span>Think pulse</span><small>signal travels the graph</small></div><div class="go">RUN</div></div>
+    <div class="anim" data-anim="add"><div class="nm"><span>Add a mind</span><small>new node snaps to grid + links</small></div><div class="go">RUN</div></div>
+  </div>
+  <div class="sect">
+    <h2>Controls</h2>
+    <label class="toggle"><input type="checkbox" id="ambient" /> Ambient drift + cursor reactivity</label>
+    <label class="toggle" style="margin-top:8px"><input type="checkbox" id="ortho" checked /> Orthogonal (squarish) edges</label>
+    <div class="row"><span>Speed</span><input type="range" id="speed" min="0.3" max="2" step="0.1" value="1" /></div>
+    <div class="hint">Hover a node to wake it. Click a node to pulse its relationships.</div>
+  </div>
+  <div class="sect">
+    <h2>Legend</h2>
+    <div class="legend">
+      <div><span class="dot" style="background:var(--curious)"></span>Curious &nbsp; <span class="dot" style="background:var(--alert)"></span>Alert</div>
+      <div><span class="dot" style="background:var(--reflective)"></span>Reflective &nbsp; <span class="dot" style="background:var(--warm)"></span>Warm</div>
+      <div><span class="dot" style="background:var(--wary)"></span>Wary &nbsp; <span class="dot" style="background:var(--playful)"></span>Playful</div>
+      <div style="margin-top:8px;color:var(--faint)">hue = mood · size = memory · line = relationship</div>
+    </div>
+  </div>
+</aside>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const C = k => css.getPropertyValue(k).trim();
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const MOODS = {
+    curious:C('--curious'), alert:C('--alert'), reflective:C('--reflective'),
+    warm:C('--warm'), wary:C('--wary'), playful:C('--playful')
+  };
+  const moodKeys = Object.keys(MOODS);
+
+  // --- mock minds on a SQUARISH GRID (grid coords col,row; pixel pos derived from grid) ---
+  let GRID = 90; // px per cell, recomputed on resize
+  const nodes = [
+    { id:'slop',     name:'SLOP',     col:1, row:1, mem:0.45, mood:'wary' },
+    { id:'guard',    name:'GUARD',    col:1, row:3, mem:0.6,  mood:'alert' },
+    { id:'merchant', name:'MERCHANT', col:3, row:1, mem:0.8,  mood:'warm' },
+    { id:'elder',    name:'ELDER',    col:5, row:2, mem:1.0,  mood:'reflective' },
+    { id:'thief',    name:'THIEF',    col:3, row:4, mem:0.55, mood:'curious' },
+    { id:'child',    name:'CHILD',    col:5, row:4, mem:0.35, mood:'playful' },
+  ];
+  const edges = [
+    ['slop','guard'], ['guard','merchant'], ['merchant','elder'],
+    ['elder','child'], ['thief','merchant'], ['thief','child'], ['guard','thief'],
+  ];
+  const byId = id => nodes.find(n => n.id === id);
+  nodes.forEach(n => { n.x = n.tx = 0; n.y = n.ty = 0; n.wake = 0; n.rings = 0; n.moodMix = 0; n.appear = 1; });
+
+  // --- canvas sizing (DPR-safe; guards against 0/NaN) ---
+  let W = 0, H = 0, originX = 0, originY = 0;
+  function resize(){
+    const r = canvas.getBoundingClientRect();
+    W = Math.max(1, Math.floor(r.width));
+    H = Math.max(1, Math.floor(r.height));
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    // grid sizing: fit the 6-col x 5-row layout into the stage with margins
+    const cols = 6, rows = 5;
+    GRID = Math.max(60, Math.min((W - 120) / cols, (H - 120) / rows));
+    const gridW = cols * GRID, gridH = rows * GRID;
+    originX = (W - gridW) / 2;
+    originY = (H - gridH) / 2;
+    nodes.forEach(n => { n.tx = originX + n.col * GRID; n.ty = originY + n.row * GRID;
+      if (n.x === 0 && n.y === 0){ n.x = n.tx; n.y = n.ty; } });
+  }
+  window.addEventListener('resize', resize);
+
+  // --- finite guards ---
+  const fin = (v, d=0) => Number.isFinite(v) ? v : d;
+  const radius = n => fin(8 + n.mem * 16, 8) * fin(n.appear, 1);
+
+  // --- pointer ---
+  let mx = -9999, my = -9999, ambient = false, ortho = true, speed = 1;
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect(); mx = e.clientX - r.left; my = e.clientY - r.top;
+  });
+  canvas.addEventListener('mouseleave', () => { mx = my = -9999; });
+  canvas.addEventListener('click', e => {
+    const r = canvas.getBoundingClientRect(); const px = e.clientX - r.left, py = e.clientY - r.top;
+    const hit = nodes.find(n => Math.hypot(n.x - px, n.y - py) < radius(n) + 8);
+    if (hit) pulseEdgesFrom(hit);
+  });
+  document.getElementById('ambient').addEventListener('change', e => ambient = e.target.checked);
+  document.getElementById('ortho').addEventListener('change', e => ortho = e.target.checked);
+  document.getElementById('speed').addEventListener('input', e => speed = parseFloat(e.target.value));
+
+  // --- animation state ---
+  let reveal = reduced ? 1 : 0;          // 0..1 draw-in
+  const pulses = [];                      // traveling edge pulses {a,b,t}
+  let addNode = null;
+
+  function pulseEdgesFrom(n){
+    edges.forEach(([a,b]) => {
+      if (a === n.id || b === n.id){ pulses.push({ a, b, t:0, from:n.id }); }
+    });
+    n.wake = 1;
+  }
+
+  const anims = {
+    reveal(){ reveal = 0; },
+    wake(){ nodes.forEach((n,i) => setTimeout(()=> n.wake = 1, i*90/speed)); },
+    edge(){ edges.forEach(([a,b],i)=> setTimeout(()=> pulses.push({a,b,t:0}), i*120/speed)); },
+    mood(){ nodes.forEach((n,i)=> setTimeout(()=>{ n.mood = moodKeys[(moodKeys.indexOf(n.mood)+1)%moodKeys.length]; n.moodMix = 0; }, i*80/speed)); },
+    memory(){ const n = byId('elder'); n.rings = 1; n.wake = 1; },
+    think(){ // breadth-first signal from slop
+      const order = ['slop','guard','merchant','thief','elder','child'];
+      order.forEach((id,i)=> setTimeout(()=>{ const n=byId(id); n.wake=1;
+        edges.forEach(([a,b])=>{ if(a===id||b===id) pulses.push({a,b,t:0}); }); }, i*160/speed));
+    },
+    add(){
+      if (addNode) return;
+      addNode = { id:'new', name:'NEW MIND', col:3, row:2.6, mem:0.3, mood:'curious', x:0,y:0,tx:0,ty:0,wake:1,rings:0,moodMix:0,appear:0 };
+      addNode.tx = addNode.x = originX + addNode.col*GRID; addNode.ty = addNode.y = originY + addNode.row*GRID;
+      nodes.push(addNode); edges.push(['new','merchant'],['new','guard']);
+      const t0 = performance.now();
+      (function grow(){ const k = Math.min(1,(performance.now()-t0)/(600/speed)); addNode.appear = k; if(k<1) requestAnimationFrame(grow); })();
+    }
+  };
+  document.querySelectorAll('.anim').forEach(el => el.addEventListener('click', () => {
+    const a = el.dataset.anim; if (anims[a]) anims[a]();
+    el.querySelector('.go').textContent = '▸ RUN'; setTimeout(()=> el.querySelector('.go').textContent='RUN', 500);
+  }));
+
+  // --- drawing ---
+  function drawGrid(){
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = C('--grid');
+    for (let x = originX % GRID; x < W; x += GRID){ ctx.beginPath(); ctx.moveTo(fin(x),0); ctx.lineTo(fin(x),H); ctx.stroke(); }
+    for (let y = originY % GRID; y < H; y += GRID){ ctx.beginPath(); ctx.moveTo(0,fin(y)); ctx.lineTo(W,fin(y)); ctx.stroke(); }
+  }
+  function edgePath(A,B){
+    // orthogonal (squarish) route: horizontal then vertical via a mid elbow
+    if (!ortho){ return [[A.x,A.y],[B.x,B.y]]; }
+    const midX = (A.x + B.x)/2;
+    return [[A.x,A.y],[midX,A.y],[midX,B.y],[B.x,B.y]];
+  }
+  function drawEdges(){
+    edges.forEach(([aId,bId]) => {
+      const A = byId(aId), B = byId(bId); if(!A||!B) return;
+      const pts = edgePath(A,B);
+      ctx.beginPath(); ctx.moveTo(fin(pts[0][0]),fin(pts[0][1]));
+      for (let i=1;i<pts.length;i++){ const seg = Math.min(1, reveal*1.4 - 0.1); ctx.lineTo(fin(pts[i][0]),fin(pts[i][1])); }
+      ctx.strokeStyle = 'rgba(120,128,140,0.32)'; ctx.lineWidth = 1.25; ctx.setLineDash([]); ctx.stroke();
+    });
+    // traveling pulses
+    for (let i = pulses.length-1; i>=0; i--){
+      const p = pulses[i]; const A = byId(p.a), B = byId(p.b); if(!A||!B){ pulses.splice(i,1); continue; }
+      p.t += 0.02 * speed; if (p.t >= 1){ pulses.splice(i,1); continue; }
+      const pts = edgePath(A,B);
+      // walk along polyline by fraction
+      let total=0; const segs=[]; for(let j=1;j<pts.length;j++){ const d=Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1]); segs.push(d); total+=d; }
+      let dist = p.t*total, px=pts[0][0], py=pts[0][1];
+      for(let j=0;j<segs.length;j++){ if(dist<=segs[j]){ const f=segs[j]?dist/segs[j]:0; px=pts[j][0]+(pts[j+1][0]-pts[j][0])*f; py=pts[j][1]+(pts[j+1][1]-pts[j][1])*f; break;} dist-=segs[j]; px=pts[j+1][0]; py=pts[j+1][1]; }
+      px=fin(px); py=fin(py);
+      const g = ctx.createRadialGradient(px,py,0,px,py,Math.max(1,8));
+      g.addColorStop(0, C('--cyan')); g.addColorStop(1,'rgba(54,214,192,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px,py,Math.max(1,8),0,7); ctx.fill();
+    }
+  }
+  function drawNode(n){
+    const x = fin(n.x), y = fin(n.y); const r = Math.max(0.5, radius(n)); // guard: finite, positive
+    const col = MOODS[n.mood] || C('--ink');
+    // wake halo (guarded radial gradient — the synapse bug was a non-finite radius here)
+    if (n.wake > 0.01){
+      const hr = Math.max(1, r + 30 * n.wake);
+      const g = ctx.createRadialGradient(x,y,Math.max(0.1,r*0.5),x,y,hr);
+      g.addColorStop(0, hexA(col, 0.5*n.wake)); g.addColorStop(1, hexA(col,0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x,y,hr,0,7); ctx.fill();
+    }
+    // memory rings
+    if (n.rings > 0.01){ for(let k=1;k<=3;k++){ const rr=r + k*9*(n.rings); ctx.beginPath(); ctx.arc(x,y,Math.max(0.5,rr),0,7); ctx.strokeStyle=hexA(col,0.25*n.rings/k); ctx.lineWidth=1.2; ctx.stroke(); } }
+    // node body — a rounded square (squarish motif)
+    const s = r; ctx.save(); ctx.translate(x,y);
+    roundRect(ctx,-s,-s,s*2,s*2,Math.max(2,s*0.32));
+    ctx.fillStyle = '#0e1014'; ctx.fill();
+    ctx.lineWidth = 1.6 + 1.4*n.wake; ctx.strokeStyle = col; ctx.stroke();
+    // inner core
+    ctx.beginPath(); ctx.arc(0,0,Math.max(0.5,s*0.34),0,7); ctx.fillStyle=col; ctx.globalAlpha=0.85; ctx.fill(); ctx.globalAlpha=1;
+    ctx.restore();
+    // label
+    ctx.font = '600 11px JetBrains Mono, monospace';
+    ctx.fillStyle = n.wake>0.3 ? C('--ink') : C('--muted');
+    ctx.textAlign='center'; ctx.fillText(n.name, x, y + r + 15);
+  }
+  function roundRect(ctx,x,y,w,h,rad){ ctx.beginPath(); ctx.moveTo(x+rad,y); ctx.arcTo(x+w,y,x+w,y+h,rad); ctx.arcTo(x+w,y+h,x,y+h,rad); ctx.arcTo(x,y+h,x,y,rad); ctx.arcTo(x,y,x+w,y,rad); ctx.closePath(); }
+  function hexA(hex,a){ hex=hex.replace('#',''); if(hex.length===3) hex=hex.split('').map(c=>c+c).join(''); const n=parseInt(hex,16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${fin(a,0)})`; }
+
+  // --- main loop ---
+  function tick(){
+    // advance reveal
+    if (reveal < 1) reveal = Math.min(1, reveal + 0.02*speed);
+    nodes.forEach(n => {
+      // ambient drift + cursor attraction
+      let gx = n.tx, gy = n.ty;
+      if (ambient){
+        const d = Math.hypot(mx-n.x, my-n.y);
+        if (d < 160 && d > 0.01){ const pull=(160-d)/160*18; gx += (mx-n.x)/d*pull; gy += (my-n.y)/d*pull; }
+      } else if (mx>-9000){
+        const d = Math.hypot(mx-n.x, my-n.y);
+        if (d < radius(n)+10) n.wake = Math.min(1, n.wake + 0.15);
+      }
+      n.x += (gx - n.x)*0.12; n.y += (gy - n.y)*0.12;
+      n.wake *= 0.94; n.rings *= 0.985;
+      if (n.appear < 1) {} // handled by grow()
+    });
+
+    ctx.clearRect(0,0,W,H);
+    drawGrid();
+    drawEdges();
+    nodes.forEach(drawNode);
+    // "+ add a mind" prompt node when none added
+    if (!addNode){
+      const px = fin(originX + 3*GRID), py = fin(originY + 2.6*GRID), pr = 14 + 4*Math.sin(performance.now()/500);
+      ctx.beginPath(); ctx.arc(px,py,Math.max(1,pr),0,7); ctx.strokeStyle=hexA(C('--ember'),0.6); ctx.setLineDash([3,4]); ctx.lineWidth=1.4; ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle=C('--ember'); ctx.font='600 16px JetBrains Mono'; ctx.textAlign='center'; ctx.fillText('+', px, py+5);
+    }
+    requestAnimationFrame(tick);
+  }
+  resize(); requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
