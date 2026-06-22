@@ -276,20 +276,30 @@ No build, no framework; **state = global mutable vars + the DOM**; every page is
 
 ### Live audit (running app, 2026-06-21)
 
-The app was run locally (`npm run dev`, local mode) and **every page driven in a browser** (live DOM, computed styles, a11y tree, console, network). Image screenshots could not be captured (the sandbox headless renderer timed out and the Chrome-extension session was unavailable at audit time) — findings are grounded in the live DOM/computed styles; re-run `npm run dev` for visuals. **Overall UX score: 42/100** — strong visual foundation (dark `#0d0d0d`, DM Sans + JetBrains Mono, ember accent, geometric glyphs) undermined by IA, workflow, and 4 runtime bugs.
+The app was run locally (`npm run dev`, local mode) and **every page driven in a real browser via the Claude-in-Chrome extension** (screenshots + live DOM, computed styles, console, network): landing, projects, dashboard, NPC editor (Basic + Voice), settings (Project + API Keys), playground, knowledge. **Overall UX score: 52/100** — a genuinely competent visual foundation (dark `#0d0d0d`, DM Sans + JetBrains Mono, ember accent, geometric-glyph icons, a **3-pane NPC editor with a live preview**, organized reference sidebars) held back by **brand inconsistency, two silent-failure bugs, authoring density, cross-page dependencies, and accessibility gaps.** *(An earlier DOM-only pass overstated several issues — see "Visual-pass corrections" below; this section reflects the real screenshots.)*
 
 **Runtime bugs found by driving the app:**
 
 | # | Sev | Bug | Fix |
 |---|---|---|---|
-| L1 | P0 | `GET /:id/keys` → **500** (secret decrypt failure) breaks **Settings + Playground** pre-flight | key-status must degrade to a recoverable state (`{configured, readable:false, reason}`), never 500 |
-| L2 | P1 | `GET /:id/voices` → **500** without a readable TTS key breaks the editor **Voice tab** | return empty list + "configure a key" prompt; don't 500 |
+| L1 | P1 | `GET /:id/keys` → **500** (secret decrypt failure) handled silently → the API-keys form shows **empty / "not set" even when keys exist-but-unreadable**; the dashboard "API Keys Not Set" banner is then wrong, with no recovery prompt | return a recoverable status (`{configured, readable:false, reason:"encryption_key_changed"}`) and surface "re-enter keys" — never a silent 500 |
+| L2 | P2 | `GET /:id/voices` → **500** → editor Voice tab shows a **dead-end red "Failed to load voices"** with no recovery path (Speed/Preview still render) | degrade to an empty list + "add a TTS key in Settings" prompt; don't 500 |
 | L3 | P2 | Header shows **Sign In + Sign Out + avatar simultaneously** in local mode | one coherent auth state (hide auth in local mode) |
 | L4 | P2 | Breadcrumb renders literal **"Project"** on Knowledge/MCP/Playground but "BLAST" on Settings | resolve the project name once in the app shell |
 
 *(L1/L2 surfaced here via a key mismatch on existing data, but the graceful-degradation gap is real: a fresh project with no TTS key still 500s `/voices`, and any `ENCRYPTION_KEY` change bricks Settings.)*
 
 **Density confirmed live:** NPC editor = **9 tabs, ~91 controls** (33 inputs, 15 sliders, 5 selects, 36 buttons), **no ARIA tab semantics**, an emoji `🔊` mixed into the geometric-glyph tabs. Playground = **8 panels at idle** + a 2×2 input/output mode matrix. Dashboard = **8+ stacked sections**. No app shell (marketing header reused in-app); raw project ids shown on cards; `{ } Edit JSON` surfaced to newcomers; Knowledge & MCP Tools are duplicate CRUD pages.
+
+### Visual-pass corrections (what the screenshots changed)
+
+The real UI is more competent than a DOM-only read implied — corrected here:
+- **In-project section nav exists** (`Projects · Dashboard · NPCs · Knowledge · MCP Tools · Playground · Settings`, active-underlined) — *not* "no app shell." Real gaps: the nav still carries the **marketing GitHub/heart**, there's **no project switcher** (only a "Projects" link back), and the **project-list page uses only the marketing header**.
+- **The NPC editor is a clean 3-pane** (left rail · form · **LIVE PREVIEW** with personality bars + mood) — worth keeping. The issue is the **count** (9 rail sections / ~91 controls + cross-page deps), not layout chaos.
+- **The Playground is a clean 3-pane** (NPC selector · chat/setup · WORLD CONTEXT reference sidebar) — *not* "8 competing panels." Real friction = the **2×2 Text/Voice mode matrix** (4 buttons for one concept).
+- **L1/L2 degrade silently / dead-end, not white-screen** (severities refined above).
+
+**New finding — brand inconsistency (visual):** the **landing page uses a pastel-rainbow palette** (pink/teal/purple hero words, pastel pillar circles) that clashes with the **ember "Instrument Panel" identity** of the authoring app. Unify on one palette in the Tier 3 design direction.
 
 ### Reusable workflow map (re-run after fixes for the round-2 re-audit)
 
