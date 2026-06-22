@@ -4,6 +4,7 @@
  */
 
 import { BrainVisualization } from '../components/BrainVisualization.js';
+import { mountWordmark } from '../components/WordmarkIntro.js';
 import { renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
 import { isAuthenticated, signInWithGoogle, getUserDisplayInfo } from '../auth.js';
@@ -20,7 +21,7 @@ export function initLandingPage() {
     setTimeout(() => {
       initBrainVisualization();
       initPillarTabs();
-      initPillarDetails();
+      initWordmarks();
       initScrollReveal();
       initHeroButtons();
       initSmoothScroll();
@@ -76,73 +77,57 @@ function initPillarTabs() {
 }
 
 function highlightPillarDetail(pillarName) {
-  const details = document.querySelectorAll('.pillar-detail');
-  details.forEach(detail => {
-    if (detail.dataset.pillar === pillarName) {
-      detail.style.transform = 'translateY(-8px)';
-      detail.style.boxShadow = 'var(--shadow-lg)';
-    } else {
-      detail.style.transform = '';
-      detail.style.boxShadow = '';
-    }
+  document.querySelectorAll('.lx-layer').forEach(layer => {
+    layer.classList.toggle('is-lit', layer.dataset.pillar === pillarName);
   });
 }
 
 function clearPillarDetailHighlight() {
-  const details = document.querySelectorAll('.pillar-detail');
-  details.forEach(detail => {
-    detail.style.transform = '';
-    detail.style.boxShadow = '';
-  });
+  document.querySelectorAll('.lx-layer.is-lit').forEach(layer => layer.classList.remove('is-lit'));
 }
 
 function scrollToPillarDetail(pillarName) {
-  const detail = document.querySelector(`.pillar-detail[data-pillar="${pillarName}"]`);
-  if (detail) {
-    detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const layer = document.querySelector(`.lx-layer[data-pillar="${pillarName}"]`);
+  if (layer) {
+    layer.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
-function initPillarDetails() {
-  const details = document.querySelectorAll('.pillar-detail');
-  if (!details.length) return;
+function initWordmarks() {
+  const header = document.getElementById('brand-wordmark');
+  const whip = document.getElementById('brand-whip');
 
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
+  const mountAll = () => {
+    if (header) {
+      let played = false;
+      try { played = sessionStorage.getItem('se_wm_intro') === '1'; } catch (e) { /* ignore */ }
+      const inst = mountWordmark(header, { fontSize: 20, autoplay: !played });
+      if (played && inst) {
+        inst.showFinal();
+      } else {
+        try { sessionStorage.setItem('se_wm_intro', '1'); } catch (e) { /* ignore */ }
       }
-    });
-  }, {
-    threshold: 0.2,
-    rootMargin: '0px 0px -50px 0px'
-  });
+    }
+    if (whip) {
+      const fs = Math.max(40, Math.min(72, Math.round(window.innerWidth * 0.07)));
+      mountWordmark(whip, { fontSize: fs });
+    }
+  };
 
-  details.forEach((detail, index) => {
-    detail.style.transitionDelay = `${index * 0.07}s`;
-    observer.observe(detail);
-
-    detail.addEventListener('mouseenter', () => {
-      const pillar = detail.dataset.pillar;
-      if (brainViz && pillar) {
-        brainViz.setPillarColor(pillar);
-      }
-    });
-
-    detail.addEventListener('mouseleave', () => {
-      if (brainViz) {
-        brainViz.clearPillarColor();
-      }
-    });
-  });
+  // Fonts must be loaded before measuring letter widths, or centers are wrong.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(mountAll).catch(mountAll);
+  } else {
+    mountAll();
+  }
 }
 
 function initScrollReveal() {
   const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Staggered groups: each element fades/slides up as it scrolls in.
-  const staggered = ['.nc-node', '.vp-node', '.feature-card'];
-  const singles = ['.section-title', '.section-subtitle', '.section-cta .container'];
+  const staggered = ['.lx-layer', '.lx-stage', '.lx-benefits li'];
+  const singles = ['.lx-head', '.lx-code', '.lx-cta h2', '.lx-cta p'];
 
   const all = [];
 
