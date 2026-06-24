@@ -1,12 +1,25 @@
 export type ProjectID = string;
 
+/** A single named, revocable game-client API key entry */
+export interface GameClientApiKey {
+  /** Opaque unique identifier for this key (used as revocation handle) */
+  id: string;
+  /** Human-readable label set by the dashboard user */
+  name: string;
+  /** SHA-256 hex hash of the raw key — never store plaintext */
+  hash: string;
+}
+
 export interface ProjectSettings {
   llm_provider: string;
   llm_model?: string;
   stt_provider: string;
   tts_provider: string;
   default_voice_id: string;
+  /** Legacy single-key hash — kept for backward compatibility */
   game_client_api_key_hash?: string;
+  /** Named revocable keys — supports multiple game-client identities per project */
+  game_client_api_keys?: GameClientApiKey[];
   timeouts: {
     session?: number;
     llm?: number;
@@ -33,5 +46,6 @@ export interface Project {
   created_at: string;
   settings: ProjectSettings;
   limits: ProjectLimits;
+  user_id?: string | null;
 }
 

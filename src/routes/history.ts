@@ -4,7 +4,8 @@ import { createLogger } from '../logger.js';
 import {
   StorageNotFoundError,
 } from '../storage/index.js';
-import { getStorageForUser } from '../storage/hybrid.js';
+import { getStorage } from '../storage/factory.js';
+import { requireProjectOwnership } from '../middleware/ownership.js';
 
 const logger = createLogger('routes-history');
 
@@ -29,8 +30,8 @@ export const historyRoutes = new Hono();
 historyRoutes.get('/:instanceId/history', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
-  const userId = c.get('userId') ?? undefined;
-  const storage = getStorageForUser(userId);
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
 
   try {
     // Find the instance using the correct storage backend
@@ -39,6 +40,11 @@ historyRoutes.get('/:instanceId/history', async (c) => {
       logger.warn({ instanceId }, 'Instance not found');
       return c.json({ error: 'Instance not found' }, 404);
     }
+
+    // Verify project ownership
+    const project = await storage.getProject(instance.project_id);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     // Get history from the correct storage backend
     const history = await storage.getInstanceHistory(instance.project_id, instanceId);
@@ -74,8 +80,8 @@ historyRoutes.get('/:instanceId/history', async (c) => {
 historyRoutes.post('/:instanceId/rollback', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
-  const userId = c.get('userId') ?? undefined;
-  const storage = getStorageForUser(userId);
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
 
   try {
     const body = await c.req.json();
@@ -94,6 +100,11 @@ historyRoutes.post('/:instanceId/rollback', async (c) => {
       logger.warn({ instanceId }, 'Instance not found');
       return c.json({ error: 'Instance not found' }, 404);
     }
+
+    // Verify project ownership
+    const project = await storage.getProject(instance.project_id);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     // Perform rollback on the correct storage backend
     const rolledBackInstance = await storage.rollbackInstance(instance.project_id, instanceId, version);
@@ -140,8 +151,8 @@ historyRoutes.get('/:instanceId/history/:version', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
   const version = c.req.param('version');
-  const userId = c.get('userId') ?? undefined;
-  const storage = getStorageForUser(userId);
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
 
   try {
     const instance = await findInstanceById(instanceId, userId);
@@ -149,6 +160,11 @@ historyRoutes.get('/:instanceId/history/:version', async (c) => {
       logger.warn({ instanceId, version }, 'Instance not found for snapshot');
       return c.json({ error: 'Instance not found' }, 404);
     }
+
+    // Verify project ownership
+    const project = await storage.getProject(instance.project_id);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const snapshot = await storage.getInstanceSnapshot(instance.project_id, instanceId, version);
 
@@ -178,7 +194,8 @@ historyRoutes.get('/:instanceId/history/:version', async (c) => {
 historyRoutes.get('/:instanceId', async (c) => {
   const startTime = Date.now();
   const instanceId = c.req.param('instanceId');
-  const userId = c.get('userId') ?? undefined;
+  const userId = c.get('userId') ?? null;
+  const storage = getStorage(userId);
 
   try {
     // Find the instance using the correct storage backend
@@ -187,6 +204,11 @@ historyRoutes.get('/:instanceId', async (c) => {
       logger.warn({ instanceId }, 'Instance not found');
       return c.json({ error: 'Instance not found' }, 404);
     }
+
+    // Verify project ownership
+    const project = await storage.getProject(instance.project_id);
+    const ownershipError = requireProjectOwnership(c, project);
+    if (ownershipError) return ownershipError;
 
     const duration = Date.now() - startTime;
     logger.debug({ instanceId, duration }, 'Instance retrieved');
@@ -214,7 +236,7 @@ async function findInstanceById(
   instanceId: string,
   userId?: string | null
 ): Promise<import('../types/npc.js').NPCInstance | null> {
-  const storage = getStorageForUser(userId);
+  const storage = getStorage(userId);
 
   try {
     const projects = await storage.listProjects(userId ?? undefined);

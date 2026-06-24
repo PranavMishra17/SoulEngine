@@ -1,13 +1,45 @@
 import { createLogger } from '../logger.js';
 import type { KnowledgeBase, KnowledgeAccess, KnowledgeCategory } from '../types/knowledge.js';
+import { estimateTokenCount } from './context.js';
 
 const logger = createLogger('knowledge-resolver');
 
 /**
+ * Token budget for each knowledge category during resolution.
+ * Prevents unbounded prompt growth when deep categories have massive content.
+ */
+const KNOWLEDGE_CATEGORY_TOKEN_BUDGET = 2000;
+
+/**
+ * Truncate text to fit within a token budget.
+ * Uses character-based truncation with a trailing ellipsis indicator.
+ *
+ * @param text - The text to truncate
+ * @param tokenBudget - Maximum allowed tokens
+ * @returns Truncated text within budget
+ */
+function truncateToTokenBudget(text: string, tokenBudget: number): string {
+  const estimatedTokens = estimateTokenCount(text);
+  if (estimatedTokens <= tokenBudget) {
+    return text;
+  }
+
+  // Approximate: ~4 chars per token, leave room for ellipsis
+  const targetChars = Math.floor(tokenBudget * 4) - 20;
+  const truncated = text.substring(0, targetChars);
+  return truncated + '... [truncated]';
+}
+
+/**
  * Resolve knowledge content for a single category up to the specified depth level.
  * Returns all depth tiers from 1 up to and including the access level.
+ * Enforces a token budget to prevent unbounded growth.
  */
-export function resolveCategoryKnowledge(category: KnowledgeCategory, accessLevel: number): string {
+export function resolveCategoryKnowledge(
+  category: KnowledgeCategory,
+  accessLevel: number,
+  tokenBudget: number = KNOWLEDGE_CATEGORY_TOKEN_BUDGET
+): string {
   const lines: string[] = [];
 
   // Get all depth keys and sort numerically
@@ -23,7 +55,10 @@ export function resolveCategoryKnowledge(category: KnowledgeCategory, accessLeve
     }
   }
 
-  return lines.join('\n');
+  const fullContent = lines.join('\n');
+
+  // Apply token budget to prevent unbounded concatenation
+  return truncateToTokenBudget(fullContent, tokenBudget);
 }
 
 /**
@@ -66,7 +101,7 @@ export function resolveKnowledge(knowledgeBase: KnowledgeBase, access: Knowledge
       continue;
     }
 
-    const categoryContent = resolveCategoryKnowledge(category, accessLevel);
+    const categoryContent = resolveCategoryKnowledge(category, accessLevel, KNOWLEDGE_CATEGORY_TOKEN_BUDGET);
 
     if (categoryContent) {
       const description = category.description ? ` - ${category.description}` : '';

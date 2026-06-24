@@ -1,6 +1,6 @@
 export interface KnowledgeCategory {
   id: string;
-  description: string;
+  description?: string;
   depths: Record<number, string>;
 }
 

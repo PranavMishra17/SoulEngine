@@ -28,7 +28,8 @@ async function loadProjects() {
 
   try {
     const data = await projects.list();
-    const projectList = data.projects || [];
+    // Tolerate both the paginated shape ({items}) and the legacy shape ({projects}).
+    const projectList = data.items || data.projects || (Array.isArray(data) ? data : []);
 
     if (projectList.length === 0) {
       grid.innerHTML = '';

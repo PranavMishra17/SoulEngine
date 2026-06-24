@@ -392,9 +392,7 @@ export async function definitionExists(projectId: string, npcId: string): Promis
 /**
  * Validate NPC ID format
  */
-export function isValidNpcId(npcId: string): boolean {
-  return /^npc_[a-z0-9]+/.test(npcId);
-}
+export { isValidNpcId } from '../validation.js';
 
 // ============================================================
 // DEFINITION HISTORY

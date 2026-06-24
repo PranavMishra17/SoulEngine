@@ -11,7 +11,7 @@ import {
   adaptNpcs,
   npcsFromResponse,
   clampFigures,
-} from '../web/js/pages/world-data.js';
+} from '../../web/js/pages/world-data.js';
 
 describe('ZONES', () => {
   it('defines the six canonical landmarks', () => {

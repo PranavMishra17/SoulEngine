@@ -40,6 +40,8 @@ export interface SessionState {
   token_usage: SessionTokenUsage;
   /** Mind recall results deferred for injection into next turn's speaker prompt */
   deferred_mind_context?: string;
+  /** User ID from auth context (null if logged out, for storage backend selection) */
+  user_id: string | null;
 }
 
 export interface SessionInitRequest {

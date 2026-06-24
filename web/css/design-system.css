@@ -9,7 +9,7 @@
 
 :root {
   /* Color Palette - Deep Space Obsidian */
-  --color-bg-primary: #0d0d0d;
+  --color-bg-primary: #0c0d10;
   --color-bg-secondary: #141414;
   --color-bg-tertiary: #1a1a1a;
   --color-bg-elevated: #212121;
@@ -19,26 +19,30 @@
   --color-surface-1: rgba(255, 245, 238, 0.02);
   --color-surface-2: rgba(255, 245, 238, 0.04);
   --color-surface-3: rgba(255, 245, 238, 0.06);
+  --color-surface-raised: rgba(255, 245, 238, 0.08);
 
   /* Text colors - warm off-whites */
   --color-text-primary: #f5f0eb;
   --color-text-secondary: #a8a099;
   --color-text-tertiary: #6b6560;
   --color-text-muted: #4a4643;
+  --color-text-on-accent: #ffffff;
 
   /* Accent colors - Ember/Copper tones */
   --color-accent-primary: #e07850;
+  --color-accent: #e07850;
   --color-accent-primary-hover: #eb9070;
   --color-accent-primary-muted: rgba(224, 120, 80, 0.15);
+  --accent-primary-rgb: 224, 120, 80;
   --color-accent-secondary: #c9a86c;
   --color-accent-secondary-muted: rgba(201, 168, 108, 0.15);
 
   /* Pillar colors - Pastel tones */
-  --color-pillar-core: #f5a5b8;      /* Light Pink */
+  --color-pillar-core: #f1a6c4;      /* Pink (pinned identity) */
   --color-pillar-daily: #f5c27a;     /* Light Orange */
   --color-pillar-weekly: #f5e27a;    /* Light Yellow */
-  --color-pillar-persona: #7ae0c4;   /* Light Sea-Green */
-  --color-pillar-mcp: #c4a5f5;       /* Light Purple */
+  --color-pillar-persona: #83e0c6;   /* Teal (pinned identity) */
+  --color-pillar-mcp: #b6a6f2;       /* Lavender (pinned identity) */
 
   /* Semantic colors */
   --color-success: #5cb87a;
@@ -61,7 +65,8 @@
   --color-brain-edge: rgba(168, 160, 153, 0.25);
 
   /* Typography */
-  --font-display: 'Playfair Display', 'Georgia', serif;
+  --font-display: 'Fraunces', 'Georgia', serif;
+  --font-wordmark: 'Fraunces', 'Georgia', serif;
   --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
@@ -99,7 +104,9 @@
   /* Spacing */
   --space-0: 0;
   --space-1: 0.25rem;
+  --space-1-5: 0.375rem;
   --space-2: 0.5rem;
+  --space-2-5: 0.625rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.25rem;

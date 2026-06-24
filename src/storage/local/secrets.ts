@@ -1,17 +1,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as crypto from 'crypto';
 import { createLogger } from '../../logger.js';
 import { getConfig } from '../../config.js';
 import { StorageError, StorageValidationError } from '../interface.js';
+import { encryptSecret, decryptSecret, SecretEnvelope } from '../crypto/secrets.js';
 
 const logger = createLogger('secrets-storage');
-
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const SALT_LENGTH = 32;
-const KEY_LENGTH = 32;
-const ITERATIONS = 100000;
 
 /**
  * API keys stored for a project
@@ -30,15 +24,10 @@ export interface ApiKeys {
 }
 
 /**
- * Internal encrypted data structure
+ * Internal encrypted data structure (using shared SecretEnvelope)
+ * Kept for backward-compatibility with old format
  */
-interface EncryptedData {
-  iv: string;
-  salt: string;
-  authTag: string;
-  data: string;
-  version: number;
-}
+interface EncryptedData extends SecretEnvelope {}
 
 /**
  * Get the path to a project's secrets file
@@ -49,50 +38,18 @@ function getSecretsPath(projectId: string): string {
 }
 
 /**
- * Derive encryption key from password and salt
- */
-function deriveKey(password: string, salt: Buffer): Buffer {
-  return crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha256');
-}
-
-/**
- * Encrypt data using AES-256-GCM
+ * Encrypt data using the shared crypto module
  */
 function encrypt(data: string, encryptionKey: string): EncryptedData {
-  const salt = crypto.randomBytes(SALT_LENGTH);
-  const key = deriveKey(encryptionKey, salt);
-  const iv = crypto.randomBytes(IV_LENGTH);
-
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  let encrypted = cipher.update(data, 'utf8', 'base64');
-  encrypted += cipher.final('base64');
-  const authTag = cipher.getAuthTag();
-
-  return {
-    iv: iv.toString('base64'),
-    salt: salt.toString('base64'),
-    authTag: authTag.toString('base64'),
-    data: encrypted,
-    version: 1,
-  };
+  return encryptSecret(data, encryptionKey, 1) as EncryptedData;
 }
 
 /**
- * Decrypt data using AES-256-GCM
+ * Decrypt data using the shared crypto module
+ * Supports both new SecretEnvelope format and old local format for backward-compatibility
  */
-function decrypt(encryptedData: EncryptedData, encryptionKey: string): string {
-  const salt = Buffer.from(encryptedData.salt, 'base64');
-  const key = deriveKey(encryptionKey, salt);
-  const iv = Buffer.from(encryptedData.iv, 'base64');
-  const authTag = Buffer.from(encryptedData.authTag, 'base64');
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(encryptedData.data, 'base64', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
+function decrypt(encryptedData: EncryptedData | any, encryptionKey: string): string {
+  return decryptSecret(encryptedData, encryptionKey);
 }
 
 /**

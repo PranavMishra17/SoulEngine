@@ -17,6 +17,7 @@ import { runMindAgentLoop } from '../core/mind.js';
 import { isRecallTool } from '../core/tools.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, processExitResult } from '../mcp/exit-handler.js';
+import { resolveRateLimitPrincipal } from '../security/principal.js';
 import { SentenceDetector } from './sentence-detector.js';
 import { encodeTtsAudio } from './audio.js';
 
@@ -65,6 +66,11 @@ export interface VoicePipelineConfig {
   events: VoicePipelineEvents;
   /** Conversation mode - determines which providers to initialize */
   mode: ConversationMode;
+  /**
+   * Client IP address from the WebSocket upgrade request (e.g. x-forwarded-for).
+   * Used as a fallback principal for rate limiting when the user is not authenticated.
+   */
+  clientIp?: string;
 }
 
 /**
@@ -74,6 +80,60 @@ interface TurnState {
   abortController: AbortController;
   isProcessing: boolean;
   exitConvoUsed: boolean;
+}
+
+/**
+ * Lightweight per-turn latency tracker.
+ *
+ * Records named stages as millisecond offsets from markStart().
+ * Designed to be called in fire-and-forget style (mark() is synchronous).
+ *
+ * Standard stages:
+ *   commit           — user's commit() received by pipeline
+ *   first_transcript — first final transcript emitted to the LLM
+ *   first_token      — first LLM token received from streamer
+ *   first_audio      — first TTS audio chunk emitted to client
+ */
+export class LatencyTracker {
+  private stages: Map<string, number> = new Map();
+  private startTime: number | null = null;
+
+  /** Mark the beginning of a new turn; clears all previous stages. */
+  markStart(): void {
+    this.startTime = Date.now();
+    this.stages.clear();
+  }
+
+  /** Record a named stage with its elapsed ms offset from the last markStart(). */
+  mark(stage: string): void {
+    if (this.startTime === null) return;
+    if (!this.stages.has(stage)) {
+      // Only record the FIRST occurrence of each stage per turn.
+      this.stages.set(stage, Date.now() - this.startTime);
+    }
+  }
+
+  /** Return all recorded stages and their elapsed-ms values. */
+  getStages(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [k, v] of this.stages) {
+      result[k] = v;
+    }
+    return result;
+  }
+
+  /** True if a stage was recorded this turn. */
+  hasStage(stage: string): boolean {
+    return this.stages.has(stage);
+  }
+
+  /** Elapsed ms between two stages; null if either is missing. */
+  elapsed(fromStage: string, toStage: string): number | null {
+    const from = this.stages.get(fromStage);
+    const to = this.stages.get(toStage);
+    if (from === undefined || to === undefined) return null;
+    return to - from;
+  }
 }
 
 /**
@@ -102,6 +162,7 @@ export class VoicePipeline {
   private ttsSession: TTSSession | null = null;
   private sentenceDetector: SentenceDetector;
   private turnState: TurnState | null = null;
+  private readonly latencyTracker: LatencyTracker = new LatencyTracker();
 
   private accumulatedTranscript: string = '';
   private isActive: boolean = false;
@@ -115,21 +176,39 @@ export class VoicePipeline {
   private isProcessingTranscript: boolean = false;
   private pendingTranscript: TranscriptEvent | null = null;
 
-  // Transcript aggregation: combine fragmented speech into complete utterances
+  // Transcript aggregation: combine fragmented speech into complete utterances.
+  //
+  // Latency budget (revised):
+  //   Deepgram utterance_end_ms: 1000ms  (VAD silence detection, server-side)
+  //   AGGREGATION_WINDOW_MS:      400ms  (client-side debounce after commit/speech_final)
+  //   Total worst-case:          ~1.4s   (vs old ~3s with both at 1500ms)
+  //
+  // On the commit path the debounce is the only window; Deepgram's VAD is
+  // bypassed because commit() triggers the aggregation timer directly.
   private transcriptAggregator: {
     text: string;
     timer: NodeJS.Timeout | null;
     lastTimestamp: number;
   } = { text: '', timer: null, lastTimestamp: 0 };
-  private static readonly AGGREGATION_WINDOW_MS = 1500; // Wait 1.5s after last speech_final
+  private static readonly AGGREGATION_WINDOW_MS = 400; // Short settle after commit/speech_final
 
-  // Suppress the next STT final transcript when commit() already processed the interim.
-  // Without this, commit() processes interim → NPC responds, then STT final arrives
-  // 1.5s later via the aggregation timer → NPC responds a second time for the same utterance.
-  private pendingSTTFinal: boolean = false;
+  // Per-utterance monotonic ID for robust STT-final deduplication.
+  //
+  // Problem with a boolean (pendingSTTFinal):
+  //   commit() would set it true -> new interim arrives -> resets it false -> late STT final
+  //   for the original utterance arrives and is processed again (double NPC turn).
+  //
+  // Fix: each new interim bumps currentUtteranceId. commit() captures it as
+  // committedUtteranceId. Any STT final whose ID <= committedUtteranceId is
+  // suppressed, regardless of when a subsequent interim arrived.
+  private currentUtteranceId: number = 0;
+  private committedUtteranceId: number | null = null;
 
   // Deferred mind context: recall tool results stored here for injection into NEXT turn's prompt
   private deferredMindContext: string = '';
+
+  // Client IP from the WebSocket upgrade (used for rate-limit principal resolution)
+  private readonly clientIp: string | undefined;
 
   constructor(config: VoicePipelineConfig) {
     this.sessionId = config.sessionId;
@@ -140,6 +219,7 @@ export class VoicePipeline {
     this.voiceConfig = config.voiceConfig;
     this.events = config.events;
     this.mode = config.mode;
+    this.clientIp = config.clientIp;
     this.sentenceDetector = new SentenceDetector();
 
     logger.info({ sessionId: this.sessionId, mode: this.mode }, 'VoicePipeline created');
@@ -323,6 +403,10 @@ export class VoicePipeline {
    * (e.g., finished speaking for this turn)
    */
   commit(): void {
+    // Start latency tracking for this turn from the moment of commit
+    this.latencyTracker.markStart();
+    this.latencyTracker.mark('commit');
+
     if (this.sttSession?.isConnected) {
       this.sttSession.finalize();
     }
@@ -359,13 +443,13 @@ export class VoicePipeline {
         this.processAggregatedTranscript();
       }, VoicePipeline.AGGREGATION_WINDOW_MS);
 
-      // Suppress the STT final for this VAD segment (interim text already captured above).
-      // If a new speech segment starts before the STT final arrives, pendingSTTFinal gets
-      // reset to false — that's fine, aggregateTranscript() will deduplicate the text.
-      this.pendingSTTFinal = true;
+      // Capture the current utterance ID as committed so any late-arriving STT final
+      // for this utterance is suppressed even if a new interim arrives first.
+      this.committedUtteranceId = this.currentUtteranceId;
       logger.debug({
         sessionId: this.sessionId,
-        textLength: this.transcriptAggregator.text.length
+        textLength: this.transcriptAggregator.text.length,
+        committedUtteranceId: this.committedUtteranceId
       }, 'Commit: debounce timer (re)started');
     } else {
       logger.debug({ sessionId: this.sessionId }, 'Commit: nothing to process, STT finalize sent');
@@ -441,8 +525,9 @@ export class VoicePipeline {
     if (!event.isFinal) {
       // Emit interim to client for live preview
       this.events.onTranscript(event.text, false);
-      // New interim = new speech turn. Reset suppress flag.
-      this.pendingSTTFinal = false;
+      // Each new interim marks the start of a potentially new utterance.
+      // Bump the monotonic ID so commit() can capture it for deduplication.
+      this.currentUtteranceId++;
       // Accumulate interim transcript for commit() to use
       this.accumulatedTranscript = event.text;
       return;
@@ -452,12 +537,20 @@ export class VoicePipeline {
     // CRITICAL: Clear accumulated transcript since STT provided final
     this.accumulatedTranscript = '';
 
-    if (this.pendingSTTFinal) {
-      // commit() already processed this utterance via interim text.
-      // processAggregatedTranscript() already emitted onTranscript to the client.
-      // Discard this STT final to prevent a duplicate NPC response.
-      this.pendingSTTFinal = false;
-      logger.debug({ sessionId: this.sessionId }, 'Discarding STT final — already processed via commit interim');
+    // Suppress if commit() already processed this utterance.
+    // currentUtteranceId <= committedUtteranceId means this final belongs to
+    // an utterance that was already forwarded to the LLM via the commit path.
+    // This is robust against new interims arriving between commit and final
+    // because the ID comparison is monotonic, not a toggled boolean.
+    if (
+      this.committedUtteranceId !== null &&
+      this.currentUtteranceId <= this.committedUtteranceId
+    ) {
+      logger.debug({
+        sessionId: this.sessionId,
+        currentUtteranceId: this.currentUtteranceId,
+        committedUtteranceId: this.committedUtteranceId
+      }, 'Discarding STT final — utterance already processed via commit');
       return;
     }
 
@@ -532,6 +625,9 @@ export class VoicePipeline {
     this.lastProcessedTimestamp = now;
     this.lastProcessedHash = hash;
 
+    // Record latency: first final transcript ready to send to LLM
+    this.latencyTracker.mark('first_transcript');
+
     // Emit final transcript to client AFTER dedup passes
     this.events.onTranscript(aggregatedText, true);
 
@@ -566,6 +662,9 @@ export class VoicePipeline {
    * Handle TTS audio chunks
    */
   private handleTTSAudioChunk(chunk: TTSChunk): void {
+    // Record latency: first audio chunk emitted to client
+    this.latencyTracker.mark('first_audio');
+
     logger.info({ sessionId: this.sessionId, audioBytes: chunk.audio.length, isComplete: chunk.isComplete }, 'TTS audio chunk received');
     const audioBase64 = encodeTtsAudio(chunk.audio);
     this.events.onAudioChunk(audioBase64);
@@ -625,7 +724,10 @@ export class VoicePipeline {
     }
     this.transcriptAggregator.text = '';
     this.transcriptAggregator.timer = null;
-    this.pendingSTTFinal = false;
+    // Clear committed utterance ID so the next utterance starts fresh.
+    // Do NOT reset currentUtteranceId — it must keep incrementing to stay
+    // monotonically ahead of any in-flight STT finals from this turn.
+    this.committedUtteranceId = null;
     this.lastProcessedHash = '';
     if (this.sttSession?.clearAccumulator) {
       this.sttSession.clearAccumulator();
@@ -652,12 +754,19 @@ export class VoicePipeline {
 
     const { state } = stored;
 
-    // Security pipeline
+    // Security pipeline — resolve trusted principal before calling
+    const rateLimitPrincipal = resolveRateLimitPrincipal({
+      userId: state.user_id,
+      gameKeyHash: undefined, // game-key validated at session start, hash not re-available here
+      ip: this.clientIp,
+      playerId: state.player_id,
+    });
     const securityContext = await this.runSecurityPipeline(
       text,
       state.project_id,
       state.player_id,
-      state.definition_id
+      state.definition_id,
+      rateLimitPrincipal
     );
 
     if (!securityContext) {
@@ -680,17 +789,25 @@ export class VoicePipeline {
     addMessageToSession(this.sessionId, userMessage);
 
     // Process turn with LLM
-    await this.processTurn(text, context, securityContext);
+    await this.processTurn(text, context, securityContext, rateLimitPrincipal);
   }
 
   /**
    * Run the security pipeline on input
+   *
+   * @param input - The raw input text
+   * @param projectId - The project ID
+   * @param playerId - Client-supplied player ID (untrusted)
+   * @param npcId - The NPC ID
+   * @param principal - Trusted principal resolved by the caller (user ID, IP, etc.)
+   *                    Used to key the rate limit so player_id rotation cannot bypass it.
    */
   private async runSecurityPipeline(
     input: string,
     projectId: string,
     playerId: string,
-    npcId: string
+    npcId: string,
+    principal: string
   ): Promise<SecurityContext | null> {
     // 1. Sanitize
     const sanitizeResult = sanitize(input);
@@ -701,8 +818,8 @@ export class VoicePipeline {
       );
     }
 
-    // 2. Rate limit
-    const rateLimitResult = rateLimiter.checkLimit(projectId, playerId, npcId);
+    // 2. Rate limit — key on the trusted principal, not player_id
+    const rateLimitResult = rateLimiter.checkLimit(projectId, playerId, npcId, principal);
     if (!rateLimitResult.allowed) {
       logger.warn({ sessionId: this.sessionId, resetAt: rateLimitResult.resetAt }, 'Rate limit exceeded');
       this.events.onError('RATE_LIMIT', 'Too many messages. Please wait before sending more.');
@@ -735,11 +852,17 @@ export class VoicePipeline {
    * - Recall tools (recall_npc / recall_knowledge / recall_memories): results deferred to NEXT turn.
    * - MCP/project tools (request_credentials, lock_door, etc.): trigger a follow-up speech.
    * - exit_convo: ends the session after Speaker finishes (or immediately if moderation forced it).
+   *
+   * @param _userInput - The user's input text
+   * @param context - The session context
+   * @param securityContext - The security context
+   * @param principal - Trusted principal (used for cooldown keying on exit_convo)
    */
   private async processTurn(
     _userInput: string,
     context: SessionContext,
-    securityContext: SecurityContext
+    securityContext: SecurityContext,
+    principal: string
   ): Promise<void> {
     this.turnState = {
       abortController: new AbortController(),
@@ -748,8 +871,9 @@ export class VoicePipeline {
     };
 
     try {
-      const storedForPlayerInfo = sessionStore.get(this.sessionId);
-      const playerInfo = storedForPlayerInfo?.state.player_info || null;
+      const stored = sessionStore.get(this.sessionId);
+      const playerInfo = stored?.state.player_info || null;
+      const sessionUserId = stored?.state.user_id ?? null;
 
       // Build slim system prompt for Speaker (no knowledge, no tools)
       const systemPrompt = await assembleSlimSystemPrompt(
@@ -757,11 +881,11 @@ export class VoicePipeline {
         context.instance,
         securityContext,
         { voiceMode: this.mode.output === 'voice' },
-        playerInfo
+        playerInfo,
+        sessionUserId
       );
 
       // Assemble conversation history
-      const stored = sessionStore.get(this.sessionId);
       const history = stored?.state.conversation_history ?? [];
       const llmMessages = assembleConversationHistory(history);
 
@@ -796,6 +920,7 @@ export class VoicePipeline {
         securityContext,
         projectTools,
         mindAbortController.signal,
+        sessionUserId,
       ).catch((err) => {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         logger.error({ sessionId: this.sessionId, error: msg }, 'Mind agent loop failed in voice pipeline');
@@ -808,6 +933,13 @@ export class VoicePipeline {
       let fullResponse = '';
       let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
 
+      // TTS pipelining: collect in-flight synthesis promises in order so we can
+      // await them after the LLM stream ends without blocking token ingestion.
+      // Each sentence is fired without awaiting so the LLM stream continues
+      // producing tokens while TTS synthesizes in parallel. Order is preserved
+      // because we await the promises in the order they were pushed.
+      const ttsPipeline: Promise<void>[] = [];
+
       for await (const chunk of this.llmProvider.streamChat({
         systemPrompt: speakerPrompt,
         messages: llmMessages,
@@ -819,13 +951,18 @@ export class VoicePipeline {
         }
 
         if (chunk.text) {
+          // Record latency: first LLM token from Speaker stream
+          this.latencyTracker.mark('first_token');
+
           fullResponse += chunk.text;
           this.events.onTextChunk(chunk.text);
 
           if (this.mode.output === 'voice') {
             const sentences = this.sentenceDetector.addChunk(chunk.text);
             for (const sentence of sentences) {
-              await this.synthesizeSentence(sentence);
+              // Fire synthesis without awaiting — do not stall token ingestion.
+              // Push the promise so we can await it in order below.
+              ttsPipeline.push(this.synthesizeSentence(sentence));
             }
           }
         }
@@ -835,11 +972,15 @@ export class VoicePipeline {
         }
       }
 
-      // Flush remaining Speaker text to TTS
+      // Flush remaining Speaker text to TTS and await all pipelined synthesis
       if (this.mode.output === 'voice') {
         const remaining = this.sentenceDetector.flush();
         if (remaining) {
-          await this.synthesizeSentence(remaining);
+          ttsPipeline.push(this.synthesizeSentence(remaining));
+        }
+        // Await synthesis in the order sentences were queued (preserves audio order)
+        for (const p of ttsPipeline) {
+          await p;
         }
         if (this.ttsSession) {
           await this.ttsSession.flush();
@@ -884,7 +1025,8 @@ export class VoicePipeline {
           exitResult,
           context.project.id,
           sessionStore.get(this.sessionId)?.state.player_id || '',
-          context.definition.id
+          context.definition.id,
+          principal
         );
 
         try {
@@ -941,6 +1083,8 @@ export class VoicePipeline {
           updatedHistory.push({ role: 'user' as const, content: '[System: You just took an action. Briefly address it.]' });
 
           let followUpResponse = '';
+          const followUpTtsPipeline: Promise<void>[] = [];
+
           for await (const chunk of this.llmProvider.streamChat({
             systemPrompt: followUpPrompt,
             messages: updatedHistory,
@@ -955,17 +1099,20 @@ export class VoicePipeline {
               if (this.mode.output === 'voice') {
                 const sentences = this.sentenceDetector.addChunk(chunk.text);
                 for (const sentence of sentences) {
-                  await this.synthesizeSentence(sentence);
+                  followUpTtsPipeline.push(this.synthesizeSentence(sentence));
                 }
               }
             }
           }
 
-          // Flush follow-up TTS
+          // Flush follow-up TTS with pipelined awaiting
           if (this.mode.output === 'voice') {
             const remaining = this.sentenceDetector.flush();
             if (remaining) {
-              await this.synthesizeSentence(remaining);
+              followUpTtsPipeline.push(this.synthesizeSentence(remaining));
+            }
+            for (const p of followUpTtsPipeline) {
+              await p;
             }
             if (this.ttsSession) {
               await this.ttsSession.flush();
@@ -982,7 +1129,19 @@ export class VoicePipeline {
         }
       }
 
-      // Generation complete
+      // Generation complete — log turn latency breakdown
+      const latencyStages = this.latencyTracker.getStages();
+      logger.info({
+        sessionId: this.sessionId,
+        latency: {
+          commit_to_first_transcript: this.latencyTracker.elapsed('commit', 'first_transcript'),
+          first_transcript_to_first_token: this.latencyTracker.elapsed('first_transcript', 'first_token'),
+          first_token_to_first_audio: this.latencyTracker.elapsed('first_token', 'first_audio'),
+          total_commit_to_first_audio: this.latencyTracker.elapsed('commit', 'first_audio'),
+          stages: latencyStages,
+        }
+      }, 'Turn latency breakdown');
+
       this.events.onGenerationEnd();
 
       // Track token usage

@@ -35,15 +35,17 @@ function validateCategory(category: KnowledgeCategory): void {
 /**
  * Convert database rows to KnowledgeBase format
  */
-function rowsToKnowledgeBase(rows: Array<{ name: string; entries: unknown }>): KnowledgeBase {
+export function rowsToKnowledgeBase(
+  rows: Array<{ name: string; entries: unknown; description?: string | null }>
+): KnowledgeBase {
   const categories: Record<string, KnowledgeCategory> = {};
-  
+
   for (const row of rows) {
     // Convert entries array to depths object
     // Entries are stored as [{depth, content}] - we concatenate content at same depth
     const entries = row.entries as Array<{ depth: number; content: string }> || [];
     const depths: Record<number, string> = {};
-    
+
     for (const entry of entries) {
       if (!depths[entry.depth]) {
         depths[entry.depth] = entry.content;
@@ -52,14 +54,14 @@ function rowsToKnowledgeBase(rows: Array<{ name: string; entries: unknown }>): K
         depths[entry.depth] += '\n' + entry.content;
       }
     }
-    
+
     categories[row.name] = {
       id: row.name,
-      description: '',
+      description: row.description ?? undefined,
       depths,
     };
   }
-  
+
   return { categories };
 }
 
@@ -88,7 +90,7 @@ export async function getKnowledgeBase(projectId: string): Promise<KnowledgeBase
   try {
     const { data, error } = await supabase
       .from('knowledge_categories')
-      .select('name, entries')
+      .select('name, entries, description')
       .eq('project_id', projectId);
 
     if (error) {
@@ -154,6 +156,7 @@ export async function updateKnowledgeBase(
       const inserts = Object.entries(knowledgeBase.categories).map(([name, category]) => ({
         project_id: projectId,
         name,
+        description: category.description ?? null,
         entries: categoryToEntries(category),
       }));
 
@@ -227,6 +230,7 @@ export async function upsertCategory(
       .upsert({
         project_id: projectId,
         name: category.id,
+        description: category.description ?? null,
         entries: categoryToEntries(category),
       }, {
         onConflict: 'project_id,name',
@@ -310,7 +314,7 @@ export async function getCategory(
 
   const { data, error } = await supabase
     .from('knowledge_categories')
-    .select('name, entries')
+    .select('name, entries, description')
     .eq('project_id', projectId)
     .eq('name', categoryId)
     .single();
@@ -324,7 +328,7 @@ export async function getCategory(
 
   const entries = data.entries as Array<{ depth: number; content: string }> || [];
   const depths: Record<number, string> = {};
-  
+
   for (const entry of entries) {
     if (!depths[entry.depth]) {
       depths[entry.depth] = entry.content;
@@ -335,7 +339,7 @@ export async function getCategory(
 
   return {
     id: data.name,
-    description: '',
+    description: (data as { description?: string | null }).description ?? undefined,
     depths,
   };
 }

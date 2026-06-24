@@ -1,18 +1,24 @@
 import { Hono } from 'hono';
 import { createLogger } from '../logger.js';
 import { sessionStore } from '../session/store.js';
-import { endSession, getSessionContext } from '../session/manager.js';
+import { endSession, getSessionContext, verifySessionToken } from '../session/manager.js';
 import { createVoicePipeline, VoicePipeline, VoicePipelineEvents } from '../voice/pipeline.js';
 import { decodeClientAudio } from '../voice/audio.js';
 import { canStartConversation } from '../mcp/exit-handler.js';
+import { resolveRateLimitPrincipal } from '../security/principal.js';
 import { DeepgramSttProvider } from '../providers/stt/deepgram.js';
 import { createTtsProvider } from '../providers/tts/factory.js';
 import type { TTSProviderType } from '../providers/tts/interface.js';
 import { createLlmProvider, getDefaultModel, getDefaultLlmProviderType, isLlmProviderSupported } from '../providers/llm/factory.js';
 import type { LLMProviderType, LLMProvider } from '../providers/llm/interface.js';
 import { getConfig } from '../config.js';
-import type { VoiceConfig, ConversationMode } from '../types/voice.js';
-import { CONVERSATION_MODES } from '../types/voice.js';
+import type { VoiceConfig, ConversationMode, ProtocolAudioFormats } from '../types/voice.js';
+import {
+  CONVERSATION_MODES,
+  VOICE_PROTOCOL_VERSION,
+  TTS_OUTPUT_FORMATS,
+  STT_INPUT_FORMAT,
+} from '../types/voice.js';
 import type { MindActivity } from '../types/mind.js';
 
 const logger = createLogger('ws-handler');
@@ -24,6 +30,8 @@ interface InitMessage {
   type: 'init';
   session_id: string;
   mode?: ConversationMode;
+  /** Optional session token minted at session start; verified for lifecycle auth when present. */
+  session_token?: string;
 }
 
 interface AudioMessage {
@@ -60,6 +68,13 @@ interface ReadyMessage {
   npc_name: string;
   voice_config: VoiceConfig;
   mode: ConversationMode;
+  /** Wire-protocol version. Clients may use this for compatibility gating. */
+  protocol_version: string;
+  /**
+   * Authoritative audio format for both directions. Clients must not hardcode
+   * per-provider rates; use these values from the handshake instead.
+   */
+  audio_format: ProtocolAudioFormats;
 }
 
 interface TranscriptMessage {
@@ -145,6 +160,49 @@ interface VoiceConnection {
 const activeConnections = new Map<string, VoiceConnection>();
 
 /**
+ * Parameters required to build a `ready` handshake message.
+ */
+export interface BuildReadyMessageParams {
+  sessionId: string;
+  npcName: string;
+  voiceConfig: VoiceConfig;
+  mode: ConversationMode;
+  /**
+   * The TTS provider key used for this session (e.g. 'cartesia', 'elevenlabs').
+   * Determines the output audio format reported to the client.
+   */
+  ttsProvider: string;
+}
+
+/**
+ * Build the `ready` handshake message sent to clients after a successful `init`.
+ *
+ * This is a pure function so it can be unit-tested without a live WebSocket.
+ * The returned object includes the protocol version and authoritative audio
+ * format for both directions (input = what the client must send to the STT
+ * pipeline; output = what the server will stream back as TTS audio).
+ */
+export function buildReadyMessage(params: BuildReadyMessageParams): ReadyMessage {
+  const { sessionId, npcName, voiceConfig, mode, ttsProvider } = params;
+
+  // Fall back to cartesia defaults for unknown providers so the field is always present.
+  const outputFormat = TTS_OUTPUT_FORMATS[ttsProvider] ?? TTS_OUTPUT_FORMATS['cartesia'];
+
+  return {
+    type: 'ready',
+    session_id: sessionId,
+    npc_name: npcName,
+    voice_config: voiceConfig,
+    mode,
+    protocol_version: VOICE_PROTOCOL_VERSION,
+    audio_format: {
+      input: STT_INPUT_FORMAT,
+      output: outputFormat,
+    },
+  };
+}
+
+/**
  * Provider API key config for voice WebSocket handler.
  * Providers are created lazily in handleInitMessage after loading the NPC definition.
  */
@@ -193,7 +251,8 @@ export function createVoiceWebSocketHandler(_deps: VoiceWebSocketDependencies): 
 
     // Check cooldown
     const { state } = stored;
-    const cooldownCheck = canStartConversation(state.project_id, state.player_id, state.definition_id);
+    const principal = resolveRateLimitPrincipal({ userId: state.user_id, playerId: state.player_id });
+    const cooldownCheck = canStartConversation(state.project_id, state.player_id, state.definition_id, principal);
     if (!cooldownCheck.allowed) {
       return c.json(
         { error: 'On cooldown', remaining_seconds: cooldownCheck.remainingSeconds },
@@ -354,6 +413,20 @@ async function handleInitMessage(
     logger.error({ sessionId, messageSessionId: msg.session_id }, 'handleInitMessage: session mismatch');
     sendMessage(ws, { type: 'error', code: 'SESSION_MISMATCH', message: 'Session ID does not match' });
     return;
+  }
+
+  // Lifecycle auth: if the session was minted with a token and the client supplies one,
+  // it must match. Strict enforcement arrives when every client always sends the token;
+  // today a dashboard client may omit it, so a missing token is allowed but logged.
+  const storedForAuth = sessionStore.get(sessionId);
+  if (storedForAuth?.sessionTokenHash && msg.session_token) {
+    if (!verifySessionToken(msg.session_token, storedForAuth.sessionTokenHash)) {
+      logger.warn({ sessionId }, 'handleInitMessage: invalid session token');
+      sendMessage(ws, { type: 'error', code: 'UNAUTHORIZED', message: 'Invalid session token' });
+      return;
+    }
+  } else if (storedForAuth?.sessionTokenHash && !msg.session_token) {
+    logger.debug({ sessionId }, 'handleInitMessage: no session token provided; lifecycle auth not enforced');
   }
 
   // Check if already initialized
@@ -517,14 +590,14 @@ async function handleInitMessage(
 
     logger.info({ sessionId }, 'handleInitMessage: sending ready message');
 
-    // Send ready message with mode
-    sendMessage(ws, {
-      type: 'ready',
-      session_id: sessionId,
-      npc_name: context.definition.name,
-      voice_config: voiceConfig,
+    // Send ready message with protocol version and authoritative audio format
+    sendMessage(ws, buildReadyMessage({
+      sessionId,
+      npcName: context.definition.name,
+      voiceConfig,
       mode,
-    });
+      ttsProvider: ttsProviderType,
+    }));
 
     logger.info({ sessionId, npcName: context.definition.name }, 'handleInitMessage: complete');
   } catch (error) {

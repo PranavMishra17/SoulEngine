@@ -79,8 +79,10 @@ class DeepgramSession implements STTSession {
         interim_results: this.config.interimResults,
         // Keep connection alive during silence (prevents idle timeout)
         keep_alive: true,
-        // Longer utterance detection window to reduce fragmented speech
-        utterance_end_ms: 1500,  // Wait 1.5s of silence before utterance_end
+        // Latency budget: server-side VAD gets 1000ms; the pipeline adds a
+        // short 400ms aggregation debounce (AGGREGATION_WINDOW_MS). Total
+        // worst-case endpointing latency: ~1.4s (was ~3s with both at 1500ms).
+        utterance_end_ms: 1000,  // Reduced from 1500ms to cut end-of-turn latency
         endpointing: 500,        // Minimum silence for endpoint (ms)
       });
 
@@ -320,6 +322,19 @@ class DeepgramSession implements STTSession {
       { attempt: this.reconnectAttempts, maxAttempts: MAX_RECONNECT_ATTEMPTS, delayMs: delay },
       'Attempting Deepgram reconnection'
     );
+
+    // Clear the finalized segment accumulator before reconnecting.
+    // Any segments accumulated before the disconnect are stale — concatenating
+    // them with post-reconnect speech produces garbled transcripts.
+    // The pipeline will emit a reconnecting state via onError so the client
+    // can surface it, then continue when the connection is restored.
+    if (this.finalizedSegments.length > 0) {
+      logger.warn(
+        { staleSections: this.finalizedSegments.length },
+        'Deepgram reconnect: clearing stale finalizedSegments to prevent garbled transcript'
+      );
+      this.finalizedSegments = [];
+    }
 
     await new Promise((resolve) => setTimeout(resolve, delay));
 

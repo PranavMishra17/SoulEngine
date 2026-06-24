@@ -1,8 +1,8 @@
-import * as crypto from 'crypto';
 import { getSupabaseAdmin } from './client.js';
 import { createLogger } from '../../logger.js';
 import { getConfig } from '../../config.js';
 import { StorageError, StorageValidationError } from '../interface.js';
+import { encryptSecret, decryptSecret } from '../crypto/secrets.js';
 
 const logger = createLogger('supabase-secrets');
 
@@ -13,12 +13,6 @@ const _API_KEY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 function _invalidateApiKeyCache(projectId: string): void {
   _apiKeyCache.delete(projectId);
 }
-
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const SALT_LENGTH = 32;
-const KEY_LENGTH = 32;
-const ITERATIONS = 100000;
 
 /**
  * API keys stored for a project
@@ -37,51 +31,27 @@ export interface ApiKeys {
 }
 
 /**
- * Derive encryption key from password and salt
- */
-function deriveKey(password: string, salt: Buffer): Buffer {
-  return crypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LENGTH, 'sha256');
-}
-
-/**
- * Encrypt a single API key
+ * Encrypt a single API key using the shared crypto module
+ * Returns a JSON string of the envelope (for storage in text column)
  */
 function encryptKey(value: string, encryptionKey: string): string {
-  const salt = crypto.randomBytes(SALT_LENGTH);
-  const key = deriveKey(encryptionKey, salt);
-  const iv = crypto.randomBytes(IV_LENGTH);
-
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  let encrypted = cipher.update(value, 'utf8', 'base64');
-  encrypted += cipher.final('base64');
-  const authTag = cipher.getAuthTag();
-
-  // Format: salt:iv:authTag:data
-  return `${salt.toString('base64')}:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
+  const envelope = encryptSecret(value, encryptionKey, 1);
+  return JSON.stringify(envelope);
 }
 
 /**
- * Decrypt a single API key
+ * Decrypt a single API key using the shared crypto module
+ * Supports both new JSON envelope format and old colon-delimited format for backward-compatibility
  */
 function decryptKey(encrypted: string, encryptionKey: string): string {
-  const parts = encrypted.split(':');
-  if (parts.length !== 4) {
-    throw new Error('Invalid encrypted key format');
+  try {
+    // Try parsing as JSON (new format)
+    const envelope = JSON.parse(encrypted);
+    return decryptSecret(envelope, encryptionKey);
+  } catch {
+    // Fall back to old colon-delimited format
+    return decryptSecret(encrypted, encryptionKey);
   }
-
-  const [saltB64, ivB64, authTagB64, data] = parts;
-  const salt = Buffer.from(saltB64, 'base64');
-  const key = deriveKey(encryptionKey, salt);
-  const iv = Buffer.from(ivB64, 'base64');
-  const authTag = Buffer.from(authTagB64, 'base64');
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(data, 'base64', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
 }
 
 /**

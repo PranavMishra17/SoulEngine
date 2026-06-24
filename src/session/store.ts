@@ -15,6 +15,12 @@ export interface StoredSession {
   lastActivity: number;
   /** User ID from auth context — null if logged out (uses local storage) */
   userId?: string | null;
+  /**
+   * SHA-256 hex hash of the session token minted at start.
+   * Used to authenticate lifecycle calls (message, history, end) from game clients.
+   * Undefined in local/dev mode where auth is disabled.
+   */
+  sessionTokenHash?: string;
 }
 
 /**
@@ -36,7 +42,7 @@ class SessionStore {
   /**
    * Create a new session in the store
    */
-  create(sessionId: SessionID, state: SessionState, originalAnchor: CoreAnchor, userId?: string | null): void {
+  create(sessionId: SessionID, state: SessionState, originalAnchor: CoreAnchor, userId?: string | null, sessionTokenHash?: string): void {
     const now = Date.now();
 
     const stored: StoredSession = {
@@ -45,6 +51,7 @@ class SessionStore {
       createdAt: now,
       lastActivity: now,
       userId,
+      sessionTokenHash,
     };
 
     this.sessions.set(sessionId, stored);

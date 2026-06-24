@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
 import { getSession, getSessionContext, addMessageToSession, updateSessionInstance, addTokensToSession, SessionError } from '../session/manager.js';
+import { checkSessionLifecycleAuth } from '../middleware/auth.js';
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
@@ -17,6 +18,7 @@ import type { ToolCall, ToolResult } from '../types/mcp.js';
 import type { MoodVector } from '../types/npc.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
 import { handleExitConvo, ExitConvoResult } from '../mcp/exit-handler.js';
+import { resolveRateLimitPrincipal } from '../security/principal.js';
 import type { MindResult, MindActivity } from '../types/mind.js';
 
 const logger = createLogger('routes-conversation');
@@ -90,13 +92,33 @@ export function createConversationRoutes(
         return c.json({ error: 'Session not found' }, 404);
       }
 
+      // 2a. Lifecycle auth — game clients must supply x-session-token; dashboard users pass via userId
+      const authError = checkSessionLifecycleAuth(
+        stored.state.user_id,
+        stored.sessionTokenHash,
+        c.get('userId'),
+        c.req.header('x-session-token')
+      );
+      if (authError) {
+        logger.warn({ sessionId }, 'Lifecycle auth failed for message');
+        return c.json({ error: authError.error }, authError.status);
+      }
+
       const { state } = stored;
 
-      // 3. Rate limiting
+      // 3. Rate limiting — key on a trusted principal, not the client-supplied player_id
+      const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+      const rateLimitPrincipal = resolveRateLimitPrincipal({
+        userId: state.user_id,
+        gameKeyHash: undefined, // game-key is validated at session start, hash not re-available here
+        ip: clientIp,
+        playerId: state.player_id,
+      });
       const rateLimit = rateLimiter.checkLimit(
         state.project_id,
         state.player_id,
-        state.definition_id
+        state.definition_id,
+        rateLimitPrincipal
       );
 
       if (!rateLimit.allowed) {
@@ -143,7 +165,8 @@ export function createConversationRoutes(
         instance,
         securityContext,
         {},
-        state.player_info
+        state.player_info,
+        state.user_id
       );
 
       // 8. Add player message to history
@@ -217,6 +240,7 @@ export function createConversationRoutes(
         securityContext,
         projectTools,
         mindAbortController.signal,
+        state.user_id,
       ).catch((err) => {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
@@ -433,6 +457,18 @@ export function createConversationRoutes(
       if (!stored) {
         logger.warn({ sessionId }, 'Session not found');
         return c.json({ error: 'Session not found' }, 404);
+      }
+
+      // Lifecycle auth — same authority as message/end
+      const authError = checkSessionLifecycleAuth(
+        stored.state.user_id,
+        stored.sessionTokenHash,
+        c.get('userId'),
+        c.req.header('x-session-token')
+      );
+      if (authError) {
+        logger.warn({ sessionId }, 'Lifecycle auth failed for history');
+        return c.json({ error: authError.error }, authError.status);
       }
 
       const duration = Date.now() - startTime;

@@ -1,13 +1,14 @@
 import { createLogger } from '../logger.js';
 import { getConfig } from '../config.js';
 import { sessionStore, StoredSession } from './store.js';
+import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import {
   type ApiKeys,
 } from '../storage/index.js';
 import { getStorageForUser } from '../storage/hybrid.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import type { Tool } from '../types/mcp.js';
-import { validateAnchorIntegrity } from '../security/anchor-guard.js';
+import { validateAnchorIntegrity, enforceAnchorImmutability } from '../security/anchor-guard.js';
 import { resolveKnowledge } from '../core/knowledge.js';
 import { summarizeConversation, NPCPerspective } from '../core/summarizer.js';
 import { createMemory, calculateSalience, pruneSTM } from '../core/memory.js';
@@ -29,6 +30,13 @@ const logger = createLogger('session-manager');
  */
 export interface SessionStartResult {
   session_id: SessionID;
+  /**
+   * One-time session token returned to the game client at session start.
+   * All subsequent lifecycle calls (message, history, end) must include this
+   * value in the x-session-token header to authenticate the request.
+   * Only present when auth applies; undefined in local/dev mode.
+   */
+  session_token?: string;
   npc_name: string;
   npc_description: string;
   mood: MoodVector;
@@ -71,10 +79,62 @@ export class SessionError extends Error {
 }
 
 /**
- * Generate a unique session ID
+ * Generate a cryptographically-strong session ID.
+ *
+ * Uses 128 bits of entropy from crypto.randomBytes, encoded as lowercase hex.
+ * Format: sess_<32 hex chars> (128 bits — resistant to enumeration attacks).
  */
-function generateSessionId(): SessionID {
-  return `sess_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+export function generateSessionId(): SessionID {
+  return `sess_${randomBytes(16).toString('hex')}`;
+}
+
+/**
+ * Generate a one-time session token to authenticate the conversation lifecycle.
+ *
+ * The raw token is returned to the game client at session start and must be
+ * supplied in the x-session-token header for all subsequent lifecycle calls.
+ * Only the SHA-256 hash is persisted in the session store.
+ */
+export function generateSessionToken(): string {
+  return randomBytes(32).toString('hex');
+}
+
+/**
+ * Verify a session token against its stored SHA-256 hash using a constant-time
+ * comparison to prevent timing-oracle attacks.
+ *
+ * Returns false for any empty or mismatched input; never throws.
+ */
+export function verifySessionToken(token: string, storedHash: string): boolean {
+  if (!token || !storedHash) return false;
+  try {
+    const incomingHash = createHash('sha256').update(token).digest('hex');
+    const a = Buffer.from(incomingHash, 'utf8');
+    const b = Buffer.from(storedHash, 'utf8');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify a raw game-client API key against its stored SHA-256 hash using
+ * constant-time comparison to prevent timing-oracle attacks.
+ *
+ * Returns false for any empty or mismatched input; never throws.
+ */
+export function verifyGameClientKey(rawKey: string, storedHash: string): boolean {
+  if (!rawKey || !storedHash) return false;
+  try {
+    const incomingHash = createHash('sha256').update(rawKey).digest('hex');
+    const a = Buffer.from(incomingHash, 'utf8');
+    const b = Buffer.from(storedHash, 'utf8');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -147,6 +207,7 @@ export async function startSession(
       player_info: effectivePlayerInfo,
       mode: effectiveMode,
       token_usage: emptyTokenUsage(),
+      user_id: userId ?? null,
     };
 
     // Cache the original anchor for integrity checking later
@@ -156,8 +217,13 @@ export async function startSession(
       trauma_flags: [...definition.core_anchor.trauma_flags],
     };
 
+    // Mint a session token for lifecycle authentication.
+    // The raw token is returned to the game client; only the hash is stored.
+    const sessionToken = generateSessionToken();
+    const sessionTokenHash = createHash('sha256').update(sessionToken).digest('hex');
+
     // Store session with userId so endSession and getSessionContext can pick the right backend
-    sessionStore.create(sessionId, sessionState, originalAnchor, userId);
+    sessionStore.create(sessionId, sessionState, originalAnchor, userId, sessionTokenHash);
 
     const duration = Date.now() - startTime;
     logger.info(
@@ -174,6 +240,7 @@ export async function startSession(
 
     return {
       session_id: sessionId,
+      session_token: sessionToken,
       npc_name: definition.name,
       npc_description: definition.description,
       mood: instance.current_mood,
@@ -282,15 +349,27 @@ export async function endSession(
     const neutralMood: MoodVector = { valence: 0.5, arousal: 0.5, dominance: 0.5 };
     instance.current_mood = blendMoods(instance.current_mood, neutralMood, 0.1);
 
-    // Validate anchor integrity
+    // Validate and enforce anchor integrity
     const anchorValid = validateAnchorIntegrity(originalAnchor, definition.core_anchor);
     if (!anchorValid) {
-      logger.warn({ sessionId }, 'Anchor integrity violation detected at session end');
-      // The anchor guard already logs the violation - we continue with save
+      logger.warn({ sessionId }, 'Anchor integrity violation detected at session end — restoring original anchor');
+      // Restore the original anchor
+      const restoredDefinition = enforceAnchorImmutability(definition, originalAnchor);
+      await storage.updateDefinition(state.project_id, state.definition_id, restoredDefinition);
     }
 
     // Save instance state
     const saveResult = await storage.saveInstance(instance);
+
+    // Persist session state for resumption (non-fatal if it fails)
+    try {
+      await storage.persistSession(state);
+    } catch (persistErr) {
+      logger.warn(
+        { sessionId, error: persistErr instanceof Error ? persistErr.message : 'Unknown' },
+        'Failed to persist session state (non-fatal) — session will not be resumable'
+      );
+    }
 
     // Save usage and transcript — wrapped in try/catch, must never throw
     try {
@@ -561,4 +640,77 @@ function estimateEmotionalIntensity(history: Message[]): number {
  */
 export function getSessionStats() {
   return sessionStore.getStats();
+}
+
+/**
+ * Resume a previously ended session by loading its persisted state.
+ *
+ * Sessions are persisted when endSession is called. This function reconstructs
+ * the session in memory from the persisted state, allowing clients to reconnect
+ * and continue a conversation.
+ */
+export async function resumeSession(
+  sessionId: SessionID,
+  userId?: string | null
+): Promise<SessionStartResult> {
+  const startTime = Date.now();
+  logger.info({ sessionId }, 'Resuming session');
+
+  const storage = getStorageForUser(userId);
+
+  try {
+    // Load the persisted session state from storage
+    const persistedState = await storage.loadPersistedSession(sessionId);
+
+    if (!persistedState) {
+      throw new SessionError(
+        'Session not found or no persisted state available',
+        'SESSION_NOT_FOUND'
+      );
+    }
+
+    // Load the current definition and instance
+    const [definition, project] = await Promise.all([
+      storage.getDefinition(persistedState.project_id, persistedState.definition_id),
+      storage.getProject(persistedState.project_id),
+    ]);
+
+    // Cache the original anchor for integrity checking
+    const originalAnchor: CoreAnchor = {
+      backstory: definition.core_anchor.backstory,
+      principles: [...definition.core_anchor.principles],
+      trauma_flags: [...definition.core_anchor.trauma_flags],
+    };
+
+    // Mint a fresh session token so the resumed session is authable for its lifecycle
+    // (matches startSession; the raw token is returned to the client, only the hash is stored).
+    const sessionToken = generateSessionToken();
+    const sessionTokenHash = createHash('sha256').update(sessionToken).digest('hex');
+
+    // Restore the session to the in-memory store
+    sessionStore.create(sessionId, persistedState, originalAnchor, userId, sessionTokenHash);
+
+    const duration = Date.now() - startTime;
+    logger.info({ sessionId, duration }, 'Session resumed');
+
+    return {
+      session_id: sessionId,
+      session_token: sessionToken,
+      npc_name: definition.name,
+      npc_description: definition.description,
+      mood: persistedState.instance.current_mood,
+      project_name: project.name,
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+
+    if (error instanceof SessionError) {
+      logger.warn({ sessionId, error: error.message, code: error.code, duration }, 'Session resume failed');
+      throw error;
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ sessionId, error: errorMessage, duration }, 'Session resume failed');
+    throw new SessionError(`Failed to resume session: ${errorMessage}`, 'SESSION_RESUME_FAILED');
+  }
 }

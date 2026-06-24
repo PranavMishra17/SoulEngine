@@ -292,6 +292,10 @@ export async function updateDefinition(
     // Validate before saving
     validateDefinition(updated);
 
+    // Archive current version before overwriting (track changed fields)
+    const changedFields = Object.keys(updates);
+    await archiveDefinition(projectId, npcId, changedFields);
+
     const defPath = getDefinitionPath(projectId, npcId);
     await fs.writeFile(defPath, yaml.dump(updated), 'utf-8');
 
@@ -401,37 +405,219 @@ export async function definitionExists(projectId: string, npcId: string): Promis
 /**
  * Validate NPC ID format
  */
-export function isValidNpcId(npcId: string): boolean {
-  return /^npc_[a-z0-9]+_[a-z0-9]+$/.test(npcId);
-}
+export { isValidNpcId } from '../validation.js';
 
 // ============================================================
-// DEFINITION HISTORY — stubs for local mode (no history in local dev)
+// DEFINITION HISTORY — local file-based versioning
 // ============================================================
 
 import type { DefinitionHistoryEntry, DefinitionHistorySnapshot } from '../supabase/definitions.js';
 export type { DefinitionHistoryEntry, DefinitionHistorySnapshot };
 
+/**
+ * Get the path to a definition's history directory
+ */
+function getDefinitionHistoryDir(projectId: string, npcId: string): string {
+  const defsDir = getDefinitionsDir(projectId);
+  return path.join(defsDir, `${npcId}.history`);
+}
+
+/**
+ * Generate a version number (timestamp-based for sorting)
+ */
+function generateDefinitionVersion(): number {
+  return Date.now();
+}
+
+/**
+ * Archive the current definition to history before updating
+ */
+async function archiveDefinition(
+  projectId: string,
+  npcId: string,
+  changedFields: string[]
+): Promise<number | null> {
+  const config = getConfig();
+
+  if (!config.stateHistoryEnabled) {
+    return null;
+  }
+
+  const defPath = getDefinitionPath(projectId, npcId);
+  const historyDir = getDefinitionHistoryDir(projectId, npcId);
+
+  try {
+    // Check if current definition exists
+    await fs.access(defPath);
+
+    // Read current definition
+    const content = await fs.readFile(defPath, 'utf-8');
+    const definition = yaml.load(content) as NPCDefinition;
+
+    // Ensure history directory exists
+    await fs.mkdir(historyDir, { recursive: true });
+
+    // Generate version number
+    const version = generateDefinitionVersion();
+    const historyPath = path.join(historyDir, `${version}.json`);
+
+    // Save snapshot with metadata
+    const snapshot: DefinitionHistorySnapshot = {
+      version,
+      changed_fields: changedFields,
+      created_at: new Date().toISOString(),
+      snapshot: definition,
+    };
+
+    await fs.writeFile(historyPath, JSON.stringify(snapshot, null, 2), 'utf-8');
+
+    // Prune old history
+    await pruneDefinitionHistory(projectId, npcId, config.stateHistoryMaxVersions);
+
+    logger.debug({ projectId, npcId, version, changedFields }, 'Definition archived');
+    return version;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // No current definition to archive (first save)
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Prune old definition history versions to stay within limit
+ */
+async function pruneDefinitionHistory(
+  projectId: string,
+  npcId: string,
+  maxVersions: number
+): Promise<void> {
+  const historyDir = getDefinitionHistoryDir(projectId, npcId);
+
+  try {
+    const entries = await fs.readdir(historyDir);
+    const jsonFiles = entries.filter(e => e.endsWith('.json')).sort();
+
+    // Remove oldest files if over limit
+    const toRemove = jsonFiles.slice(0, Math.max(0, jsonFiles.length - maxVersions));
+
+    for (const file of toRemove) {
+      await fs.unlink(path.join(historyDir, file));
+      logger.debug({ projectId, npcId, file }, 'Old history version removed');
+    }
+  } catch (error) {
+    // Ignore errors during pruning
+    logger.warn({ projectId, npcId, error }, 'Error pruning definition history');
+  }
+}
+
+/**
+ * Get version history metadata for an NPC definition (no snapshots — lightweight)
+ */
 export async function getDefinitionHistory(
-  _projectId: string,
-  _npcId: string
+  projectId: string,
+  npcId: string
 ): Promise<DefinitionHistoryEntry[]> {
-  return [];
+  const historyDir = getDefinitionHistoryDir(projectId, npcId);
+
+  try {
+    const entries = await fs.readdir(historyDir);
+    const jsonFiles = entries.filter(e => e.endsWith('.json')).sort();
+
+    const history: DefinitionHistoryEntry[] = [];
+
+    for (const file of jsonFiles) {
+      const filePath = path.join(historyDir, file);
+      const content = await fs.readFile(filePath, 'utf-8');
+      const snapshot = JSON.parse(content) as DefinitionHistorySnapshot;
+
+      history.push({
+        version: snapshot.version,
+        changed_fields: snapshot.changed_fields,
+        created_at: snapshot.created_at,
+      });
+    }
+
+    // Return in descending order (newest first)
+    return history.reverse();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // No history directory means no history
+      return [];
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, error: errorMessage }, 'Failed to load definition history');
+    throw new StorageError(`Failed to load definition history: ${errorMessage}`);
+  }
 }
 
+/**
+ * Get a single version snapshot for an NPC definition
+ */
 export async function getDefinitionSnapshot(
-  _projectId: string,
-  _npcId: string,
-  _version: number
+  projectId: string,
+  npcId: string,
+  version: number
 ): Promise<DefinitionHistorySnapshot> {
-  throw new StorageNotFoundError('Definition snapshot', `v${_version}`);
+  const historyDir = getDefinitionHistoryDir(projectId, npcId);
+  const snapshotPath = path.join(historyDir, `${version}.json`);
+
+  try {
+    const content = await fs.readFile(snapshotPath, 'utf-8');
+    const snapshot = JSON.parse(content) as DefinitionHistorySnapshot;
+
+    logger.debug({ projectId, npcId, version }, 'Definition snapshot loaded');
+    return snapshot;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new StorageNotFoundError('Definition snapshot', `v${version}`);
+    }
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, version, error: errorMessage }, 'Failed to load definition snapshot');
+    throw new StorageError(`Failed to load definition snapshot: ${errorMessage}`);
+  }
 }
 
+/**
+ * Revert an NPC definition to a prior version.
+ * The snapshot becomes the new current state — a new history entry is created so
+ * the revert itself is reversible. Returns the updated definition.
+ */
 export async function rollbackDefinition(
   projectId: string,
   npcId: string,
-  _targetVersion: number
+  targetVersion: number
 ): Promise<NPCDefinition> {
-  // In local mode there is no history — just return current definition unchanged
-  return getDefinition(projectId, npcId);
+  const startTime = Date.now();
+
+  try {
+    // 1. Fetch the target snapshot
+    const historyEntry = await getDefinitionSnapshot(projectId, npcId, targetVersion);
+    const restoredDef = historyEntry.snapshot;
+
+    // 2. Archive current state before overwriting (rollback is reversible)
+    await archiveDefinition(projectId, npcId, ['rollback']);
+
+    // 3. Write the restored definition as the new current state
+    const defPath = getDefinitionPath(projectId, npcId);
+    await fs.writeFile(defPath, yaml.dump(restoredDef), 'utf-8');
+
+    const duration = Date.now() - startTime;
+    logger.info(
+      { projectId, npcId, targetVersion, duration },
+      'Definition rolled back'
+    );
+
+    return restoredDef;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    if (error instanceof StorageNotFoundError || error instanceof StorageError) throw error;
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ projectId, npcId, targetVersion, error: errorMessage, duration }, 'Failed to rollback definition');
+    throw new StorageError(`Failed to rollback definition: ${errorMessage}`);
+  }
 }

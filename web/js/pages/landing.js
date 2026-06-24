@@ -4,6 +4,7 @@
  */
 
 import { BrainVisualization } from '../components/BrainVisualization.js';
+import { mountWordmark } from '../components/WordmarkIntro.js';
 import { renderTemplate, updateNav } from '../components.js';
 import { router } from '../router.js';
 import { isAuthenticated, signInWithGoogle, getUserDisplayInfo } from '../auth.js';
@@ -20,7 +21,8 @@ export function initLandingPage() {
     setTimeout(() => {
       initBrainVisualization();
       initPillarTabs();
-      initPillarDetails();
+      initWordmarks();
+      initScrollReveal();
       initHeroButtons();
       initSmoothScroll();
       initNavScrollEffect();
@@ -75,65 +77,93 @@ function initPillarTabs() {
 }
 
 function highlightPillarDetail(pillarName) {
-  const details = document.querySelectorAll('.pillar-detail');
-  details.forEach(detail => {
-    if (detail.dataset.pillar === pillarName) {
-      detail.style.transform = 'translateY(-8px)';
-      detail.style.boxShadow = 'var(--shadow-lg)';
-    } else {
-      detail.style.transform = '';
-      detail.style.boxShadow = '';
-    }
+  document.querySelectorAll('.lx-layer').forEach(layer => {
+    layer.classList.toggle('is-lit', layer.dataset.pillar === pillarName);
   });
 }
 
 function clearPillarDetailHighlight() {
-  const details = document.querySelectorAll('.pillar-detail');
-  details.forEach(detail => {
-    detail.style.transform = '';
-    detail.style.boxShadow = '';
-  });
+  document.querySelectorAll('.lx-layer.is-lit').forEach(layer => layer.classList.remove('is-lit'));
 }
 
 function scrollToPillarDetail(pillarName) {
-  const detail = document.querySelector(`.pillar-detail[data-pillar="${pillarName}"]`);
-  if (detail) {
-    detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const layer = document.querySelector(`.lx-layer[data-pillar="${pillarName}"]`);
+  if (layer) {
+    layer.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
-function initPillarDetails() {
-  const details = document.querySelectorAll('.pillar-detail');
-  if (!details.length) return;
+function initWordmarks() {
+  const header = document.getElementById('brand-wordmark');
+  const whip = document.getElementById('brand-whip');
 
-  const observer = new IntersectionObserver((entries) => {
+  const mountAll = () => {
+    if (header) {
+      let played = false;
+      try { played = sessionStorage.getItem('se_wm_intro') === '1'; } catch (e) { /* ignore */ }
+      const inst = mountWordmark(header, { fontSize: 20, autoplay: !played });
+      if (played && inst) {
+        inst.showFinal();
+      } else {
+        try { sessionStorage.setItem('se_wm_intro', '1'); } catch (e) { /* ignore */ }
+      }
+    }
+    if (whip) {
+      const fs = Math.max(40, Math.min(72, Math.round(window.innerWidth * 0.07)));
+      mountWordmark(whip, { fontSize: fs, loop: true });
+    }
+  };
+
+  // Fonts must be loaded before measuring letter widths, or centers are wrong.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(mountAll).catch(mountAll);
+  } else {
+    mountAll();
+  }
+}
+
+function initScrollReveal() {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Staggered groups: each element fades/slides up as it scrolls in.
+  const staggered = ['.lx-layer', '.lx-stage', '.lx-benefits li'];
+  const singles = ['.lx-head', '.lx-code', '.lx-cta h2', '.lx-cta p'];
+
+  const all = [];
+
+  staggered.forEach(sel => {
+    document.querySelectorAll(sel).forEach((el, i) => {
+      el.classList.add('reveal');
+      el.style.transitionDelay = `${Math.min(i, 6) * 0.06}s`;
+      all.push(el);
+    });
+  });
+
+  singles.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.classList.add('reveal');
+      all.push(el);
+    });
+  });
+
+  if (!all.length) return;
+
+  // Reduced motion: CSS keeps everything visible; just mark and bail.
+  if (prefersReduced) {
+    all.forEach(el => el.classList.add('visible'));
+    return;
+  }
+
+  const observer = new IntersectionObserver((entries, obs) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         entry.target.classList.add('visible');
+        obs.unobserve(entry.target);
       }
     });
-  }, {
-    threshold: 0.2,
-    rootMargin: '0px 0px -50px 0px'
-  });
+  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
 
-  details.forEach((detail, index) => {
-    detail.style.transitionDelay = `${index * 0.1}s`;
-    observer.observe(detail);
-
-    detail.addEventListener('mouseenter', () => {
-      const pillar = detail.dataset.pillar;
-      if (brainViz && pillar) {
-        brainViz.setPillarColor(pillar);
-      }
-    });
-
-    detail.addEventListener('mouseleave', () => {
-      if (brainViz) {
-        brainViz.clearPillarColor();
-      }
-    });
-  });
+  all.forEach(el => observer.observe(el));
 }
 
 function initHeroButtons() {
@@ -204,24 +234,33 @@ function initNavScrollEffect() {
   const nav = document.getElementById('main-nav');
   if (!nav) return;
 
-  let ticking = false;
+  const getScroll = () => Math.max(
+    window.pageYOffset || 0,
+    document.documentElement.scrollTop || 0,
+    document.body.scrollTop || 0
+  );
 
-  const handleScroll = () => {
+  let ticking = false;
+  const apply = () => {
+    const y = getScroll();
+    const max = Math.max(1, (document.documentElement.scrollHeight || 0) - window.innerHeight);
+    const pct = Math.max(0, Math.min(100, (y / max) * 100));
+    nav.style.setProperty('--nav-progress', pct + '%');
+    nav.classList.toggle('scrolled', y > 40);
+    ticking = false;
+  };
+
+  const onScroll = () => {
     if (!ticking) {
-      window.requestAnimationFrame(() => {
-        if (window.pageYOffset > 50) {
-          nav.classList.add('scrolled');
-        } else {
-          nav.classList.remove('scrolled');
-        }
-        ticking = false;
-      });
       ticking = true;
+      window.requestAnimationFrame(apply);
     }
   };
 
-  window.addEventListener('scroll', handleScroll, { passive: true });
-  handleScroll();
+  // Capture phase catches scroll whether it fires on window, document, or body.
+  window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+  apply();
 }
 
 function initBewareTrigger() {

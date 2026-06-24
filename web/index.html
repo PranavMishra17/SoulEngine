@@ -7,7 +7,7 @@
   <title>SoulEngine - Memory-Driven NPCs for Games</title>
   <meta name="description"
     content="Create game characters that remember, evolve, and speak. Memory-driven NPCs with voice interaction and real-time personality evolution.">
-  <meta name="theme-color" content="#0d0d0d">
+  <meta name="theme-color" content="#0c0d10">
 
   <!-- Favicon -->
   <link rel="icon" type="image/jpeg" href="/img/log.png">
@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500..700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600;700&family=Silkscreen:wght@400;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500..700&family=JetBrains+Mono:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap"
     rel="stylesheet">
 
   <!-- Stylesheets -->
@@ -43,8 +43,25 @@
     <nav class="main-nav" id="main-nav">
       <div class="nav-brand">
         <a href="/" class="brand-link">
-          <img src="/img/logg.jpg" alt="SoulEngine" class="brand-icon-img">
-          <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
+          <svg class="brand-mark" viewBox="0 0 80 72" width="38" height="34" aria-hidden="true" focusable="false">
+            <g stroke="rgba(220,222,232,0.22)" stroke-width="1.2" fill="none">
+              <line x1="36" y1="40" x2="20" y2="22" />
+              <line x1="36" y1="40" x2="16" y2="50" />
+              <line x1="36" y1="40" x2="52" y2="20" />
+              <line x1="52" y1="20" x2="62" y2="46" />
+              <line x1="36" y1="40" x2="44" y2="56" />
+            </g>
+            <circle class="brand-mark-ring" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6" stroke-width="1.3" />
+            <circle class="brand-mark-ring brand-mark-ring-2" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6"
+              stroke-width="1.3" />
+            <circle cx="20" cy="22" r="2.6" fill="#b6a6f2" />
+            <circle cx="16" cy="50" r="3.2" fill="#f1a6c4" />
+            <circle cx="52" cy="20" r="3" fill="#f1a6c4" />
+            <circle cx="62" cy="46" r="3.4" fill="#b6a6f2" />
+            <circle cx="44" cy="56" r="2.6" fill="#83e0c6" />
+            <circle class="brand-mark-core" cx="36" cy="40" r="5.4" fill="#83e0c6" />
+          </svg>
+          <span class="brand-text" id="brand-wordmark">Soul<span class="brand-accent">Engine</span></span>
         </a>
       </div>
       <div class="nav-links" id="nav-links"></div>
@@ -237,240 +254,158 @@
         </div>
       </section>
 
-      <!-- Pillars Detail Section -->
-      <section class="pillars-section" id="pillars">
-        <div class="pillars-section-header">
-          <h2>The Five Pillars</h2>
-          <p>A layered memory architecture that creates NPCs with depth, continuity, and emergent behavior</p>
+      <!-- Memory architecture -->
+      <section class="lx-memory" id="pillars">
+        <div class="lx-head">
+          <span class="lx-eyebrow">The five pillars</span>
+          <h2>A mind with a past, a present,<br>and the capacity to change.</h2>
+          <p>Five layers of memory and personality, each on its own clock &mdash; so behaviour <em>accumulates</em>
+            instead of resetting the moment a player walks away.</p>
         </div>
-        <div class="pillars-grid">
-          <div class="pillar-detail" data-pillar="core">
-            <div class="pillar-detail-icon">&#9672;</div>
-            <span class="pillar-detail-tag">Permanent</span>
-            <h3>Core Anchor</h3>
-            <p>Immutable psychological DNA. Backstory, principles, and worldview that define the character's foundation
-              and never change.</p>
+        <ol class="lx-layers">
+          <li class="lx-layer" data-pillar="core">
+            <span class="lx-layer-when">Permanent</span>
+            <div class="lx-layer-body">
+              <h3>Core Anchor</h3>
+              <p>Immutable psychological DNA &mdash; backstory, principles, worldview. The part that never drifts.</p>
+            </div>
+          </li>
+          <li class="lx-layer" data-pillar="daily">
+            <span class="lx-layer-when">Per session</span>
+            <div class="lx-layer-body">
+              <h3>Daily Pulse</h3>
+              <p>A mood and a one-line takeaway from every encounter &mdash; emotional continuity between visits.</p>
+            </div>
+          </li>
+          <li class="lx-layer" data-pillar="weekly">
+            <span class="lx-layer-when">Cyclic</span>
+            <div class="lx-layer-body">
+              <h3>Weekly Whisper</h3>
+              <p>Salience-scored pruning &mdash; what mattered hardens into memory, the trivial quietly fades.</p>
+            </div>
+          </li>
+          <li class="lx-layer" data-pillar="persona">
+            <span class="lx-layer-when">Evolution</span>
+            <div class="lx-layer-body">
+              <h3>Persona Shift</h3>
+              <p>Personality recalibrates within bounded limits as experience accrues. People change; so do they.</p>
+            </div>
+          </li>
+          <li class="lx-layer lx-layer-act" data-pillar="mcp">
+            <span class="lx-layer-when">Agency</span>
+            <div class="lx-layer-body">
+              <h3>MCP Actions</h3>
+              <p>And they act on it &mdash; lock the door, call the guard, refuse service. Memory with consequences.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <!-- How it works -->
+      <section class="lx-pipe" id="pipeline">
+        <div class="lx-head">
+          <span class="lx-eyebrow">How it works</span>
+          <h2>Speech goes in. A character speaks back.<br><em>Under 100&#8201;ms to first sound.</em></h2>
+          <p>Every turn fuses the NPC's whole context into one live prompt and streams the reply straight through the
+            voice pipeline &mdash; no perceptible wait, no canned lines.</p>
+        </div>
+        <div class="lx-convo" aria-hidden="true">
+          <div class="lx-convo-row lx-convo-user">
+            <div class="lx-bubble">Any rooms left tonight?</div>
           </div>
-          <div class="pillar-detail" data-pillar="daily">
-            <div class="pillar-detail-icon">&#9681;</div>
-            <span class="pillar-detail-tag">Per Session</span>
-            <h3>Daily Pulse</h3>
-            <p>Mood vectors and single-sentence takeaways. Emotional continuity across short timespans with valence,
-              arousal, dominance.</p>
+          <div class="lx-convo-row lx-convo-npc">
+            <div class="lx-bubble">
+              <span class="lx-voicebars"><i></i><i></i><i></i><i></i><i></i></span>
+              For you? Corner room, top of the stairs.
+            </div>
           </div>
-          <div class="pillar-detail" data-pillar="weekly">
-            <div class="pillar-detail-icon">&#9684;</div>
-            <span class="pillar-detail-tag">Cycles</span>
-            <h3>Weekly Whisper</h3>
-            <p>Cyclic memory pruning with salience scoring. High-impact events persist while trivial interactions
-              naturally fade.</p>
+        </div>
+        <div class="lx-flow">
+          <div class="lx-flow-track"><span class="lx-flow-pulse"></span></div>
+          <div class="lx-stage">
+            <span class="lx-stage-k">01</span>
+            <h3>You speak</h3>
+            <p>Mic in, voice-activity gated &mdash; silence is discarded before it ever hits the network.</p>
           </div>
-          <div class="pillar-detail" data-pillar="persona">
-            <div class="pillar-detail-icon">&#9671;</div>
-            <span class="pillar-detail-tag">Evolution</span>
-            <h3>Persona Shift</h3>
-            <p>Major personality recalibration. Big Five traits evolve within bounded limits based on accumulated
-              experiences.</p>
+          <div class="lx-stage">
+            <span class="lx-stage-k">02</span>
+            <h3>The mind assembles</h3>
+            <p>Anchor, personality, knowledge, network and memory fuse into a single prompt, in character.</p>
           </div>
-          <div class="pillar-detail" data-pillar="mcp">
-            <div class="pillar-detail-icon">&#11043;</div>
-            <span class="pillar-detail-tag">Agency</span>
-            <h3>MCP Actions</h3>
-            <p>NPCs act in the world. Lock doors, call guards, refuse service. Real consequences from autonomous
-              decisions.</p>
+          <div class="lx-stage">
+            <span class="lx-stage-k">03</span>
+            <h3>The model streams</h3>
+            <p>Tokens flow the instant they exist, through a security gate &mdash; never held back for a pause.</p>
+          </div>
+          <div class="lx-stage lx-stage-out">
+            <span class="lx-stage-k">04</span>
+            <h3>It answers aloud</h3>
+            <p>Speech synthesis streams back in the NPC's own voice, mid-sentence if it has to.</p>
           </div>
         </div>
       </section>
 
-      <!-- Voice Pipeline -->
-      <section class="section" id="pipeline">
-        <div class="container">
-          <h2 class="section-title">How It Works</h2>
-          <p class="section-subtitle">NPC context assembles a rich prompt — the pipeline streams it live in under 100ms.
+      <!-- Built for developers -->
+      <section class="lx-dev section-dark" id="features">
+        <div class="lx-head">
+          <span class="lx-eyebrow">Built for developers</span>
+          <h2>Drop a living NPC into any engine.</h2>
+          <p>One HTTP call to talk, one socket for real-time voice. Bring your own models; ship it sandboxed per game.
           </p>
-
-          <div class="pipeline-dual">
-
-            <!-- Left: NPC Context vertical flowchart -->
-            <div class="pd-panel">
-              <div class="pd-panel-header">NPC Context</div>
-
-              <div class="nc-node nc-node-identity">
-                <div class="nc-node-label">Identity</div>
-                <div class="nc-node-tags">
-                  <span class="nc-tag">name</span>
-                  <span class="nc-tag">description</span>
-                  <span class="nc-tag">avatar</span>
-                </div>
-              </div>
-              <div class="nc-connector"></div>
-
-              <div class="nc-node nc-node-anchor">
-                <div class="nc-node-label">Core Anchor</div>
-                <div class="nc-node-tags">
-                  <span class="nc-tag">backstory</span>
-                  <span class="nc-tag">principles</span>
-                  <span class="nc-tag">immutable</span>
-                </div>
-              </div>
-              <div class="nc-connector"></div>
-
-              <div class="nc-node nc-node-personality">
-                <div class="nc-node-label">Personality</div>
-                <div class="nc-node-tags">
-                  <span class="nc-tag">Big Five traits</span>
-                  <span class="nc-tag">salience</span>
-                </div>
-              </div>
-              <div class="nc-connector"></div>
-
-              <div class="nc-node nc-node-knowledge">
-                <div class="nc-node-label">Knowledge &amp; Tools</div>
-                <div class="nc-node-tags">
-                  <span class="nc-tag">tiered access</span>
-                  <span class="nc-tag">MCP actions</span>
-                </div>
-              </div>
-              <div class="nc-connector"></div>
-
-              <div class="nc-node nc-node-network">
-                <div class="nc-node-label">Network</div>
-                <div class="nc-node-tags">
-                  <span class="nc-tag">NPC connections</span>
-                  <span class="nc-tag">player recognition</span>
-                </div>
-              </div>
-              <div class="nc-connector"></div>
-
-              <div class="nc-node nc-node-memory">
-                <div class="nc-node-label">Memory</div>
-                <div class="nc-node-tags">
-                  <span class="nc-tag">Daily Pulse</span>
-                  <span class="nc-tag">Weekly Whisper</span>
-                  <span class="nc-tag">Persona Shift</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Center: feeds-into bridge -->
-            <div class="pd-bridge">
-              <div class="pd-bridge-line"></div>
-              <div class="pd-bridge-label">builds prompt</div>
-              <div class="pd-bridge-arrow">&#8594;</div>
-              <div class="pd-bridge-line"></div>
-            </div>
-
-            <!-- Right: Voice Pipeline vertical flowchart -->
-            <div class="pd-panel">
-              <div class="pd-panel-header">Voice Pipeline</div>
-
-              <div class="vp-node vp-node-input">
-                <div class="vp-node-label">Mic Input</div>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-decision">
-                <div class="vp-node-label">VAD</div>
-                <div class="vp-node-detail">silence discarded</div>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-streaming">
-                <div class="vp-node-label">Speech-to-Text</div>
-                <span class="vp-badge">streaming</span>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-security">
-                <div class="vp-node-label">Security Gate</div>
-                <div class="vp-node-detail">blocked input dropped</div>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-context">
-                <div class="vp-node-label">Context Assembly</div>
-                <div class="vp-node-detail">NPC prompt built</div>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-llm">
-                <div class="vp-node-label">Streaming LLM</div>
-                <span class="vp-badge vp-badge-accent">token stream</span>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-streaming">
-                <div class="vp-node-label">Speech Synthesis</div>
-                <span class="vp-badge">streaming</span>
-              </div>
-              <div class="vp-step-arrow">&#8595;</div>
-
-              <div class="vp-node vp-node-output">
-                <div class="vp-node-label">Audio Output</div>
-              </div>
-            </div>
-
-          </div>
         </div>
-      </section>
+        <div class="lx-engine" aria-hidden="true">
+          <span class="lx-engine-label">your engine</span>
+          <span class="lx-engine-npc"><span class="lx-engine-dot"></span></span>
+        </div>
+        <div class="lx-dev-grid">
+          <div class="lx-code" aria-hidden="true">
+            <div class="lx-code-bar"><span></span><span></span><span></span><span class="lx-code-file">talk.sh</span></div>
+            <pre><code><span class="c-c"># one POST &mdash; your NPC answers in character</span>
+<span class="c-k">curl</span> -X POST https://api.soulengine.dev/v1/converse \
+  -H <span class="c-s">"x-game-key: $KEY"</span> \
+  -d <span class="c-s">'{ "npc":    "elara_innkeeper",
+        "player": "wanderer_07",
+        "say":    "Any rooms left tonight?" }'</span>
 
-      <!-- Features Grid -->
-      <section class="section section-dark" id="features">
-        <div class="container">
-          <h2 class="section-title">Built for Game Developers</h2>
-          <p class="section-subtitle">Practical, production-ready integration — not just a research prototype</p>
-
-          <div class="features-grid">
-            <div class="feature-card">
-              <div class="feature-icon">&#9672;</div>
-              <h3>Transient Sessions</h3>
-              <p>Everything lives in RAM during a conversation. Persisted only when the session ends — zero database
-                writes mid-chat.</p>
-            </div>
-            <div class="feature-card">
-              <div class="feature-icon">&#9671;</div>
-              <h3>State History</h3>
-              <p>Git-like versioning for NPC state. Roll back personality or memories to any prior checkpoint if
-                something goes wrong in production.</p>
-            </div>
-            <div class="feature-card feature-card-highlight">
-              <div class="feature-icon">&#9670;</div>
-              <h3>Unity Asset Package <span class="feature-tag">Coming Soon</span></h3>
-              <p>A native Unity package to plug SoulEngine directly into your game. Drop-in NPC prefabs, session
-                lifecycle hooks, and voice pipeline wired out of the box.</p>
-            </div>
-            <div class="feature-card">
-              <div class="feature-icon">&#9684;</div>
-              <h3>REST + WebSocket API</h3>
-              <p>Language-agnostic integration. Text conversation over REST, real-time voice over WebSocket. Works with
-                any engine or platform.</p>
-            </div>
-            <div class="feature-card">
-              <div class="feature-icon">&#9681;</div>
-              <h3>Bring Your Own AI</h3>
-              <p>Swap LLM, STT, and TTS providers per project. Configure API keys per project so different games use
-                different providers independently.</p>
-            </div>
-            <div class="feature-card">
-              <div class="feature-icon">&#9733;</div>
-              <h3>Full Isolation</h3>
-              <p>Each project is completely sandboxed — its own NPCs, knowledge base, tools, and API keys. Multi-game
-                deployment without collision.</p>
-            </div>
+<span class="c-c">&#8592; 200 OK</span>
+{
+  <span class="c-p">"reply"</span>: <span class="c-s">"For you? Corner room, top of the stairs. Mind the cat."</span>,
+  <span class="c-p">"mood"</span>:  <span class="c-s">"warm"</span>,
+  <span class="c-p">"did"</span>:   [ <span class="c-s">"give_key"</span> ]
+}</code></pre>
           </div>
+          <ul class="lx-benefits">
+            <li>
+              <h3>Bring your own AI</h3>
+              <p>Swap LLM, STT and TTS per project &mdash; your keys, your models, your bill.</p>
+            </li>
+            <li>
+              <h3>Versioned minds</h3>
+              <p>Git-like history for every NPC. Roll personality or memory back to any checkpoint.</p>
+            </li>
+            <li>
+              <h3>Fully isolated</h3>
+              <p>Each game is sandboxed &mdash; its own NPCs, knowledge, tools and keys. No collisions.</p>
+            </li>
+            <li>
+              <h3>Engine-agnostic</h3>
+              <p>REST to chat, WebSocket for live voice. Native Unity package in development.</p>
+            </li>
+          </ul>
         </div>
       </section>
 
       <!-- CTA -->
-      <section class="section section-cta">
-        <div class="container">
-          <h2>Ready to create memorable NPCs?</h2>
-          <p>Start with a project. No signup required.</p>
-          <button class="btn btn-primary btn-lg" id="btn-cta-create">
-            <span class="icon">+</span>
-            Create Your First Project
-          </button>
+      <section class="lx-cta">
+        <div class="lx-cta-mark">
+          <div class="lx-whip" id="brand-whip">Soul<span class="brand-accent">Engine</span></div>
         </div>
+        <h2>Your NPCs are about to wake up.</h2>
+        <p>Start with a project. No signup required.</p>
+        <button class="btn btn-primary btn-lg" id="btn-cta-create">
+          <span class="icon">+</span>
+          Create your first project
+        </button>
       </section>
 
       <!-- Footer -->
@@ -479,7 +414,25 @@
           <div class="footer-grid">
             <div class="footer-brand">
               <div class="footer-brand-header">
-                <img src="/img/logg.jpg" alt="SoulEngine" class="brand-icon-img">
+                <svg class="brand-mark" viewBox="0 0 80 72" width="44" height="40" aria-hidden="true" focusable="false">
+                  <g stroke="rgba(220,222,232,0.22)" stroke-width="1.2" fill="none">
+                    <line x1="36" y1="40" x2="20" y2="22" />
+                    <line x1="36" y1="40" x2="16" y2="50" />
+                    <line x1="36" y1="40" x2="52" y2="20" />
+                    <line x1="52" y1="20" x2="62" y2="46" />
+                    <line x1="36" y1="40" x2="44" y2="56" />
+                  </g>
+                  <circle class="brand-mark-ring" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6"
+                    stroke-width="1.3" />
+                  <circle class="brand-mark-ring brand-mark-ring-2" cx="36" cy="40" r="7" fill="none" stroke="#83e0c6"
+                    stroke-width="1.3" />
+                  <circle cx="20" cy="22" r="2.6" fill="#b6a6f2" />
+                  <circle cx="16" cy="50" r="3.2" fill="#f1a6c4" />
+                  <circle cx="52" cy="20" r="3" fill="#f1a6c4" />
+                  <circle cx="62" cy="46" r="3.4" fill="#b6a6f2" />
+                  <circle cx="44" cy="56" r="2.6" fill="#83e0c6" />
+                  <circle class="brand-mark-core" cx="36" cy="40" r="5.4" fill="#83e0c6" />
+                </svg>
                 <span class="brand-text">Soul<span class="brand-accent">Engine</span></span>
               </div>
               <p>NPCs with memory, motive, and agency. Stateless intelligence with layered psychological cycles.</p>

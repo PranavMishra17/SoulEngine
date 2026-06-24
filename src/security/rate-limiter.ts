@@ -1,40 +1,58 @@
 import { getConfig } from '../config.js';
 import { createLogger } from '../logger.js';
+import type { RateLimitStore, RateLimitEntry } from './rate-limit-store.js';
+import { InMemoryRateLimitStore } from './rate-limit-store.js';
 
 const logger = createLogger('rate-limiter');
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
+/**
+ * Rate limiter with principal-based keying
+ *
+ * Keys rate limits on a trusted principal (authenticated user ID, API key, IP address)
+ * rather than client-supplied player_id, preventing bypass via player_id rotation.
+ *
+ * The principal parameter is optional for backward compatibility. When not provided,
+ * falls back to keying on playerId (less secure, but maintains existing behavior).
+ *
+ * State is stored via RateLimitStore interface, allowing external/shared storage
+ * (e.g., Redis) to be plugged in for horizontal scaling.
+ */
 class RateLimiter {
-  private store: Map<string, RateLimitEntry> = new Map();
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private store: RateLimitStore;
 
-  constructor() {
-    this.startCleanup();
+  constructor(store?: RateLimitStore) {
+    this.store = store || new InMemoryRateLimitStore();
   }
 
-  private startCleanup(): void {
-    this.cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      for (const [key, entry] of this.store.entries()) {
-        if (entry.resetAt <= now) {
-          this.store.delete(key);
-        }
-      }
-    }, 60000);
-  }
-
-  public checkLimit(projectId: string, playerId: string, npcId: string): { allowed: boolean; remaining: number; resetAt: number } {
+  /**
+   * Check if a request is allowed under rate limits
+   *
+   * Note: This is synchronous and assumes a synchronous store.
+   * The store interface allows Promise returns for flexibility, but
+   * this implementation requires a synchronous store (like InMemoryRateLimitStore).
+   * For async stores (e.g., Redis), wrap this class or use an async version.
+   *
+   * @param projectId - The project making the request
+   * @param playerId - Client-supplied player ID (untrusted)
+   * @param npcId - The NPC being conversed with
+   * @param principal - OPTIONAL: Trusted principal (user ID, API key, IP). If provided,
+   *                    rate limit is keyed on this instead of playerId, preventing bypass.
+   *                    If omitted, falls back to playerId for backward compatibility.
+   * @returns Rate limit status
+   */
+  public checkLimit(
+    projectId: string,
+    playerId: string,
+    npcId: string,
+    principal?: string
+  ): { allowed: boolean; remaining: number; resetAt: number } {
     const config = getConfig();
     const limit = config.security.rateLimitPerMinute;
-    const key = `${projectId}:${playerId}:${npcId}`;
+    const key = this.makeKey(projectId, playerId, npcId, principal);
     const now = Date.now();
     const windowMs = 60000;
 
-    const entry = this.store.get(key);
+    const entry = this.store.get(key) as RateLimitEntry | null;
 
     if (!entry || entry.resetAt <= now) {
       this.store.set(key, {
@@ -57,25 +75,52 @@ class RateLimiter {
       };
     }
 
-    entry.count += 1;
+    // Increment and persist the updated count
+    const updatedEntry = {
+      count: entry.count + 1,
+      resetAt: entry.resetAt,
+    };
+    this.store.set(key, updatedEntry);
+
     return {
       allowed: true,
-      remaining: limit - entry.count,
-      resetAt: entry.resetAt,
+      remaining: limit - updatedEntry.count,
+      resetAt: updatedEntry.resetAt,
     };
   }
 
-  public reset(projectId: string, playerId: string, npcId: string): void {
-    const key = `${projectId}:${playerId}:${npcId}`;
+  /**
+   * Reset rate limit for a specific principal
+   *
+   * @param projectId - The project
+   * @param playerId - Client-supplied player ID
+   * @param npcId - The NPC
+   * @param principal - OPTIONAL: The principal to reset. Should match what was passed to checkLimit.
+   */
+  public reset(projectId: string, playerId: string, npcId: string, principal?: string): void {
+    const key = this.makeKey(projectId, playerId, npcId, principal);
     this.store.delete(key);
   }
 
+  /**
+   * Generate rate limit key
+   *
+   * If principal is provided, key on it (secure).
+   * If not, fall back to playerId (backward compat, less secure).
+   */
+  private makeKey(projectId: string, playerId: string, npcId: string, principal?: string): string {
+    const keyPart = principal || playerId;
+    return `${projectId}:${keyPart}:${npcId}`;
+  }
+
   public destroy(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
+    if (this.store instanceof InMemoryRateLimitStore) {
+      this.store.destroy();
+      // Reinitialize with a fresh store after destroy
+      this.store = new InMemoryRateLimitStore();
+    } else if (this.store.clear) {
+      this.store.clear();
     }
-    this.store.clear();
   }
 }
 
