@@ -7,6 +7,7 @@ class Router {
     this.routes = [];
     this.currentRoute = null;
     this.params = {};
+    this.afterHooks = [];
 
     // Listen for popstate (back/forward buttons)
     window.addEventListener('popstate', () => this.handleRoute());
@@ -53,6 +54,30 @@ class Router {
   }
 
   /**
+   * Register a callback that runs after every resolved route (matched or not).
+   * Receives the current pathname and a copy of the route params. Used by the
+   * persistent project-world shell to mount/dim/unmount itself per route
+   * without each page handler having to know about it.
+   */
+  afterEach(callback) {
+    this.afterHooks.push(callback);
+    return this;
+  }
+
+  /**
+   * Run the registered afterEach hooks. Errors in one hook never break routing.
+   */
+  runAfterHooks(path) {
+    for (const hook of this.afterHooks) {
+      try {
+        hook(path, { ...this.params });
+      } catch (error) {
+        console.error('Router afterEach hook error:', error);
+      }
+    }
+  }
+
+  /**
    * Handle the current route
    */
   async handleRoute() {
@@ -75,12 +100,16 @@ class Router {
         } catch (error) {
           console.error('Route handler error:', error);
         }
+        this.runAfterHooks(path);
         return;
       }
     }
 
     // No route matched - just log it, don't navigate to prevent infinite loops
+    this.currentRoute = null;
+    this.params = {};
     console.warn('No route matched:', path);
+    this.runAfterHooks(path);
     // Don't call navigate here - it causes infinite recursion if '/' also doesn't match
   }
 

@@ -3,7 +3,7 @@
  */
 
 import { mcpTools } from '../api.js';
-import { toast, modal, renderTemplate, updateNav } from '../components.js';
+import { toast, modal, renderTemplate, updateNav, projectNav } from '../components.js';
 import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
 
@@ -73,15 +73,7 @@ export async function initMcpToolsPage(params) {
   renderTemplate('template-mcp-tools');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard' },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools', active: true },
-    { href: `/projects/${projectId}/playground`, label: 'Playground' },
-    { href: `/projects/${projectId}/settings`, label: 'Settings' },
-  ]);
+  updateNav(projectNav(projectId, 'mcp-tools'));
 
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);

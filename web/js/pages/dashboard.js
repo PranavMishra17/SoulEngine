@@ -3,7 +3,7 @@
  */
 
 import { projects, npcs, mcpTools, starterPacks, ApiError } from '../api.js';
-import { toast, modal, loading, renderTemplate, updateNav } from '../components.js';
+import { toast, modal, loading, renderTemplate, updateNav, projectNav } from '../components.js';
 import { router } from '../router.js';
 
 let currentProject = null;
@@ -20,15 +20,7 @@ export async function initDashboardPage(params) {
   renderTemplate('template-dashboard');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard', active: true },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
-    { href: `/projects/${projectId}/playground`, label: 'Playground' },
-    { href: `/projects/${projectId}/settings`, label: 'Settings' },
-  ]);
+  updateNav(projectNav(projectId, 'overview'));
 
   // Bind board clicks
   document.getElementById('board-npcs')?.addEventListener('click', (e) => {

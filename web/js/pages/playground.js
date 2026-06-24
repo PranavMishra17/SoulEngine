@@ -3,7 +3,7 @@
  */
 
 import { npcs, projects, knowledge, mcpTools, session, conversation, cycles, VoiceClient } from '../api.js';
-import { toast, renderTemplate, updateNav, getMoodEmoji, getMoodLabel, modal } from '../components.js';
+import { toast, renderTemplate, updateNav, projectNav, getMoodEmoji, getMoodLabel, modal } from '../components.js';
 import { router } from '../router.js';
 
 // Mind tab state
@@ -82,15 +82,7 @@ export async function initPlaygroundPage(params) {
   renderTemplate('template-playground');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard' },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
-    { href: `/projects/${projectId}/playground`, label: 'Playground', active: true },
-    { href: `/projects/${projectId}/settings`, label: 'Settings' },
-  ]);
+  updateNav(projectNav(projectId, 'playground'));
 
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);

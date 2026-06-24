@@ -3,7 +3,7 @@
  */
 
 import { npcs, knowledge, projects, mcpTools, session, history } from '../api.js';
-import { toast, modal, loading, renderTemplate, updateNav, createTagInput, describePersonality } from '../components.js';
+import { toast, modal, loading, renderTemplate, updateNav, projectNav, createTagInput, describePersonality } from '../components.js';
 import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
 import { getAccessToken } from '../auth.js';
@@ -96,15 +96,7 @@ export async function initNpcListPage(params) {
   renderTemplate('template-npc-list');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard' },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs', active: true },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
-    { href: `/projects/${projectId}/playground`, label: 'Playground' },
-    { href: `/projects/${projectId}/settings`, label: 'Settings' },
-  ]);
+  updateNav(projectNav(projectId, 'npcs'));
 
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
@@ -216,15 +208,7 @@ export async function initNpcEditorPage(params) {
   renderTemplate('template-npc-editor');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard' },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs', active: true },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
-    { href: `/projects/${projectId}/playground`, label: 'Playground' },
-    { href: `/projects/${projectId}/settings`, label: 'Settings' },
-  ]);
+  updateNav(projectNav(projectId, 'npcs'));
 
   // Update breadcrumbs
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);

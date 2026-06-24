@@ -3,7 +3,7 @@
  */
 
 import { knowledge } from '../api.js';
-import { toast, modal, loading, renderTemplate, updateNav, debounce } from '../components.js';
+import { toast, modal, loading, renderTemplate, updateNav, projectNav, debounce } from '../components.js';
 import { openJsonEditor } from '../components/json-editor.js';
 import { router } from '../router.js';
 
@@ -17,15 +17,7 @@ export async function initKnowledgePage(params) {
   renderTemplate('template-knowledge');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard' },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge', active: true },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
-    { href: `/projects/${projectId}/playground`, label: 'Playground' },
-    { href: `/projects/${projectId}/settings`, label: 'Settings' },
-  ]);
+  updateNav(projectNav(projectId, 'knowledge'));
 
   // Update breadcrumb
   document.getElementById('breadcrumb-project')?.setAttribute('href', `/projects/${projectId}`);
