@@ -318,6 +318,27 @@ export function updateNav(links) {
 }
 
 /**
+ * Canonical in-project navigation links. The project home is the world; the
+ * dashboard lives at /overview (reached in-world via the Commons).
+ * @param {string} projectId
+ * @param {string} active - key of the active section
+ *   ('world' | 'overview' | 'npcs' | 'knowledge' | 'mcp-tools' | 'playground' | 'settings')
+ */
+export function projectNav(projectId, active) {
+  const item = (key, href, label) => ({ href, label, active: active === key });
+  return [
+    { href: '/projects', label: 'Projects' },
+    item('world', `/projects/${projectId}`, 'World'),
+    item('overview', `/projects/${projectId}/overview`, 'Dashboard'),
+    item('npcs', `/projects/${projectId}/npcs`, 'NPCs'),
+    item('knowledge', `/projects/${projectId}/knowledge`, 'Knowledge'),
+    item('mcp-tools', `/projects/${projectId}/mcp-tools`, 'MCP Tools'),
+    item('playground', `/projects/${projectId}/playground`, 'Playground'),
+    item('settings', `/projects/${projectId}/settings`, 'Settings'),
+  ];
+}
+
+/**
  * Render a template into a container
  */
 export function renderTemplate(templateId, containerId = 'main-content') {

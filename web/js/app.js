@@ -7,7 +7,9 @@ import { router } from './router.js';
 import { toast } from './components.js';
 import { initLandingPage } from './pages/landing.js';
 import { initProjectsPage } from './pages/projects.js';
+import { initWorldHome } from './pages/world-home.js';
 import { initDashboardPage } from './pages/dashboard.js';
+import worldShell from './pages/world-shell.js';
 import { initNpcListPage, initNpcEditorPage } from './pages/npc-editor.js';
 import { initKnowledgePage } from './pages/knowledge.js';
 import { initMcpToolsPage } from './pages/mcp-tools.js';
@@ -54,8 +56,9 @@ async function init() {
     // Projects
     .on('/projects', initProjectsPage)
 
-    // Project dashboard
-    .on('/projects/:projectId', initDashboardPage)
+    // Project home — the explorable "world" (dashboard now lives at /overview)
+    .on('/projects/:projectId', initWorldHome)
+    .on('/projects/:projectId/overview', initDashboardPage)
 
     // NPCs
     .on('/projects/:projectId/npcs', initNpcListPage)
@@ -71,10 +74,14 @@ async function init() {
     .on('/projects/:projectId/playground', initPlaygroundPage)
 
     // Settings
-    .on('/projects/:projectId/settings', initSettingsPage)
+    .on('/projects/:projectId/settings', initSettingsPage);
 
-    // Start router
-    .start();
+  // Keep the persistent world shell in sync with every route: it mounts on
+  // project routes, dims behind zone overlays, and unmounts when you leave.
+  router.afterEach((path) => worldShell.syncToRoute(path));
+
+  // Start router
+  router.start();
 
   // Theme toggle
   document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);

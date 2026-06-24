@@ -3,7 +3,7 @@
  */
 
 import { projects } from '../api.js';
-import { toast, modal, renderTemplate, updateNav } from '../components.js';
+import { toast, modal, renderTemplate, updateNav, projectNav } from '../components.js';
 import { router } from '../router.js';
 
 let currentProject = null;
@@ -41,15 +41,7 @@ export async function initSettingsPage(params) {
   renderTemplate('template-settings');
 
   // Update navigation
-  updateNav([
-    { href: '/projects', label: 'Projects' },
-    { href: `/projects/${projectId}`, label: 'Dashboard' },
-    { href: `/projects/${projectId}/npcs`, label: 'NPCs' },
-    { href: `/projects/${projectId}/knowledge`, label: 'Knowledge' },
-    { href: `/projects/${projectId}/mcp-tools`, label: 'MCP Tools' },
-    { href: `/projects/${projectId}/playground`, label: 'Playground' },
-    { href: `/projects/${projectId}/settings`, label: 'Settings', active: true },
-  ]);
+  updateNav(projectNav(projectId, 'settings'));
 
   // Load project data
   await loadSettings(projectId);
