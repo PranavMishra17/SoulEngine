@@ -4,7 +4,7 @@
  */
 
 import { router } from './router.js';
-import { toast } from './components.js';
+import { toast, modal } from './components.js';
 import { initLandingPage } from './pages/landing.js';
 import { initProjectsPage } from './pages/projects.js';
 import { initWorldHome } from './pages/world-home.js';
@@ -15,13 +15,15 @@ import { initKnowledgePage } from './pages/knowledge.js';
 import { initMcpToolsPage } from './pages/mcp-tools.js';
 import { initPlaygroundPage } from './pages/playground.js';
 import { initSettingsPage } from './pages/project-settings.js';
-import { 
-  initAuth, 
-  signInWithGoogle, 
-  signOut, 
-  onAuthStateChange, 
+import {
+  initAuth,
+  signInWithGoogle,
+  devSignIn,
+  isDevLoginAvailable,
+  signOut,
+  onAuthStateChange,
   getUserDisplayInfo,
-  isAuthEnabled 
+  isAuthEnabled
 } from './auth.js';
 import { setAuthFailureHandler } from './api.js';
 
@@ -35,6 +37,12 @@ async function init() {
   // Initialize authentication (async - loads config from server)
   const authEnabled = await initAuth();
   console.log('[App] Auth enabled:', authEnabled);
+
+  // Local/dev-only sign-in — never hits Supabase. Only shown outside production.
+  if (isDevLoginAvailable()) {
+    const devSignInBtn = document.getElementById('btn-dev-sign-in');
+    if (devSignInBtn) devSignInBtn.style.display = '';
+  }
 
   // Set up auth state change listener
   onAuthStateChange(handleAuthStateChange);
@@ -192,6 +200,65 @@ function setupAuthListeners() {
         `;
       }
       // If successful, page will redirect to Google OAuth
+    });
+  }
+
+  // Local/dev-only sign-in button
+  const devSignInBtn = document.getElementById('btn-dev-sign-in');
+  if (devSignInBtn) {
+    devSignInBtn.addEventListener('click', () => {
+      const form = document.createElement('div');
+      form.innerHTML = `
+        <div class="form-group">
+          <label for="dev-auth-email">Gmail address</label>
+          <input type="email" id="dev-auth-email" class="form-input" placeholder="you@gmail.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="dev-auth-name">Display name (optional)</label>
+          <input type="text" id="dev-auth-name" class="form-input" placeholder="Your name" autocomplete="name">
+        </div>
+        <p style="font-size: 13px; opacity: 0.7; margin-top: 8px;">
+          Local dev sign-in — this never contacts Supabase. Only available because the server isn't running in production mode.
+        </p>
+      `;
+
+      const activeModal = modal.open({
+        title: 'Continue with Gmail (Dev)',
+        content: form,
+        footer: `
+          <button class="btn btn-ghost" id="dev-auth-cancel">Cancel</button>
+          <button class="btn btn-primary" id="dev-auth-submit">Continue</button>
+        `,
+      });
+
+      document.getElementById('dev-auth-cancel')?.addEventListener('click', () => activeModal.close());
+
+      document.getElementById('dev-auth-submit')?.addEventListener('click', async () => {
+        const email = document.getElementById('dev-auth-email')?.value.trim();
+        const name = document.getElementById('dev-auth-name')?.value.trim();
+
+        if (!email) {
+          toast.error('Email required', 'Enter a Gmail address to continue');
+          return;
+        }
+
+        const submitBtn = document.getElementById('dev-auth-submit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing in...';
+
+        const { error } = await devSignIn(email, name);
+
+        if (error) {
+          toast.error('Sign In Failed', error.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Continue';
+          return;
+        }
+
+        activeModal.close();
+        toast.success('Signed In', `Continuing as ${name || email}`);
+        router.navigate('/projects');
+      });
     });
   }
 
