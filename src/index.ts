@@ -19,9 +19,11 @@ import { createConversationRoutes } from './routes/conversation.js';
 import { createCycleRoutes } from './routes/cycles.js';
 import { historyRoutes } from './routes/history.js';
 import { waitlistRoutes } from './routes/waitlist.js';
+import { devAuthRoutes } from './routes/dev-auth.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
 import { getStarterPackMetaList } from './data/starter-packs.js';
 import { createEventsRoute } from './routes/events.js';
+import { isDevLoginEnabled } from './security/dev-auth.js';
 
 // HTTP helpers
 import { applyVersioning } from './http/versioning.js';
@@ -218,10 +220,19 @@ app.get('/api/config', (c) => {
       // Only expose the public anon key (safe to expose to frontend)
       supabaseUrl: config.supabase.url || null,
       supabaseAnonKey: config.supabase.anonKey || null,
+      // Local/dev-only sign-in that never touches Supabase — see routes/dev-auth.ts.
+      // Always false in a real production deployment.
+      devLoginAvailable: isDevLoginEnabled(),
     },
     version: '2.0.0',
   });
 });
+
+// Local/dev-only sign-in — mounted only outside production, so the route
+// literally does not exist in a real deployment regardless of any other flag.
+if (isDevLoginEnabled()) {
+  app.route('/api/auth/dev', devAuthRoutes);
+}
 
 if (isAuthEnabled()) {
   logger.info('Authentication enabled - hybrid storage active (logged-in→Supabase, logged-out→local)');

@@ -98,6 +98,11 @@
               </svg>
               Sign In
             </button>
+            <!-- Local/dev-only sign-in — never hits Supabase. Shown only when the
+                 server reports devLoginAvailable (i.e. not production). -->
+            <button class="btn btn-ghost btn-sm" id="btn-dev-sign-in" style="display: none;" title="Sign in locally without Supabase (dev only)">
+              Continue with Gmail (Dev)
+            </button>
           </div>
 
           <!-- Authenticated state (hidden by default) -->

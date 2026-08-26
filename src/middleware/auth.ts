@@ -1,6 +1,7 @@
 import { Context, Next } from 'hono';
 import { createLogger } from '../logger.js';
 import { verifySessionToken } from '../session/manager.js';
+import { verifyDevToken } from '../security/dev-auth.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -15,6 +16,24 @@ let verifyTokenFn: ((token: string) => Promise<{ userId: string; email?: string 
 if (useAuth) {
   const { verifyToken } = await import('../storage/supabase/client.js');
   verifyTokenFn = verifyToken;
+}
+
+/**
+ * In dev/local mode, recognize a locally-issued dev sign-in token from the
+ * Authorization header so the dashboard can show a real identity without
+ * ever contacting Supabase. Returns null for a missing/invalid/foreign
+ * token, in which case the caller falls back to anonymous access exactly as
+ * before this existed. verifyDevToken independently refuses to validate
+ * anything once NODE_ENV is production, so this is inert outside dev.
+ */
+function tryDevAuth(c: Context): AuthUser | null {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const result = verifyDevToken(authHeader.substring(7));
+  if (!result) return null;
+
+  return { id: result.userId, email: result.email };
 }
 
 /**
@@ -48,10 +67,12 @@ declare module 'hono' {
  * - Sets user to null
  */
 export async function authMiddleware(c: Context, next: Next): Promise<Response | void> {
-  // In development/local mode, skip authentication
+  // In development/local mode, skip real (Supabase) authentication, but
+  // still honor a local dev sign-in token if one was presented.
   if (!useAuth) {
-    c.set('user', null);
-    c.set('userId', null);
+    const devUser = tryDevAuth(c);
+    c.set('user', devUser);
+    c.set('userId', devUser?.id ?? null);
     await next();
     return;
   }
@@ -104,10 +125,12 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
  * - Sets user to null
  */
 export async function optionalAuthMiddleware(c: Context, next: Next): Promise<Response | void> {
-  // In development/local mode, skip authentication
+  // In development/local mode, skip real (Supabase) authentication, but
+  // still honor a local dev sign-in token if one was presented.
   if (!useAuth) {
-    c.set('user', null);
-    c.set('userId', null);
+    const devUser = tryDevAuth(c);
+    c.set('user', devUser);
+    c.set('userId', devUser?.id ?? null);
     await next();
     return;
   }

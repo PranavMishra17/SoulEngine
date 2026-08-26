@@ -15,6 +15,7 @@
 
 import * as local from './local/index.js';
 import * as supabaseStorage from './supabase/index.js';
+import { isDevUserId } from '../security/dev-auth.js';
 
 const hasSupabase = !!(
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -27,7 +28,7 @@ const hasSupabase = !!(
  * @returns Storage backend (local or supabase)
  */
 export function getStorage(userId?: string | null) {
-  if (userId && hasSupabase) {
+  if (userId && hasSupabase && !isDevUserId(userId)) {
     return supabaseStorage;
   }
   return local;
@@ -45,5 +46,5 @@ export function isSupabaseAvailable(): boolean {
  * Useful for logging and debugging.
  */
 export function getStorageMode(userId?: string | null): 'local' | 'supabase' {
-  return userId && hasSupabase ? 'supabase' : 'local';
+  return userId && hasSupabase && !isDevUserId(userId) ? 'supabase' : 'local';
 }
