@@ -25,6 +25,8 @@ reference material to develop against — read it before re-litigating a decisio
 
 | `06-bounded-evolution-and-memory-pruning.md` | D2 | What changes vs what is fixed in RimWorld, CK3, Dwarf Fortress and The Sims; what bounds drift; whether subsystem toggles exist; memory pruning as authored data | **done** — answered on the third attempt, after permitting community wikis as provenance-labelled evidence |
 
+| `07-pricing-and-comparables.md` | manual | Convai, Inworld, Charisma, Photon pricing and Unity Asset Store comparables, fetched by hand in a rendered browser | **done** — answered after three harness failures |
+
 ## Decisions waiting on this
 
 | ID | Decision | State after passes A and B |
