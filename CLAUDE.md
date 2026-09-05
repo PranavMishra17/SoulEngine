@@ -29,6 +29,25 @@ This applies to **every repository reachable from this workspace**, including th
 
 ---
 
+## RULE ONE — ALWAYS SAY WHERE. NEVER MAKE ME HUNT.
+
+**I have hundreds of files. If you reference something and I have to go looking for it, you have failed.**
+
+Every time you mention an ID, decision, option, finding, item, or piece of work, name **where it lives**
+in the same breath — clickable path plus section or line:
+
+- Not "decide D2" -> "decide D2, the topology options in `PRODUCT.md` §3.3"
+- Not "backlog item 6.8" -> "backlog item 6.8 in `backlog.md`, Tier 6 table"
+- Not "the paywall is missing" -> "`SessionManager.cs:40-125` never checks the key"
+
+And when you ask me to choose between options, **restate the options inline** in the message. Do not
+make me open a file to understand your own question. A one-line summary per option, then the pointer to
+where the full version lives.
+
+This applies to chat replies, commit messages, PR bodies, and docs alike.
+
+---
+
 ## Operating Model (post-2026-06 audit) — READ FIRST
 
 The project runs against a tracked backlog using spec-driven, test-first development. Full manual: [`WORKFLOW.md`](WORKFLOW.md). Short version:
