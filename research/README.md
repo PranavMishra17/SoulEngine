@@ -21,15 +21,17 @@ reference material to develop against — read it before re-litigating a decisio
 | `04-game-prior-art-actions-and-evolution.md` | C2 | Composing vs terminating actions, action arbitration, results flowing back into dialogue, bounded designer-controlled evolution, memory pruning (re-run of Q10-Q11 against game-industry prior art) | **done** — action layer answered with shipped precedent; **character evolution returned nothing for the second time** (sourcing failure, targets named) |
 | `02-agent-architecture-and-actions.md` | B | Cognition architecture and recall latency, action/tool layer design, actions in dialogue, designer-controlled evolution, memory pruning, deployment shapes (`PRODUCT.md` §5 Q8-Q12) | **done** — Q8-Q9 answered, Q10-Q12 returned nothing |
 
+| `05-multi-engine-sdk-architecture.md` | D1 | How PlayFab, RevenueCat and Steamworks share a core across platforms, and what that means for porting cognition to Unreal/Godot | **done** — answered; pricing and licence enforcement failed for the third time |
+
 ## Decisions waiting on this
 
 | ID | Decision | State after passes A and B |
 |---|---|---|
 | D2 | Runtime topology | **DECIDED — Option B** (fat client + developer-run key broker), 2026-09-05 |
-| D6 | Multi-engine scope and timing | Still blocked — Q3 returned nothing |
+| D6 | Multi-engine scope and timing | **Answered by D1.** No vendor shares behavioural logic across engines. Decision still open. |
 | D11 | Deployment shape to optimize for | Still open — no per-shape budgets survived |
 | D12 | **Pass C** | **Done.** C1: marketplace rules. C2: action layer. |
-| D13 | **Pass D, commercial half** — multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **Open.** C1 exhausted its 200/200 search budget before reaching these. Re-run by direct URL: `photonengine`, PlayFab SDKs, `RevenueCat/purchases-unity`, AudioKinetic/FMOD integration layers, `Steamworks.NET`, and vendor pricing pages. |
+| D13 | **Pass D, commercial half** | **Split.** Multi-engine **answered** in `05-...md`. Pricing and licence enforcement **failed a third time** — and this time budget was not the cause. Pricing pages are JS shells and bot-protected (Fab 403'd automated fetches in C1). **Stop using the research harness for these**: it is a bounded list of about a dozen URLs, so fetch them by hand in a browser session. |
 | D14 | **Pass D, evolution half** — bounded, designer-controlled character change | **Open, and failed twice.** Diagnosed as sourcing, not absence. Target by name: Monolith's GDC Nemesis talks, Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, Sims 4 emotion GDC material, AI and Games essays on Nemesis and Radiant AI. **Explicitly permit community wikis and video essays, labelled as such** — these systems are documented far better there than in first-party engineering sources, which is why two first-party-only passes found nothing. |
 | D15 | Action-layer architecture | **Proposed** in `PRODUCT.md` §3.7 from Pass C2, awaiting confirmation |
 

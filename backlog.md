@@ -125,7 +125,7 @@
 | ID | Title | Size | Depends-on | Test req | Status |
 |---|---|---|---|---|---|
 | 5.1 | Implement `/api/sync/*` backend the Unity `CloudSync` calls | L | 2.1, 2.5 | e2e | todo |
-| 5.2 | Cross-runtime conformance tests + shared contract (TS vs C#) | L | 2.5 | conf | todo |
+| 5.2 | Cross-runtime conformance tests + shared contract (TS vs C#). **Load-bearing, not hygiene:** research found no vendor shares behavioural logic across engines, so fixtures are the only drift control available. Pair with a fixed release cadence (RevenueCat's answer was process, not tests). | L | 2.5 | conf | todo |
 | 5.3 | NPC-as-Asset binding (ScriptableObjects, GUID↔npcId) | L | 5.1 | conf | todo |
 | 5.4 | Cycle scheduler + deterministic/offline mode | L | 1.1, 1.8 | unit+conf | todo |
 | 5.5 | Mind pre-gate for cost + per-NPC Mind-off | M | — | unit | todo |

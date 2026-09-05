@@ -559,13 +559,13 @@ deliberately left open — the research covers the range rather than assuming on
 | D3 | License mechanism | DECIDED §3.1 — **still unvalidated for games.** Ed25519 offline licensing is productized commercially (Keygen), but Pass C1 found zero game-middleware evidence and specifically refuted the client-embedded-public-key detail. |
 | D4 | Studio is the moat; Tier 3 promoted to primary product surface | **DECIDED** — §3.2 |
 | D5 | Entitlement source | **Partly answered.** Unity's Invoice API is sanctioned by name (§1.4.a) but its endpoint/auth/response were not retrieved. **Fab and Godot have no seller entitlement API at all** — vendor-run gating is the only option there, and Fab cannot host a subscription. Still deferred by choice; model the seam. |
-| D6 | Multi-engine scope and timing | OPEN — Pass C1 Q3 was **un-researched** (search budget exhausted), not answered. Needs Pass D. |
+| D6 | Multi-engine scope and timing | **Answered by Pass D1.** No vendor shares *behavioural* logic across engines — only API surfaces, type contracts, or a native binary core. Extending B to Unreal/Godot by reimplementing cognition matches no found practice. See [`research/05-multi-engine-sdk-architecture.md`](research/05-multi-engine-sdk-architecture.md). Decision still open. |
 | D7 | Cognition behind a swappable interface | DECIDED §3.6 |
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
 | D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
 | D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
 | D11 | Deployment shape to optimize for | OPEN — Pass C2 gave real numbers for the ambient and real-time tiers (GOAP <1 plan/sec/NPC, ≤4 actions; AI LOD scheduler 57 µs/frame = 0.17% frame time, 48 B/entity) but **nothing for deep conversational NPCs**, the tier that matters most here |
 | D12 | Pass C | **Done.** C1 answered the marketplace rules; C2 answered the action layer. Both left gaps, tracked as D13/D14. |
-| D13 | Pass D (commercial half): multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **OPEN** — C1's search budget hit 200/200 before these ran; re-run by direct URL, not search |
+| D13 | Pass D (commercial half) | **Split.** Multi-engine: **answered** (D1). Pricing + licence enforcement: **failed a third time**; cause is mechanical (JS-shell and bot-protected pages), not budget. Do these by hand in a browser, not via the research harness. |
 | D14 | Pass D (evolution half): bounded designer-controlled character change | **OPEN** — failed twice as a sourcing problem; target named game-design sources, permit community wikis and video essays with labelling |
 | D15 | Action-layer architecture (§3.7) | **DECIDED** — confirmed 2026-09-05 |
