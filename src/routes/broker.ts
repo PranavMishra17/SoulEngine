@@ -3,7 +3,8 @@
  *
  * Endpoints:
  * - POST /token - Mint a broker token
- * - POST /llm - Proxy LLM request
+ * - POST /llm  - Proxy an LLM request (no LLM vendor issues ephemeral credentials)
+ * - POST /vend - Issue a short-lived voice-provider credential
  */
 
 import { Hono } from 'hono';
@@ -17,6 +18,11 @@ import { createLlmProvider } from '../providers/llm/factory.js';
 import type { LLMMessage } from '../providers/llm/interface.js';
 import type { Tool } from '../types/mcp.js';
 import { rateLimiter } from '../security/rate-limiter.js';
+import {
+  vendCredential,
+  VOICE_PROVIDERS,
+  type VoiceProvider,
+} from '../broker/vend-strategies.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('broker-routes');
@@ -27,6 +33,11 @@ const brokerApp = new Hono();
 const MintTokenSchema = z.object({
   project_id: z.string().min(1),
   scopes: z.array(z.string()).optional().default(['llm']),
+  ttl_seconds: z.number().int().positive().max(3600).optional(),
+});
+
+const VendSchema = z.object({
+  provider: z.enum(VOICE_PROVIDERS as unknown as [VoiceProvider, ...VoiceProvider[]]),
   ttl_seconds: z.number().int().positive().max(3600).optional(),
 });
 
@@ -274,6 +285,86 @@ brokerApp.post('/llm', requireBrokerToken(['llm']), async (c) => {
     }
   } catch (error) {
     logger.error({ error: error instanceof Error ? error.message : 'Unknown' }, 'LLM proxy failed');
+    return errorResponse(c, 500, ApiErrorCode.INTERNAL, 'Internal server error');
+  }
+});
+
+/**
+ * POST /vend - Issue a short-lived voice-provider credential.
+ *
+ * Requires a broker token carrying the 'voice' scope. The developer's long-lived
+ * provider key is loaded server-side, exchanged with the provider, and never
+ * returned or logged.
+ */
+brokerApp.post('/vend', requireBrokerToken(['voice']), async (c) => {
+  try {
+    const bodyRaw = await c.req.json().catch(() => ({}));
+    const parsed = VendSchema.safeParse(bodyRaw);
+
+    if (!parsed.success) {
+      logger.warn({ errors: parsed.error.issues }, 'Invalid vend request');
+      return errorResponse(c, 400, ApiErrorCode.VALIDATION_FAILED, 'Invalid request', parsed.error.issues);
+    }
+
+    const { provider, ttl_seconds } = parsed.data;
+
+    const tokenContext = c.get('brokerToken') as BrokerTokenContext;
+    const { tokenId, projectId } = tokenContext;
+
+    // Keyed on the token id, as POST /llm is. This matters more here: a scraped
+    // token could otherwise mint provider credentials without limit.
+    const rateLimitResult = rateLimiter.checkLimit(projectId, tokenId, 'broker-vend', tokenId);
+
+    if (!rateLimitResult.allowed) {
+      logger.warn({ tokenId, projectId, provider }, 'Rate limit exceeded for broker token');
+      return errorResponse(c, 429, ApiErrorCode.RATE_LIMITED, 'Rate limit exceeded', {
+        resetAt: new Date(rateLimitResult.resetAt).toISOString(),
+      });
+    }
+
+    let apiKeys;
+    try {
+      apiKeys = await getStorage(null).loadApiKeys(projectId);
+    } catch (error) {
+      logger.error(
+        { projectId, error: error instanceof Error ? error.message : 'Unknown' },
+        'Failed to load project API keys'
+      );
+      return errorResponse(c, 500, ApiErrorCode.INTERNAL, 'Failed to load project configuration');
+    }
+
+    const providerKey = apiKeys[provider as keyof typeof apiKeys];
+    if (!providerKey) {
+      logger.warn({ projectId, provider }, 'Project has no key configured for provider');
+      return errorResponse(
+        c,
+        400,
+        ApiErrorCode.VALIDATION_FAILED,
+        `No ${provider} API key configured for this project`
+      );
+    }
+
+    try {
+      const vended = await vendCredential(provider, providerKey, ttl_seconds);
+
+      logger.info({ projectId, tokenId, provider }, 'Vended voice credential');
+
+      return c.json({
+        provider: vended.provider,
+        credential: vended.credential,
+        expires_at: vended.expiresAt,
+        single_use: vended.singleUse,
+      });
+    } catch (error) {
+      // vendCredential never puts key material in its message.
+      logger.error(
+        { projectId, tokenId, provider, error: error instanceof Error ? error.message : 'Unknown' },
+        'Credential vending failed'
+      );
+      return errorResponse(c, 502, ApiErrorCode.INTERNAL, 'Provider did not issue a credential');
+    }
+  } catch (error) {
+    logger.error({ error: error instanceof Error ? error.message : 'Unknown' }, 'Vend request failed');
     return errorResponse(c, 500, ApiErrorCode.INTERNAL, 'Internal server error');
   }
 });

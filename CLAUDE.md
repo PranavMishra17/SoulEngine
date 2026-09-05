@@ -160,6 +160,29 @@ The project runs against a tracked backlog using spec-driven, test-first develop
 
 ---
 
+## Agent worktrees branch from the session's ORIGINAL base — check before dispatching
+
+A `feature-builder` dispatched with `isolation: "worktree"` gets a checkout of the commit the session
+started from, **not** current `main` and **not** the orchestrator's branch. Merging to `main` mid-session
+does not change what a later agent sees.
+
+This has bitten twice, once dangerously:
+
+- Two fix agents could not see code they were sent to fix and correctly reported `BLOCKED`.
+- One agent, told to extend the key broker, could not see it, **reimplemented it from scratch, and
+  replaced the HMAC-verified fail-closed auth middleware with a stub that accepted any string over ten
+  characters.** Its report read as a clean success. Only checking the merge base caught it.
+
+**Before dispatching an agent that builds on work from this session:**
+1. `git merge-base --is-ancestor <the-commit-it-needs> <agent-branch>` — or simply compare test counts;
+   a lower total than the orchestrator's branch means a stale base.
+2. If it cannot see the prerequisite, do the work in the orchestrator's worktree instead.
+
+**Never merge an agent branch without diffing it against your branch first.** A report claiming to have
+*created* a file that already exists is the tell.
+
+---
+
 ## Subagent Usage Pattern
 - `/planner` — use first. Creates detailed plan + ordered feature list
 - Each feature is executed by a fresh `feature-builder` subagent instance with zero ambient context
