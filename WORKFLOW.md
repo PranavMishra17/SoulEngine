@@ -48,7 +48,7 @@ Opus (this session) = ORCHESTRATOR
 6. **Green** → full `npm test` + `npm run build` (tsc), zero new failures.
 7. **Bind the bug** → update [`ERRORS.md`](ERRORS.md) (root cause, test path, `FIXED`).
 8. **Update** [`backlog.md`](backlog.md) status → `done`.
-9. **Commit** (Conventional Commit `+ Co-Authored-By`), no push/merge to `main`.
+9. **Commit** (Conventional Commit). **No AI attribution of any kind** — see RULE ZERO in [`CLAUDE.md`](CLAUDE.md). No push/merge to `main`.
 
 Test taxonomy: `tests/unit/` (pure logic) · `tests/regression/` (one per ERRORS row) · `tests/e2e/` (routes via Hono `app.fetch`) · `tests/conformance/` (TS↔C# fixtures).
 

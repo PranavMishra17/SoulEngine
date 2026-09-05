@@ -334,7 +334,7 @@ for, and it is what makes a fourth overhaul a contained change instead of anothe
 
 ---
 
-### 3.7 The action layer — `PROPOSED from Pass C2, awaiting your nod`
+### 3.7 The action layer — `DECIDED 2026-09-05`
 
 [`research/04-game-prior-art-actions-and-evolution.md`](research/04-game-prior-art-actions-and-evolution.md)
 found that three independently-built shipped toolchains converged on the same architecture. This is the
@@ -429,6 +429,22 @@ speak the same protocol.
 **Carry the known limit into the design:** token vending mitigates key *exfiltration*, not *abuse* — a
 scraped short-lived token still authorizes real spend for its lifetime. Scope, quota and rate-limit each
 minted credential.
+
+**The broker is two mechanisms, not one** (found during implementation recon, 2026-09-05). Token vending
+only works where the provider ships an ephemeral-credential API:
+
+| Provider | Ephemeral credential? | Broker mode |
+|---|---|---|
+| OpenAI Realtime | yes — `POST /v1/realtime/client_secrets` | **vend** — client then calls the provider directly |
+| ElevenLabs | yes — server-minted signed URLs, 15-minute expiry | **vend** |
+| Deepgram | yes — temporary keys API | **vend** |
+| Anthropic, Gemini, OpenAI chat completions | **no such API exists** | **proxy** — the broker forwards the request |
+
+So text LLM traffic necessarily routes through the buyer's broker. That is still their infrastructure and
+not ours, so the commercial boundary is unchanged — but it makes the broker larger than a pure
+token-vendor, and it puts their hosting on the latency path for every turn. Design it as a
+**credential-strategy interface** with `vend` and `proxy` implementations behind one contract, so a
+provider can move between modes when its API changes.
 
 **Distribution constraint from Unity §1.5.a** ([`research/03-marketplace-and-multi-engine.md`](research/03-marketplace-and-multi-engine.md)
 §Q4): the store accepts no submissions including executables *"embedded inside the package or as separate
@@ -552,4 +568,4 @@ deliberately left open — the research covers the range rather than assuming on
 | D12 | Pass C | **Done.** C1 answered the marketplace rules; C2 answered the action layer. Both left gaps, tracked as D13/D14. |
 | D13 | Pass D (commercial half): multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **OPEN** — C1's search budget hit 200/200 before these ran; re-run by direct URL, not search |
 | D14 | Pass D (evolution half): bounded designer-controlled character change | **OPEN** — failed twice as a sourcing problem; target named game-design sources, permit community wikis and video essays with labelling |
-| D15 | Action-layer architecture (§3.7) | **PROPOSED** from Pass C2 — awaiting confirmation |
+| D15 | Action-layer architecture (§3.7) | **DECIDED** — confirmed 2026-09-05 |

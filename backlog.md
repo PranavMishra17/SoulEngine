@@ -131,6 +131,9 @@
 | 5.5 | Mind pre-gate for cost + per-NPC Mind-off | M | — | unit | todo |
 | 5.6 | BYOK quota/usage/billing (enforce `limits`) | L | — | reg(e2e) | todo |
 | 5.7 | Package + publish Unity client (UPM/.unitypackage) pinned to `/api/v1` | M | 2.1 | manual | todo |
+| 5.8 | **Token-vending key broker.** A stateless service the game developer deploys that holds their provider keys and issues short-lived, scoped, quota-limited credentials to game clients. Two strategies behind one contract: `vend` (OpenAI Realtime, ElevenLabs, Deepgram) and `proxy` (Anthropic, Gemini, OpenAI chat — no ephemeral-credential API exists). See [`PRODUCT.md`](PRODUCT.md) §3.3 and §4 W2b. | L | 2.4 | e2e + unit | todo |
+| 5.9 | **Conversation replay + evaluation harness.** Deterministic, offline, no-cost replay of scripted conversations against the cognition stack, reporting per-stage turn latency, recall correctness and tool-call correctness. Records a baseline for the current parallel Mind+Speaker so the next overhaul can be judged on numbers. See [`PRODUCT.md`](PRODUCT.md) §4 W4. | L | — | unit + e2e | todo |
+| 5.10 | **Remove provider keys from the Unity build** (`SoulEngineConfig.asset` ships `LlmApiKey`/`MindApiKey`/`TtsApiKey`/`SttApiKey`). Violates Unity Submission Guidelines §1.5.b and would fail store submission. Replace `UseBackendProxy` with broker-token mode. Separate repo (`SoulEngine-Unity`). | L | 5.8 | manual | blocked |
 
 ---
 
@@ -158,9 +161,9 @@
 | 2 | 12 | 11 | **contract shipped**; remaining-routes pagination open (2.12) |
 | 3 | 13 | 0 | **planned** (Authoring Studio) — awaiting goahead; incl. 4 live UI bugs (L1-L4) |
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
-| 5 | 7 | 0 | not started (deferred per request — features/testing first) |
+| 5 | 10 | 0 | broker + eval harness in progress; Unity key removal blocked on the broker |
 | 6 | 8 | 0 | not started |
-| **Total** | **69** | **38** | — |
+| **Total** | **72** | **38** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
