@@ -172,7 +172,23 @@ A to B" with numbers. That harness is cheap and it is a prerequisite, not a nice
 
 ## 3. Recommendations
 
-### 3.1 What the license key should do — `DECIDED`
+### 3.1 What the license key should do — `REVISED 2026-09-05`
+
+> **Superseded in part by [`research/08-middleware-licence-enforcement.md`](research/08-middleware-licence-enforcement.md).**
+> No game middleware vendor examined — FMOD, Wwise, SpeedTree, Simplygon — ships cryptographic licence
+> verification into a game binary. Licensing in this category is **per-title, tiered by the buyer's
+> budget, and enforced by contract, registration and attribution.** FMOD requires its logo at every tier
+> and sells the waiver for $6,000-$12,000: the enforcement artefact is itself a product. Wwise is
+> royalty-free with lifetime rights at every tier and a free tier under $250K budget.
+>
+> **The reasoning below still holds — a key in a build is not secret, and a per-launch check is the wrong
+> cost shape. The conclusion changes: don't build the signing infrastructure either.** It would put you
+> alone in your category, spending engineering time on a mechanism your competitors concluded they did
+> not need. Adopt the commercial pattern instead, and keep only the entitlement schema from W3.
+>
+> The one vendor doing real technical enforcement, SpeedTree, gates the **authoring tool** (subscription
+> plus required internet access) and does not sell the runtime SDK below Enterprise at all. That is §3.2,
+> independently arrived at by a shipping vendor — and you already have working auth on the studio.
 
 **Signed offline license, plus an optional non-blocking heartbeat.** Not a per-launch online check.
 
@@ -511,8 +527,13 @@ Not code, but submission-blocking if missed:
 
 ### W3 — The licensing seam, without billing
 
-Per your answer: model it, do not monetize it yet. Schema for `entitlements` and `licenses`, the
-signing/verification path from §3.1, and the redemption endpoint stubbed. Also fold in the §1.3 auth
+Per your answer: model it, do not monetize it yet. Schema for `entitlements` and `licenses`, and the
+redemption endpoint stubbed.
+
+**Scope reduced 2026-09-05:** the signing/verification path is **cut**. Research found no game middleware
+vendor shipping cryptographic licence checks into a game binary, so that work would be novel in a market
+that has decided it is unnecessary. Keep the entitlement schema; drop the Ed25519 signing, the embedded
+public key, and the in-client verification. Also fold in the §1.3 auth
 holes, because shipping a paid product on auth that is disabled outside production is not viable.
 
 ### W4 — Agent infrastructure

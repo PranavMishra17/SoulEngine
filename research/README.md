@@ -27,6 +27,8 @@ reference material to develop against — read it before re-litigating a decisio
 
 | `07-pricing-and-comparables.md` | manual | Convai, Inworld, Charisma, Photon pricing and Unity Asset Store comparables, fetched by hand in a rendered browser | **done** — answered after three harness failures |
 
+| `08-middleware-licence-enforcement.md` | manual | What FMOD, Wwise, SpeedTree and Simplygon actually require for licence enforcement | **done** — closes the last research gap; revises `D3` |
+
 ## Decisions waiting on this
 
 | ID | Decision | State after passes A and B |
