@@ -16,13 +16,26 @@ reference material to develop against — read it before re-litigating a decisio
 
 | File | Pass | Covers | Status |
 |---|---|---|---|
-| `01-commercial-and-topology.md` | A | Competitor topology, API-key handling, one-core-many-engines, marketplace rules, pricing, licence enforcement (`PRODUCT.md` §5 Q1-Q7) | launched 2026-09-05 |
-| `02-agent-architecture-and-actions.md` | B | Cognition architecture and recall latency, action/tool layer design, actions in dialogue, designer-controlled evolution, memory pruning, deployment shapes (`PRODUCT.md` §5 Q8-Q12) | launched 2026-09-05 |
+| `01-commercial-and-topology.md` | A | Competitor topology, API-key handling, one-core-many-engines, marketplace rules, pricing, licence enforcement (`PRODUCT.md` §5 Q1-Q7) | **done** — Q1-Q2 answered decisively, Q3-Q7 returned nothing |
+| `02-agent-architecture-and-actions.md` | B | Cognition architecture and recall latency, action/tool layer design, actions in dialogue, designer-controlled evolution, memory pruning, deployment shapes (`PRODUCT.md` §5 Q8-Q12) | **done** — Q8-Q9 answered, Q10-Q12 returned nothing |
 
 ## Decisions waiting on this
 
-| ID | Decision | Blocked on |
+| ID | Decision | State after passes A and B |
 |---|---|---|
-| D2 | Runtime topology — fat/direct, fat/broker, or thin/server | Pass A, Q1-Q3 |
-| D6 | Multi-engine scope and timing | follows D2 |
-| D11 | Deployment shape to optimize for | Pass B, Q12 |
+| D2 | Runtime topology | **Option A ruled out.** B, C, D live; B recommended. Decision needed. |
+| D6 | Multi-engine scope and timing | Still blocked — Q3 returned nothing |
+| D11 | Deployment shape to optimize for | Still open — no per-shape budgets survived |
+| D12 | **Pass C** — re-run the unanswered questions | Recommended, not yet run |
+
+## Pass C — the unanswered questions
+
+Both passes failed on the same *kind* of question, which points at framing rather than absence of
+evidence. Q3-Q7 (multi-engine architecture, Unity/Fab/Godot marketplace rules, pricing, licence
+enforcement) are **documentation-retrieval** problems that were searched as though they were open
+research questions. Q10-Q11 (actions in dialogue, designer-controlled evolution) need **game-industry**
+prior art — The Sims traits and aspirations, Crusader Kings, Shadow of Mordor's Nemesis system, RimWorld
+— rather than agent papers.
+
+Q4 is the highest-priority gap: if Unity's Provider Agreement restricts assets that require an external
+paid service, it constrains the whole commercial model.

@@ -217,17 +217,33 @@ optional polish and becomes the primary product surface.
 
 ### 3.3 Topology — three options, decision deferred to research
 
-**Option A — Fat client, direct to providers.** What the C# code does today.
-- For: zero hosting cost to you; matches your stated preference; offline-capable; lowest latency.
-- Against: the developer's provider keys ship in the binary (§2.1); N runtimes for N engines; permanent
-  TS↔C# drift with no conformance tests.
+> **RESEARCH COMPLETE 2026-09-05.** See [`research/01-commercial-and-topology.md`](research/01-commercial-and-topology.md).
+> **Option A is out.** A fourth option was surfaced by the research and is added below.
+
+**Option A — Fat client, direct to providers.** What the C# code does today. **RULED OUT.**
+- Ruled out because: OpenAI prohibits it in writing ("Never deploy your key in client-side
+  environments", plus "Requests should always be routed through your own backend server"); ElevenLabs
+  prohibits it in guidance; **Convai — the nearest peer vendor — shipped this mode, then documented that
+  the key is recoverable from the build and engineered an Auth Token mode to replace it**; ACM CCS 2025
+  work confirms such keys are extracted from distributed binaries and frequently never revoked; and a
+  tooled resale market for harvested AI credentials means exposure is unbounded — landing on the
+  *customer's* account, not yours.
+- The original objections stand too: N runtimes for N engines, permanent TS↔C# drift.
 
 **Option B — Fat client, developer-run key broker.** Cognition stays in-engine; a small stateless
-proxy that the developer deploys (or that you host as a paid managed tier) holds the provider keys and
-forwards inference calls.
-- For: solves key leakage without you paying for inference; same wire protocol whether the dev
-  self-hosts or buys managed, so managed hosting becomes a natural upsell.
-- Against: still N runtimes; adds a deployment step for the developer.
+token-vending endpoint the developer deploys (or that you host as a paid managed tier) holds the
+provider keys and mints short-lived scoped credentials.
+- **Validated as the industry-standard pattern**, documented first-party by OpenAI (ephemeral keys via
+  `POST /v1/realtime/client_secrets`), ElevenLabs (15-minute signed URLs), and Convai (self-hosted HTTPS
+  token endpoint, credential resolved fresh per connection).
+- For: solves key exfiltration without you paying for inference; identical wire protocol whether the dev
+  self-hosts or buys managed, so managed hosting is a natural upsell — and a recurring-revenue path a
+  one-time asset sale does not have.
+- Against: still N runtimes. **And the cost the research made explicit: the server dependency is not
+  removed, it is relocated onto every customer**, who must operate and secure a token endpoint for the
+  life of their shipped game. That is sharp adoption friction for a solo Asset Store buyer. It also
+  mitigates key *exfiltration*, not *abuse* — a scraped ephemeral token still authorizes real spend for
+  its session.
 
 **Option C — Thin engine plugin, developer-run engine server.** You ship the existing TS engine as a
 container the developer runs. Engine plugins become transport shims (roughly 1,500 lines each).
@@ -237,11 +253,28 @@ container the developer runs. Engine plugins become transport shims (roughly 1,5
 - Against: a network hop per turn (fine on localhost/LAN, a real adoption tax for a solo dev shipping
   to players); no offline mode; the existing 12.7k lines of C# cognition become dead weight.
 
-**Prior, stated so research can falsify it:** C is the correct long-term shape and B is the pragmatic
-bridge from where the code actually is today. Your stated preference is A. The purpose of the research
-pass is to find out which of us is right, using what shipping products in this space actually do.
+**Option D — On-device weights (NVIDIA ACE shape).** Surfaced by the research; not previously
+considered. Depend on open-weight models running on the player's own GPU, so **no model-provider API key
+exists in the build at all**.
+- Demonstrably shipping, not aspirational: PUBG Ally runs Mistral-NeMo-Minitron-8B locally; also inZOI
+  "Smart Zoi" and NARAKA: BLADEPOINT's AI teammate.
+- For: the only option where the key problem **disappears** rather than moves. No broker, no vendor
+  runtime cost, no customer operational burden, fully offline.
+- Against: changes the product — weight distribution and licensing, a hard GPU requirement that excludes
+  much of the player base, and a quality ceiling well below frontier models. Voice/TTS still needs an
+  answer.
 
-`OPEN — research.` See §5.
+**Prior update (2026-09-05).** The research falsified A, validated B as standard practice, and
+introduced D. My prior was that C wins long-term; that is neither validated nor refuted — but note C
+carries the *same* customer-operated-server cost as B while also buying one runtime, which makes B's
+advantage over C narrower than it looked.
+
+**Current recommendation: B, with the broker shipped as a one-command deployable that you also offer as
+a hosted paid tier.** That turns the adoption friction the research identified into the upsell, and it
+is the only shape that gives recurring revenue against a one-time marketplace sale. Revisit D seriously
+if the target is offline-first or console.
+
+`OPEN — decision needed.` Research complete; §5 Q1-Q2 answered, Q3-Q7 unanswered.
 
 ### 3.4 Evolution is per-subsystem, not a single flag — `DECIDED`
 
@@ -387,13 +420,14 @@ research covers the range rather than assuming one.
 | # | Decision | Status |
 |---|---|---|
 | D1 | Product name | **DECIDED** — SoulEngine; retire `evolve-npc` / "Evolve.NPC" (closes backlog 6.7) |
-| D2 | Topology: A (fat/direct), B (fat/broker), or C (thin/server) | OPEN — research |
-| D3 | License mechanism | **DECIDED** — signed offline license, §3.1 |
+| D2 | Topology: ~~A (fat/direct)~~, B (fat/broker), C (thin/server), or D (on-device weights) | **A RULED OUT** by research; B recommended; decision needed |
+| D3 | License mechanism | DECIDED §3.1 — but **unvalidated**; research Q7 returned nothing |
 | D4 | Studio is the moat; Tier 3 promoted to primary product surface | **DECIDED** — §3.2 |
-| D5 | Entitlement source (store invoice vs direct sale) | DEFERRED by decision — model the seam only |
+| D5 | Entitlement source (store invoice vs direct sale) | DEFERRED — and **unresearched**; marketplace rules (Q4) returned nothing and could veto a design |
 | D6 | Multi-engine scope and timing | OPEN — follows D2 |
 | D7 | Cognition behind a swappable interface | DECIDED §3.6 |
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
 | D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
 | D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
-| D11 | Deployment shape to optimize for | OPEN — research covers the range |
+| D11 | Deployment shape to optimize for | OPEN — research did not supply per-shape budgets |
+| D12 | Pass C: re-run Q3-Q7 and Q10-Q11 with narrower framing | **OPEN — recommended** |
