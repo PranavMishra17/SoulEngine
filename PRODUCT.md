@@ -93,6 +93,7 @@ Runtime blockers, in severity order:
 | B8 | **CloudSync URLs are probably wrong.** Code builds `{SyncEndpointUrl}/sync/instance`; the documented route is `/api/sync/instance`. The shipped config asset leaves `SyncEndpointUrl` empty, so sync silently never initializes. | `CloudSyncService.cs:65`, `:109`; `SoulEngineBootstrapper.cs:274` |
 | B9 | `SyncQueue.Dispose()` logs "Discarding remaining job" instead of flushing. Any sync from the last 5 s before quit is lost. | `SyncQueue.cs:89-93` |
 | B10 | Not packaged. No `package.json`, no `.unitypackage`, no samples, no LICENSE, no editor tooling. | — |
+| **B13** | **SUBMISSION-BLOCKING. `SoulEngineConfig.asset` carries `LlmApiKey`/`MindApiKey`/`TtsApiKey`/`SttApiKey` as fields on a ScriptableObject that ships in the build.** Unity Submission Guidelines §1.5.b: *"Third-party API keys are not stored in ways that would incorporate the key into project builds (for example, inside any script or GameObject that would be included in a scene)."* The package as it stands would fail submission. Fixed by broker-token mode (W2b). | `SoulEngineConfig.cs:34` and the shipped `Assets/SoulEngineConfig.asset`; [`research/03-marketplace-and-multi-engine.md`](research/03-marketplace-and-multi-engine.md) §Q4 |
 
 **Process problem, now fixed:** until 2026-09-05 this entire 12.7k-line body of code was **untracked by
 git** — no history, no CI, no PR path, no review, no protection against loss. It now has its own
@@ -264,6 +265,11 @@ exists in the build at all**.
   much of the player base, and a quality ceiling well below frontier models. Voice/TTS still needs an
   answer.
 
+> **Over-determined by Pass C1 (2026-09-05).** Unity's Submission Guidelines **§1.5.b independently
+> require** this shape: *"Third-party API keys are not stored in ways that would incorporate the key into
+> project builds."* Option B was chosen on security grounds; it turns out to also be the only shape that
+> passes Unity submission. See [`research/03-marketplace-and-multi-engine.md`](research/03-marketplace-and-multi-engine.md).
+
 **Decision: Option B**, with the broker shipped as a one-command deployable that is also offered as a
 hosted paid tier. That turns the adoption friction the research identified into the upsell, and it is
 the only shape giving recurring revenue against a one-time marketplace sale.
@@ -369,6 +375,28 @@ speak the same protocol.
 scraped short-lived token still authorizes real spend for its lifetime. Scope, quota and rate-limit each
 minted credential.
 
+**Distribution constraint from Unity §1.5.a** ([`research/03-marketplace-and-multi-engine.md`](research/03-marketplace-and-multi-engine.md)
+§Q4): the store accepts no submissions including executables *"embedded inside the package or as separate
+dependencies located on other websites."* No enforcement precedent was found for server-side binaries,
+but the safe reading is clear — **ship the broker as source plus a documented deploy, never as a prebuilt
+binary the package points at.** Note this is not a DLL ban; the store hosts thousands of DLL-shipping
+assets.
+
+### W3b — Store-listing obligations `NEW, from Pass C1`
+
+Not code, but submission-blocking if missed:
+
+- **§1.5.c** — third-party API terms and costs must appear **at the top of the listing description** and
+  in the documentation. The OpenAI/ElevenLabs/Deepgram metered costs get front-loaded, not buried.
+- **§1.4.a** — any account-registration requirement and subscription cost must be *"clearly and
+  transparently disclosed"* in both the package description and the documentation.
+- **§1.5.d** — Unity points SaaS-connected SDKs with login walls or metered usage at its **Verified
+  Solutions** program. The verb is "consider", so it reads as a channel suggestion rather than a gate —
+  worth testing before submission.
+- **Open action:** read the Unity Provider Agreement end-to-end by hand. Pass C1 could not resolve what
+  it says about service-dependent SDKs — two opposing readings were both refuted, and the URLs 404
+  inconsistently. Only §4.3 (the 70% split) is confirmed.
+
 ### W3 — The licensing seam, without billing
 
 Per your answer: model it, do not monetize it yet. Schema for `entitlements` and `licenses`, the
@@ -457,13 +485,14 @@ deliberately left open — the research covers the range rather than assuming on
 |---|---|---|
 | D1 | Product name | **DECIDED** — SoulEngine; retire `evolve-npc` / "Evolve.NPC" (closes backlog 6.7) |
 | D2 | Runtime topology | **DECIDED** — Option B, fat client + developer-run key broker (§3.3). A ruled out by research; D held in reserve for offline-first/console. |
-| D3 | License mechanism | DECIDED §3.1 — but **unvalidated**; research Q7 returned nothing |
+| D3 | License mechanism | DECIDED §3.1 — **still unvalidated for games.** Ed25519 offline licensing is productized commercially (Keygen), but Pass C1 found zero game-middleware evidence and specifically refuted the client-embedded-public-key detail. |
 | D4 | Studio is the moat; Tier 3 promoted to primary product surface | **DECIDED** — §3.2 |
-| D5 | Entitlement source (store invoice vs direct sale) | DEFERRED — and **unresearched**; marketplace rules (Q4) returned nothing and could veto a design |
-| D6 | Multi-engine scope and timing | OPEN — B means a full cognition port per engine; awaiting Pass C1 Q3 |
+| D5 | Entitlement source | **Partly answered.** Unity's Invoice API is sanctioned by name (§1.4.a) but its endpoint/auth/response were not retrieved. **Fab and Godot have no seller entitlement API at all** — vendor-run gating is the only option there, and Fab cannot host a subscription. Still deferred by choice; model the seam. |
+| D6 | Multi-engine scope and timing | OPEN — Pass C1 Q3 was **un-researched** (search budget exhausted), not answered. Needs Pass D. |
 | D7 | Cognition behind a swappable interface | DECIDED §3.6 |
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
 | D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
 | D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
 | D11 | Deployment shape to optimize for | OPEN — research did not supply per-shape budgets |
-| D12 | Pass C: re-run Q3-Q7 and Q10-Q11 with narrower framing | **RUNNING** — C1 and C2 launched 2026-09-05 |
+| D12 | Pass C | **C1 done** (marketplace rules answered; 3 sub-questions un-researched). C2 running. |
+| D13 | Pass D: multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **OPEN** — C1's search budget hit 200/200 before these ran; re-run by direct URL, not search |
