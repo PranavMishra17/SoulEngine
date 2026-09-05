@@ -1,0 +1,117 @@
+{
+  "name": "deferred-recall",
+  "description": "Player states a fact, then asks about it next turn. Tests whether recall results arrive in time for the reply or are deferred.",
+  "npc": {
+    "definition": {
+      "id": "test-npc-1",
+      "project_id": "test-project-1",
+      "name": "Aria",
+      "description": "A shopkeeper who remembers customer preferences",
+      "core_anchor": {
+        "backstory": "Runs a small bookshop in the town square",
+        "principles": ["Honesty", "Helpfulness"],
+        "trauma_flags": []
+      },
+      "personality_baseline": {
+        "openness": 0.7,
+        "conscientiousness": 0.6,
+        "extraversion": 0.5,
+        "agreeableness": 0.8,
+        "neuroticism": 0.3
+      },
+      "voice": {
+        "provider": "elevenlabs",
+        "voice_id": "test-voice",
+        "speed": 1.0
+      },
+      "schedule": [],
+      "mcp_permissions": {
+        "conversation_tools": [],
+        "game_event_tools": [],
+        "denied": []
+      },
+      "knowledge_access": {},
+      "network": []
+    },
+    "instance": {
+      "id": "test-instance-1",
+      "definition_id": "test-npc-1",
+      "project_id": "test-project-1",
+      "player_id": "test-player-1",
+      "created_at": "2026-09-05T00:00:00Z",
+      "current_mood": {
+        "valence": 0.6,
+        "arousal": 0.4,
+        "dominance": 0.5
+      },
+      "trait_modifiers": {},
+      "short_term_memory": [],
+      "long_term_memory": [],
+      "relationships": {},
+      "daily_pulse": null,
+      "cycle_metadata": {
+        "last_weekly": null,
+        "last_persona_shift": null
+      }
+    }
+  },
+  "playerInfo": {
+    "name": "Alex",
+    "description": "Regular customer",
+    "role": "Customer",
+    "context": "Has visited the shop several times"
+  },
+  "turns": [
+    {
+      "playerInput": "Hi Aria! I really love mystery novels, especially ones with historical settings.",
+      "mindResponses": [
+        {
+          "toolCalls": [
+            {
+              "name": "recall_memories",
+              "arguments": {
+                "query": "mystery novels historical"
+              }
+            }
+          ],
+          "latencyMs": 20
+        }
+      ],
+      "speakerResponses": [
+        {
+          "text": "Hello Alex! Nice to see you again.",
+          "latencyMs": 30
+        }
+      ],
+      "expectations": {
+        "toolsCalled": ["recall_memories"]
+      }
+    },
+    {
+      "playerInput": "Do you remember what kind of books I like?",
+      "mindResponses": [
+        {
+          "toolCalls": [
+            {
+              "name": "recall_memories",
+              "arguments": {
+                "query": "Alex books preferences"
+              }
+            }
+          ],
+          "latencyMs": 25
+        }
+      ],
+      "speakerResponses": [
+        {
+          "text": "Hmm, let me think. I believe you mentioned something recently, but I need to recall the details.",
+          "latencyMs": 35
+        }
+      ],
+      "expectations": {
+        "recallFacts": ["mystery novels", "historical"],
+        "toolsCalled": ["recall_memories"]
+      }
+    }
+  ]
+}
