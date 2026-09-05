@@ -35,14 +35,23 @@ export interface VerifyTokenResult {
 }
 
 /**
- * Get the HMAC signing key from config
- * Falls back to ENCRYPTION_KEY if BROKER_TOKEN_SECRET is not set
+ * Get the HMAC signing key for broker tokens.
+ *
+ * This is deliberately NOT the encryption key. ENCRYPTION_KEY is the master
+ * secret that AES-256-GCMs every developer's BYOK provider keys at rest (see
+ * src/storage/crypto/secrets.ts). Signing tokens with it would couple two
+ * unrelated security purposes, so that a weakness in the token path would
+ * implicate customers' stored OpenAI/Anthropic/ElevenLabs keys. The two
+ * secrets are configured and rotated independently.
+ *
+ * Fails closed: an unset secret raises rather than silently downgrading.
  */
 function getSigningKey(): string {
-  const config = getConfig();
-  const key = process.env.BROKER_TOKEN_SECRET || config.encryptionKey;
+  const key = getConfig().brokerTokenSecret;
   if (!key) {
-    throw new Error('BROKER_TOKEN_SECRET or ENCRYPTION_KEY must be set');
+    throw new Error(
+      'BROKER_TOKEN_SECRET must be set to use the broker. It must be distinct from ENCRYPTION_KEY.'
+    );
   }
   return key;
 }

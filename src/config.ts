@@ -8,6 +8,9 @@ const ConfigSchema = z.object({
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   dataDir: z.string().default('./data'),
   encryptionKey: z.string().min(32).optional(),
+  // Signs broker tokens. Deliberately separate from encryptionKey: a compromise of
+  // the token-signing path must not implicate provider keys encrypted at rest.
+  brokerTokenSecret: z.string().min(32).optional(),
   sessionTimeoutMs: z.coerce.number().int().positive().default(1800000),
   stateHistoryEnabled: z.coerce.boolean().default(true),
   stateHistoryMaxVersions: z.coerce.number().int().positive().default(10),
@@ -61,6 +64,7 @@ export function loadConfig(): Config {
       logLevel: process.env.LOG_LEVEL,
       dataDir: process.env.DATA_DIR,
       encryptionKey: process.env.ENCRYPTION_KEY,
+      brokerTokenSecret: process.env.BROKER_TOKEN_SECRET,
       sessionTimeoutMs: process.env.SESSION_TIMEOUT_MS,
       stateHistoryEnabled: process.env.STATE_HISTORY_ENABLED,
       stateHistoryMaxVersions: process.env.STATE_HISTORY_MAX_VERSIONS,
@@ -104,6 +108,7 @@ export function loadConfig(): Config {
       logLevel: config.logLevel,
       dataDir: config.dataDir,
       encryptionKey: config.encryptionKey ? '[REDACTED]' : undefined,
+      brokerTokenSecret: config.brokerTokenSecret ? '[REDACTED]' : undefined,
       sessionTimeoutMs: config.sessionTimeoutMs,
       stateHistoryEnabled: config.stateHistoryEnabled,
       stateHistoryMaxVersions: config.stateHistoryMaxVersions,

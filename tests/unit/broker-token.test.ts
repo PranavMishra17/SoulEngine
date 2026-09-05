@@ -12,6 +12,7 @@ describe('Broker token mint and verify', () => {
     vi.useRealTimers();
     // Set encryption key for token signing (32+ chars)
     process.env.ENCRYPTION_KEY = 'test-encryption-key-min-32-chars-long-secret';
+    process.env.BROKER_TOKEN_SECRET = 'test-broker-signing-secret-min-32-chars-long';
   });
 
   it('round-trips successfully (mint → verify)', async () => {

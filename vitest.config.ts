@@ -23,5 +23,14 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     passWithNoTests: true,
     clearMocks: true,
+    setupFiles: ['tests/setup.ts'],
+    // Test files run one at a time. Several suites exercise the local file
+    // storage backend against the same data directory (project create/delete,
+    // the usage-append and instance-locking race regressions, the local->cloud
+    // migration, and the broker's project fixtures). Running the files in
+    // parallel workers made them contend on the same paths and on CPU, which
+    // showed up as failures that moved between runs. Correctness of the race
+    // regressions matters more here than suite wall-clock.
+    fileParallelism: false,
   },
 });

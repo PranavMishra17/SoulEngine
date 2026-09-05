@@ -82,8 +82,9 @@ describe('StubLLMProvider', () => {
     }
     const elapsed = Date.now() - start;
 
-    expect(elapsed).toBeGreaterThanOrEqual(50);
-    expect(elapsed).toBeLessThan(100); // should not take much longer
+    expect(elapsed).toBeGreaterThanOrEqual(45);
+    // No upper bound: wall-clock under a loaded test runner is not a property
+    // of the stub. The lower bound above is the assertion that matters.
     expect(chunks[0].text).toBe('Slow response');
   });
 
@@ -105,7 +106,8 @@ describe('StubLLMProvider', () => {
     }
     const elapsed = Date.now() - start;
 
-    expect(elapsed).toBeGreaterThanOrEqual(30);
+    // Tolerate timer granularity; the point is that the default latency applied.
+    expect(elapsed).toBeGreaterThanOrEqual(25);
     expect(chunks[0].text).toBe('Default latency');
   });
 

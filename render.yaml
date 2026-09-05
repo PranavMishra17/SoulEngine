@@ -30,6 +30,11 @@ services:
       # Encryption key for API key storage (set manually)
       - key: ENCRYPTION_KEY
         sync: false
+
+      # Signs broker tokens. MUST be a different value from ENCRYPTION_KEY -
+      # separate secrets so a compromise of one does not implicate the other.
+      - key: BROKER_TOKEN_SECRET
+        sync: false
       
       # LLM Providers (set manually in dashboard)
       - key: GEMINI_API_KEY

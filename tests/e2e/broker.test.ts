@@ -13,6 +13,7 @@ import type { Project } from '../../src/types/project.js';
 
 // Set encryption key for token signing
 process.env.ENCRYPTION_KEY = 'test-encryption-key-min-32-chars-long-secret';
+process.env.BROKER_TOKEN_SECRET = 'test-broker-signing-secret-min-32-chars-long';
 
 // Test project IDs
 const TEST_PROJECT_WITH_KEY = 'broker-test-project-with-key';
