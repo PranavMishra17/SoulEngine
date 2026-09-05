@@ -20,6 +20,7 @@ import { createCycleRoutes } from './routes/cycles.js';
 import { historyRoutes } from './routes/history.js';
 import { waitlistRoutes } from './routes/waitlist.js';
 import { devAuthRoutes } from './routes/dev-auth.js';
+import brokerRoutes from './routes/broker.js';
 import { handleVoiceWebSocket, type VoiceWebSocketDependencies } from './ws/handler.js';
 import { getStarterPackMetaList } from './data/starter-packs.js';
 import { createEventsRoute } from './routes/events.js';
@@ -107,6 +108,9 @@ function buildApiRoutes(llmProviderArg: LLMProvider | null): Hono {
 
   // Unity waitlist (public, no auth required)
   api.route('/waitlist', waitlistRoutes);
+
+  // Broker routes (token vending and request proxying, public with x-api-key auth)
+  api.route('/broker', brokerRoutes);
 
   // Project-scoped routes: knowledge, NPCs, MCP tools
   const projectScoped = new Hono();
