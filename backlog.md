@@ -1,6 +1,6 @@
 # SoulEngine — Execution Backlog
 
-> **Source of truth for *what* and *status*.** Rationale + `file:line` evidence live in [`AUDIT.md`](AUDIT.md); the dev loop lives in [`WORKFLOW.md`](WORKFLOW.md); bugs + their regression tests live in [`ERRORS.md`](ERRORS.md).
+> **Source of truth for *what* and *status*.** The target state everything here builds toward is [`PRODUCT.md`](PRODUCT.md). Rationale + `file:line` evidence live in [`AUDIT.md`](AUDIT.md); the dev loop lives in [`WORKFLOW.md`](WORKFLOW.md); bugs + their regression tests live in [`ERRORS.md`](ERRORS.md).
 > **How work flows:** Opus orchestrates → one Sonnet `feature-builder` per item (or per co-dependent group) → spec → failing test → implement → green → commit. Dispatch with `/execute-feature <ID>` (one item) or `/orchestrate-tier <N>` (a whole tier).
 
 **Status legend:** `todo` · `in-progress` · `in-review` · `done` · `blocked` · `deferred`
@@ -144,7 +144,7 @@
 | 6.4 | Relocate `tts-test.ts`; delete contradictory `.env.example` | S | manual | todo |
 | 6.5 | Tighten CSP (drop `unsafe-eval`); output-encode instead of input-mutate; classifier moderation | M | reg | todo |
 | 6.6 | Embedding-based recall (knowledge/memories) | M | 1.8 | unit | todo |
-| 6.7 | Settle dual brand (`evolve-npc` vs SoulEngine) | S | manual | todo |
+| 6.7 | Settle dual brand — **decided: SoulEngine**; retire `evolve-npc` package name + "Evolve.NPC" log string (see [`PRODUCT.md`](PRODUCT.md)) | S | manual | todo |
 
 ---
 
