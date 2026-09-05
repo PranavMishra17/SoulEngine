@@ -133,8 +133,9 @@
 | 5.7 | Package + publish Unity client (UPM/.unitypackage) pinned to `/api/v1` | M | 2.1 | manual | todo |
 | 5.8 | **Token-vending key broker.** DONE — `vend` interface defined, concrete vend implementations (OpenAI Realtime, ElevenLabs, Deepgram) and response streaming deferred to follow-ups. A stateless service the game developer deploys that holds their provider keys and issues short-lived, scoped, quota-limited credentials to game clients. Two strategies behind one contract: `vend` (OpenAI Realtime, ElevenLabs, Deepgram) and `proxy` (Anthropic, Gemini, OpenAI chat — no ephemeral-credential API exists). See [`PRODUCT.md`](PRODUCT.md) §3.3 and §4 W2b. | L | 2.4 | e2e + unit | done |
 | 5.9 | **Conversation replay + evaluation harness.** Deterministic, offline, no-cost replay of scripted conversations against the cognition stack, reporting per-stage turn latency, recall correctness and tool-call correctness. Records a baseline for the current parallel Mind+Speaker so the next overhaul can be judged on numbers. See [`PRODUCT.md`](PRODUCT.md) §4 W4. | L | — | unit + e2e | done |
-| 5.11 | **Replay harness must reproduce production's parallel turn topology.** `src/eval/replay.ts` runs Mind and Speaker sequentially and reports their sum as turn latency; production runs them concurrently, so real wall-clock is nearer `max()` than `sum()`. The recall measurement is unaffected. Also assess extracting one shared turn-orchestration function so the harness cannot drift from the shipped route. | S | 5.9 | unit | in-progress |
-| 5.12 | **Give the broker its own signing secret.** `src/broker/token.ts:43` falls back to `config.encryptionKey` — the master secret encrypting every developer's BYOK provider keys at rest — for HMAC token signing. Key separation: compromise of one purpose must not imply the other. Also route it through `src/config.ts` rather than reading `process.env` inline. | S | 5.8 | reg | in-progress |
+| 5.11 | **Replay harness must reproduce production's parallel turn topology.** `src/eval/replay.ts` runs Mind and Speaker sequentially and reports their sum as turn latency; production runs them concurrently, so real wall-clock is nearer `max()` than `sum()`. The recall measurement is unaffected. Also assess extracting one shared turn-orchestration function so the harness cannot drift from the shipped route. | S | 5.9 | unit | done |
+| 5.12 | **Give the broker its own signing secret.** `src/broker/token.ts:43` falls back to `config.encryptionKey` — the master secret encrypting every developer's BYOK provider keys at rest — for HMAC token signing. Key separation: compromise of one purpose must not imply the other. Also route it through `src/config.ts` rather than reading `process.env` inline. | S | 5.8 | reg | done |
+| 5.13 | **Shared turn orchestration for the conversation route and the replay harness.** Deferred from 5.11 after assessment: extraction would touch ~70-80 lines across three files versus ~10 for the concurrency fix, and the two paths carry different concerns (HTTP vs eval). Revisit if the harness is observed drifting from the shipped route. | M | 5.11 | unit | deferred |
 | 5.10 | **Remove provider keys from the Unity build** (`SoulEngineConfig.asset` ships `LlmApiKey`/`MindApiKey`/`TtsApiKey`/`SttApiKey`). Violates Unity Submission Guidelines §1.5.b and would fail store submission. Replace `UseBackendProxy` with broker-token mode. Separate repo (`SoulEngine-Unity`). | L | 5.8 | manual | blocked |
 
 ---
@@ -163,9 +164,9 @@
 | 2 | 12 | 11 | **contract shipped**; remaining-routes pagination open (2.12) |
 | 3 | 13 | 0 | **planned** (Authoring Studio) — awaiting goahead; incl. 4 live UI bugs (L1-L4) |
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
-| 5 | 12 | 2 | broker + eval harness landed; two review defects in progress; Unity key removal blocked on the broker |
+| 5 | 13 | 4 | broker + eval harness landed, both review defects fixed; shared orchestration deferred; Unity key removal blocked on the broker |
 | 6 | 8 | 0 | not started |
-| **Total** | **74** | **40** | — |
+| **Total** | **75** | **42** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
