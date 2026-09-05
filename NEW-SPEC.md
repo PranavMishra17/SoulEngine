@@ -7,6 +7,10 @@
 
 ## North Star
 
+> The commercial shape of the product — what is sold, what runs where, and which of the options
+> below are still open — is decided in [`PRODUCT.md`](PRODUCT.md). Several items here (notably 1.1 and
+> 2.8) depend on the topology decision recorded there.
+
 > **Give any game living, memory-bearing NPCs — authored once on the web, dropped into any engine as first-class project assets, running with predictable cost and graceful offline behavior.**
 
 Three promises that should be true for every feature below:

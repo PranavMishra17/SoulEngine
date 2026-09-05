@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ci": "vitest run --reporter=dot",
-    "precommit": "npm run typecheck && npm run test"
+    "precommit": "npm run typecheck && npm run test",
+    "eval": "tsx src/eval/cli.ts"
   },
   "keywords": [],
   "author": "",
