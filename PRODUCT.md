@@ -84,7 +84,7 @@ Runtime blockers, in severity order:
 | # | Blocker | Evidence |
 |---|---|---|
 | B1 | **Default config throws on first conversation.** `UseBackendProxy` defaults `true`; `GetLLMConfig()` unconditionally throws in that mode; every caller invokes it unguarded. | `SoulEngineConfig.cs:49`, `:203-205`; `NPCConversationController.cs:127-128` |
-| B2 | **Backend Proxy mode has no implementation.** No proxy provider class exists. `RuntimeLlmProvider`/`RuntimeTtsProvider` are populated and read by nothing. | grep for `proxy` returns only flags, tooltips, and doc comments |
+| B2 | **Backend Proxy mode has no implementation.** No proxy provider class exists. `RuntimeLlmProvider`/`RuntimeTtsProvider` are populated and read by nothing. **Superseded by the D2 decision:** do not build proxy mode. Build *broker-token mode* instead — the SDK fetches a short-lived credential from the developer's broker and calls the provider directly (§3.3 Option B). | grep for `proxy` returns only flags, tooltips, and doc comments |
 | B3 | **The paywall does not exist.** `StartSessionAsync` has zero auth checks and zero network calls. `Config.IsReady` is never read. A 401 bootstrap only logs. | `SessionManager.cs:40-125`; `SoulEngineBootstrapper.cs:112` |
 | B4 | **NPC social network never reaches the prompt.** The `byTier` dictionary is built, never populated (a `TODO`), and the function always returns `string.Empty`. Every NPC with a network logs a warning per entry per turn. | `ContextAssembler.cs:357-359`, `:396-401` |
 | B5 | **MCP tools are never loaded into sessions.** `McpTools` is hardcoded to an empty list; `McpToolLoader` is never called; `GetToolDefinitions()` returns empty by construction. | `SessionManager.cs:98`; `McpToolRegistry.cs:131-141` |
@@ -215,7 +215,7 @@ entitlements on an account, which is a normal SaaS problem with normal solutions
 It also means the Tier 3 Authoring Studio rewrite (currently 0/13, "awaiting goahead") stops being
 optional polish and becomes the primary product surface.
 
-### 3.3 Topology — three options, decision deferred to research
+### 3.3 Topology — `DECIDED 2026-09-05: Option B`
 
 > **RESEARCH COMPLETE 2026-09-05.** See [`research/01-commercial-and-topology.md`](research/01-commercial-and-topology.md).
 > **Option A is out.** A fourth option was surfaced by the research and is added below.
@@ -230,9 +230,9 @@ optional polish and becomes the primary product surface.
   *customer's* account, not yours.
 - The original objections stand too: N runtimes for N engines, permanent TS↔C# drift.
 
-**Option B — Fat client, developer-run key broker.** Cognition stays in-engine; a small stateless
-token-vending endpoint the developer deploys (or that you host as a paid managed tier) holds the
-provider keys and mints short-lived scoped credentials.
+**Option B — Fat client, developer-run key broker. ← DECIDED.** Cognition stays in-engine; a small
+stateless token-vending endpoint the developer deploys (or that you host as a paid managed tier) holds
+the provider keys and mints short-lived scoped credentials.
 - **Validated as the industry-standard pattern**, documented first-party by OpenAI (ephemeral keys via
   `POST /v1/realtime/client_secrets`), ElevenLabs (15-minute signed URLs), and Convai (self-hosted HTTPS
   token endpoint, credential resolved fresh per connection).
@@ -264,17 +264,19 @@ exists in the build at all**.
   much of the player base, and a quality ceiling well below frontier models. Voice/TTS still needs an
   answer.
 
-**Prior update (2026-09-05).** The research falsified A, validated B as standard practice, and
-introduced D. My prior was that C wins long-term; that is neither validated nor refuted — but note C
-carries the *same* customer-operated-server cost as B while also buying one runtime, which makes B's
-advantage over C narrower than it looked.
+**Decision: Option B**, with the broker shipped as a one-command deployable that is also offered as a
+hosted paid tier. That turns the adoption friction the research identified into the upsell, and it is
+the only shape giving recurring revenue against a one-time marketplace sale.
 
-**Current recommendation: B, with the broker shipped as a one-command deployable that you also offer as
-a hosted paid tier.** That turns the adoption friction the research identified into the upsell, and it
-is the only shape that gives recurring revenue against a one-time marketplace sale. Revisit D seriously
-if the target is offline-first or console.
+**Correction to an earlier draft of this section.** It claimed C carries the *same* customer-operated-
+server cost as B. That was overstated: B's broker is a ~200-line stateless service deployable to a free
+Cloudflare Worker, while C asks the customer to operate the entire backend with storage and upgrades.
+B's burden on the buyer is materially lighter, which matters because the buyer is a solo indie.
 
-`OPEN — decision needed.` Research complete; §5 Q1-Q2 answered, Q3-Q7 unanswered.
+**What B costs, stated plainly so it is not forgotten:** the cognition stack must be maintained in C#
+*and* TypeScript indefinitely, plus C++ and GDScript if Unreal and Godot happen. Cross-runtime
+conformance testing (backlog 5.2) stops being optional hygiene and becomes the thing that keeps the
+product honest. Revisit **Option D** if the target ever becomes offline-first or console.
 
 ### 3.4 Evolution is per-subsystem, not a single flag — `DECIDED`
 
@@ -344,10 +346,28 @@ file with every `OPEN` resolved to `DECIDED`, and `NEW-SPEC.md` re-pointed at th
 
 ### W2 — Make the Unity SDK actually run
 
-Not "finish it" — **make one text-text conversation work end to end, recorded**. That means: settle the
-compile question, fix B1 (default config throws), B3 (the paywall no-op), B4 (social network dead code),
-B5 (tools never loaded), ship the VAD model or gate voice behind a clear error, and package as UPM.
-B2 (proxy mode) is not a bug fix — it is new construction, and it only gets built if §3.3 lands on B or C.
+Not "finish it" — **make one text-text conversation work end to end, recorded**. Compile state is
+already settled (clean). That means: fix B1 (default config throws), B3 (the paywall no-op), B4 (social
+network dead code), B5 (tools never loaded), ship the VAD model or gate voice behind a clear error, and
+package as UPM.
+
+**Changed by the D2 decision:** B2 is no longer "implement proxy mode." Delete the proxy concept and
+replace `UseBackendProxy` with **broker-token mode** — the SDK requests a short-lived credential from
+the developer's broker endpoint and calls the provider directly with it, never holding a long-lived key.
+That also fixes B1, because the throwing `GetLLMConfig()` path disappears with the mode it belonged to.
+
+### W2b — Build the key broker `NEW, from the D2 decision`
+
+The ~200-line stateless token-vending service the buyer deploys. Requirements from
+[`research/01-commercial-and-topology.md`](research/01-commercial-and-topology.md) §Q2: holds the
+buyer's provider keys server-side; mints short-lived scoped credentials per connection, never cached;
+HTTPS enforced; resolves fresh per connection. Ship it as a one-command deploy (container plus a
+Cloudflare Worker variant) and run the identical code as the hosted paid tier, so self-host and managed
+speak the same protocol.
+
+**Carry the known limit into the design:** token vending mitigates key *exfiltration*, not *abuse* — a
+scraped short-lived token still authorizes real spend for its lifetime. Scope, quota and rate-limit each
+minted credential.
 
 ### W3 — The licensing seam, without billing
 
@@ -410,8 +430,24 @@ Run as **two focused passes**, launched 2026-09-05. Output lands in [`research/`
     above shifts across three shapes: few-and-deep (~1-2s budget), many-and-ambient (cost per NPC-hour
     dominates), and real-time (<500ms, cognition cannot block the frame).
 
-**Status:** both passes launched 2026-09-05, running. Deployment shape deliberately left open — the
-research covers the range rather than assuming one.
+### Pass C — the questions A and B failed to answer
+
+Launched 2026-09-05 after passes A and B returned nothing on these. Both failures looked like framing
+rather than absent evidence, so both halves were re-aimed:
+
+- **C1 — commercial (Q3-Q7), reframed as documentation retrieval.** Unity Provider Agreement and
+  Submission Guidelines wording on assets that require an external service, a third-party account, or a
+  buyer-operated server — **now business-critical, because Option B requires the buyer to deploy one**.
+  Plus the Verify Invoice API, Fab and Godot equivalents, multi-engine SDK architecture, revenue splits
+  and comparable pricing, and licence-enforcement practice in game middleware.
+- **C2 — game design (Q10-Q11), re-aimed at game-industry prior art** rather than agent papers: how
+  shipped games separate conversation-terminating actions from composing ones, animation layering for
+  "act while talking", action arbitration (GOAP, utility AI, HTN, Sims smart objects), action results
+  flowing back into dialogue (Source response rules, Nemesis system), and bounded designer-controlled
+  character change (Sims traits and aspirations, Crusader Kings, RimWorld, Nemesis, OCEAN/PAD).
+
+**Status:** A and B complete. C1 and C2 launched 2026-09-05, running. Deployment shape (`D11`)
+deliberately left open — the research covers the range rather than assuming one.
 
 ---
 
@@ -420,14 +456,14 @@ research covers the range rather than assuming one.
 | # | Decision | Status |
 |---|---|---|
 | D1 | Product name | **DECIDED** — SoulEngine; retire `evolve-npc` / "Evolve.NPC" (closes backlog 6.7) |
-| D2 | Topology: ~~A (fat/direct)~~, B (fat/broker), C (thin/server), or D (on-device weights) | **A RULED OUT** by research; B recommended; decision needed |
+| D2 | Runtime topology | **DECIDED** — Option B, fat client + developer-run key broker (§3.3). A ruled out by research; D held in reserve for offline-first/console. |
 | D3 | License mechanism | DECIDED §3.1 — but **unvalidated**; research Q7 returned nothing |
 | D4 | Studio is the moat; Tier 3 promoted to primary product surface | **DECIDED** — §3.2 |
 | D5 | Entitlement source (store invoice vs direct sale) | DEFERRED — and **unresearched**; marketplace rules (Q4) returned nothing and could veto a design |
-| D6 | Multi-engine scope and timing | OPEN — follows D2 |
+| D6 | Multi-engine scope and timing | OPEN — B means a full cognition port per engine; awaiting Pass C1 Q3 |
 | D7 | Cognition behind a swappable interface | DECIDED §3.6 |
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
 | D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
 | D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
 | D11 | Deployment shape to optimize for | OPEN — research did not supply per-shape budgets |
-| D12 | Pass C: re-run Q3-Q7 and Q10-Q11 with narrower framing | **OPEN — recommended** |
+| D12 | Pass C: re-run Q3-Q7 and Q10-Q11 with narrower framing | **RUNNING** — C1 and C2 launched 2026-09-05 |
