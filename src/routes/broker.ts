@@ -224,9 +224,75 @@ brokerApp.post('/llm', requireBrokerToken(['llm']), async (c) => {
       return errorResponse(c, 500, ApiErrorCode.INTERNAL, 'Failed to create LLM provider');
     }
 
-    // Streaming deferred to future item
+    // Streamed response. Auth, scope and the rate limit were all enforced above,
+    // before any part of the body is produced — once headers are sent an error
+    // envelope is no longer possible, so failures become a terminal error event.
     if (stream) {
-      return errorResponse(c, 400, ApiErrorCode.VALIDATION_FAILED, 'Streaming not yet supported');
+      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = writable.getWriter();
+      const encoder = new TextEncoder();
+      let closed = false;
+
+      const send = (event: string, data: unknown): void => {
+        if (closed) return;
+        writer.write(encoder.encode(`event: ${event}
+data: ${JSON.stringify(data)}
+
+`)).catch(() => {
+          closed = true;
+        });
+      };
+
+      // Abort the provider call if the client goes away, so nothing is left pending.
+      const abort = new AbortController();
+      c.req.raw.signal?.addEventListener('abort', () => {
+        closed = true;
+        abort.abort();
+        writer.close().catch(() => { /* already closed */ });
+        logger.info({ projectId, tokenId }, 'LLM stream closed by client');
+      });
+
+      void (async () => {
+        try {
+          for await (const chunk of provider.streamChat({
+            systemPrompt: system_prompt,
+            messages: messages.map((m) => ({ role: m.role, content: m.content })) as LLMMessage[],
+            tools: tools as Tool[] | undefined,
+            signal: abort.signal,
+          })) {
+            if (closed) break;
+
+            if (chunk.done) {
+              send('done', { usage: chunk.usage });
+              break;
+            }
+
+            send('chunk', { text: chunk.text, tool_calls: chunk.toolCalls ?? [] });
+          }
+        } catch (error) {
+          // Never include key material; the provider name and message are enough.
+          logger.error(
+            { projectId, tokenId, llmProvider, error: error instanceof Error ? error.message : 'Unknown' },
+            'LLM stream failed after headers were sent'
+          );
+          send('error', { message: 'LLM provider call failed' });
+        } finally {
+          if (!closed) {
+            closed = true;
+            await writer.close().catch(() => { /* already closed */ });
+          }
+        }
+      })();
+
+      return new Response(readable as ReadableStream<Uint8Array>, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        },
+      });
     }
 
     // Call LLM provider (proxy)
