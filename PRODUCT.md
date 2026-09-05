@@ -165,7 +165,7 @@ That deferral is the most likely source of "outdated and a bit slow." But it has
 again, there must be a way to say "turn latency went from X ms to Y ms" and "recall accuracy went from
 A to B" with numbers. That harness is cheap and it is a prerequisite, not a nice-to-have.
 
-`DECIDED` — see §4.2.
+`DECIDED` — see §3.6.
 
 ---
 
@@ -243,7 +243,36 @@ pass is to find out which of us is right, using what shipping products in this s
 
 `OPEN — research.` See §5.
 
-### 3.4 Make the mind swappable — `DECIDED`
+### 3.4 Evolution is per-subsystem, not a single flag — `DECIDED`
+
+Developers must be able to toggle **each subsystem that changes an NPC over time**, independently.
+Memory is never one of them — memory is always on. The switchable set:
+
+| Subsystem | What it changes | Exists today |
+|---|---|---|
+| Personality trait drift | Traits recalibrating within bounds (the Persona Shift pillar) | yes, both runtimes |
+| Relationship / sentiment | Trust, familiarity, sentiment toward a player or another NPC | yes, per-instance |
+| Opinions and beliefs | What the NPC holds to be true, and how it judges things — distinct from remembering that something happened | no |
+| Goals and agendas | Standing desires that bias behavior and shift with experience | no (NEW-SPEC 2.2) |
+
+Design consequence: "evolution" is not a boolean on the NPC definition. Every subsystem that mutates
+state on interaction needs its own switch, its own bounds, and its own audit trail — otherwise a
+studio cannot ship a character whose personality is authored and fixed but whose memory still works.
+
+**Memory pruning must also be a designer-facing control**, not a hidden heuristic. Today it is a
+`salience_threshold` float per NPC, which is not an interface a designer can reason about.
+
+### 3.5 The "MCP" layer is function-calling, and gets renamed — `DECIDED`
+
+There is no Model Context Protocol here. No `@modelcontextprotocol` dependency, no JSON-RPC — it is
+plain LLM function-calling against a project-scoped tool registry (`src/mcp/registry.ts:14`). The MCP
+branding is inaccurate in the code, in the docs, and in the pitch, and it will mislead buyers who know
+what MCP is.
+
+Rename it to what it is: a tool/action registry. Real MCP interop is a separate question that can be
+revisited later on its own merits, not inherited by accident from a naming choice.
+
+### 3.6 Make the mind swappable — `DECIDED`
 
 Regardless of which topology wins, the cognition layer must sit behind one interface:
 
@@ -297,13 +326,15 @@ holes, because shipping a paid product on auth that is disabled outside producti
 
 **Harness first, overhaul second.** A conversation replay and evaluation harness that produces numbers
 for turn latency (broken down by stage), recall accuracy, and cost per turn. Then measure the current
-parallel Mind+Speaker. Then, and only then, change it — behind the §3.4 interface.
+parallel Mind+Speaker. Then, and only then, change it — behind the §3.6 interface.
 
 ---
 
 ## 5. Research questions
 
-The input to the deep-research pass. These are the questions whose answers change the design.
+Run as **two focused passes**, launched 2026-09-05. Output lands in [`research/`](research/).
+
+### Pass A — commercial model and runtime topology
 
 1. **Topology.** What do Inworld AI, Convai, NVIDIA ACE, Charisma.ai, AI People, and Ubisoft's NEO NPC
    actually do — in-engine inference, cloud inference, or hybrid? Who holds the provider keys? Has any
@@ -324,7 +355,30 @@ The input to the deep-research pass. These are the questions whose answers chang
 7. **Licensing enforcement.** What do commercial Unity assets that require a backend actually do for
    license enforcement, and what is the observed piracy/support-cost tradeoff?
 
-**Scope decided:** all seven questions. Not yet launched — held pending your go-ahead.
+### Pass B — agent architecture, in-world actions, designer-controlled evolution
+
+8. **Cognition architecture.** Is a parallel "fast responder + slow background reasoner" split a
+   recognized pattern, or unusual? How do shipping systems get retrieved memory into the reply
+   *without* paying serial latency — speculative retrieval, prefetch on utterance start, retrieval
+   during ASR, small local recall models? This is the question behind the deferred-recall compromise.
+9. **Action / tool layer design.** How are in-world actions classified and scheduled? What separates
+   actions that **terminate** a conversation (walk away, call guards) from actions that **compose**
+   with speech and with each other (show anger while talking, throw a wallet, hand over a key)? Is
+   there an established taxonomy — blocking vs non-blocking, atomic vs compound? How are conflicting
+   simultaneous actions arbitrated, and how does an abstract tool call bind to a concrete engine
+   capability and get validated against world state? Includes the pre-LLM prior art — behavior trees,
+   GOAP, utility AI, The Sims' smart objects — which likely still applies.
+10. **Actions in dialogue.** How does a performed action feed back so the NPC's next line acknowledges
+    it? How is success/failure reported into context? How do systems stop the model from *narrating*
+    stage directions instead of emitting structured actions?
+11. **Evolution as a designer control.** Prior art for bounded, configurable, auditable character
+    change; how shipping systems stop agents drifting out of character over long sessions.
+12. **Memory pruning and deployment shapes.** Designer-facing pruning controls, and how every answer
+    above shifts across three shapes: few-and-deep (~1-2s budget), many-and-ambient (cost per NPC-hour
+    dominates), and real-time (<500ms, cognition cannot block the frame).
+
+**Status:** both passes launched 2026-09-05, running. Deployment shape deliberately left open — the
+research covers the range rather than assuming one.
 
 ---
 
@@ -338,5 +392,8 @@ The input to the deep-research pass. These are the questions whose answers chang
 | D4 | Studio is the moat; Tier 3 promoted to primary product surface | **DECIDED** — §3.2 |
 | D5 | Entitlement source (store invoice vs direct sale) | DEFERRED by decision — model the seam only |
 | D6 | Multi-engine scope and timing | OPEN — follows D2 |
-| D7 | Cognition behind a swappable interface | DECIDED §3.4 |
+| D7 | Cognition behind a swappable interface | DECIDED §3.6 |
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
+| D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
+| D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
+| D11 | Deployment shape to optimize for | OPEN — research covers the range |

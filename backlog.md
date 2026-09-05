@@ -145,6 +145,7 @@
 | 6.5 | Tighten CSP (drop `unsafe-eval`); output-encode instead of input-mutate; classifier moderation | M | reg | todo |
 | 6.6 | Embedding-based recall (knowledge/memories) | M | 1.8 | unit | todo |
 | 6.7 | Settle dual brand — **decided: SoulEngine**; retire `evolve-npc` package name + "Evolve.NPC" log string (see [`PRODUCT.md`](PRODUCT.md)) | S | manual | todo |
+| 6.8 | Rename the "MCP" layer to what it is (a tool/action registry) — no Model Context Protocol is involved; the branding misleads. Covers `src/mcp/*`, `src/types/mcp.ts`, `mcp_tools` table, UI copy, C# `MCP/` | M | reg | todo |
 
 ---
 
@@ -158,8 +159,8 @@
 | 3 | 13 | 0 | **planned** (Authoring Studio) — awaiting goahead; incl. 4 live UI bugs (L1-L4) |
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
 | 5 | 7 | 0 | not started (deferred per request — features/testing first) |
-| 6 | 7 | 0 | not started |
-| **Total** | **68** | **38** | — |
+| 6 | 8 | 0 | not started |
+| **Total** | **69** | **38** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
