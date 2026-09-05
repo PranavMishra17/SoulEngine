@@ -296,11 +296,37 @@ Memory is never one of them — memory is always on. The switchable set:
 | Opinions and beliefs | What the NPC holds to be true, and how it judges things — distinct from remembering that something happened | no |
 | Goals and agendas | Standing desires that bias behavior and shift with experience | no (NEW-SPEC 2.2) |
 
-> **Status after two research passes: no verified prior art.** Passes B and C2 both returned zero
-> surviving claims on bounded, designer-controlled character evolution. Pass C2 diagnosed this as a
-> *sourcing* failure, not absence of evidence, and named the targets — Monolith's GDC Nemesis talks,
-> Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, the Sims 4 emotion
-> GDC material. Tracked as `D14`.
+> **Answered by Pass D2** (2026-09-05), after failing in Passes B and C2. The fix was permitting
+> community wikis, modding docs and game-data dumps as provenance-labelled evidence — these systems are
+> barely documented in first-party engineering sources. Full findings:
+> [`research/06-bounded-evolution-and-memory-pruning.md`](research/06-bounded-evolution-and-memory-pruning.md).
+>
+> **The feature is novel — no shipped first-party game exposes a per-subsystem evolution toggle.** But
+> every mechanism needed to build it well is documented, and shipped games bound change in a way that is
+> the *opposite* of the current implementation. Design rules adopted from that evidence:
+>
+> 1. **Make change discrete, slot-limited and threshold-gated — not a clamped drifting float.** RimWorld
+>    freezes adult traits entirely at generation; CK3 caps personality at ~3 traits with mutual-exclusion
+>    pairs and only lets drift happen through a discrete stress-break that **swaps** a trait rather than
+>    accumulating one. Draw the immutability line at NPC creation.
+> 2. **One authored knob should drive a whole ladder.** RimWorld's mental-break tiers are fixed 4/7 and
+>    1/7 ratios of a single stat clamped to [0.01, 0.50]. One value, entire escalation curve — far better
+>    than independent per-tier constants.
+> 3. **Separate the trait from its effect, in the data.** RimWorld keeps trait definitions and their mood
+>    consequences in different def files, joined by `requiredTraits`. Subsystem separation expressed as
+>    data separation is exactly the shape this section wants.
+> 4. **A disabled subsystem must be skipped at the evaluation entry point, never computed-then-discarded.**
+>    RimWorld's No Breaks mod shipped the naive version and had to switch to Prefix patches to fix
+>    measurable frame-time loss. This is an implementation requirement, not a preference.
+> 5. **Scope evolution settings by population** — all NPCs / a named subset / everything else — following
+>    RimWorld's scenario-part precedent.
+> 6. **Gate any memory-to-personality feedback behind a low-probability promotion step.** Dwarf Fortress
+>    is the one verified case: long-term memory to a ~1:3 core-memory promotion to a facet change, with
+>    per-population low/median/high bounds. That is the template for the opinions-and-beliefs subsystem.
+>
+> **Auditability caution:** discrete tiers do not buy auditability by themselves. Dwarf Fortress bands
+> facets into seven tiers but never prints the number, and its modal band renders as *silence*. Show the
+> causal chain explicitly.
 
 Design consequence: "evolution" is not a boolean on the NPC definition. Every subsystem that mutates
 state on interaction needs its own switch, its own bounds, and its own audit trail — otherwise a
@@ -308,6 +334,21 @@ studio cannot ship a character whose personality is authored and fixed but whose
 
 **Memory pruning must also be a designer-facing control**, not a hidden heuristic. Today it is a
 `salience_threshold` float per NPC, which is not an interface a designer can reason about.
+
+**Replace it with the ThoughtDef schema** (RimWorld, verified in Pass D2): every memory *type* carries
+four authored numbers — a **mood offset**, a **duration in days**, a **stack limit**, and a
+**diminishing-returns multiplier** — with **geometric** accumulation (`value x (1 - m^n) / (1 - m)`) and
+an optional linear fade to zero instead of a hard delete. Copy the schema, not the constants; RimWorld's
+specific numbers are version-sensitive.
+
+Pair it with The Sims 2's memory model, which is precisely what §3.4 asks for: an
+**initial-strength / minimum-strength / decay-rate** triple, so the *record* is durable while its
+*retrieval weight* decays to a nonzero floor. Decay of influence, not of existence.
+
+**Hard requirement, from the documented failure case:** **no hidden memory store.** The Sims 2 accumulated
+gossip memories invisible to the memories panel and unprunable in-game, until players needed a
+third-party debugger to purge them. Everything the system retains must be visible and prunable in the
+authoring UI.
 
 ### 3.5 The "MCP" layer is function-calling, and gets renamed — `DECIDED`
 
@@ -567,5 +608,5 @@ deliberately left open — the research covers the range rather than assuming on
 | D11 | Deployment shape to optimize for | OPEN — Pass C2 gave real numbers for the ambient and real-time tiers (GOAP <1 plan/sec/NPC, ≤4 actions; AI LOD scheduler 57 µs/frame = 0.17% frame time, 48 B/entity) but **nothing for deep conversational NPCs**, the tier that matters most here |
 | D12 | Pass C | **Done.** C1 answered the marketplace rules; C2 answered the action layer. Both left gaps, tracked as D13/D14. |
 | D13 | Pass D (commercial half) | **Split.** Multi-engine: **answered** (D1). Pricing + licence enforcement: **failed a third time**; cause is mechanical (JS-shell and bot-protected pages), not budget. Do these by hand in a browser, not via the research harness. |
-| D14 | Pass D (evolution half): bounded designer-controlled character change | **OPEN** — failed twice as a sourcing problem; target named game-design sources, permit community wikis and video essays with labelling |
+| D14 | Pass D (evolution half): bounded designer-controlled character change | **ANSWERED** by Pass D2 — see §3.4 and [`research/06-bounded-evolution-and-memory-pruning.md`](research/06-bounded-evolution-and-memory-pruning.md). The feature is novel (nobody ships it) but every mechanism is documented. |
 | D15 | Action-layer architecture (§3.7) | **DECIDED** — confirmed 2026-09-05 |

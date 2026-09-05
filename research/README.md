@@ -23,6 +23,8 @@ reference material to develop against — read it before re-litigating a decisio
 
 | `05-multi-engine-sdk-architecture.md` | D1 | How PlayFab, RevenueCat and Steamworks share a core across platforms, and what that means for porting cognition to Unreal/Godot | **done** — answered; pricing and licence enforcement failed for the third time |
 
+| `06-bounded-evolution-and-memory-pruning.md` | D2 | What changes vs what is fixed in RimWorld, CK3, Dwarf Fortress and The Sims; what bounds drift; whether subsystem toggles exist; memory pruning as authored data | **done** — answered on the third attempt, after permitting community wikis as provenance-labelled evidence |
+
 ## Decisions waiting on this
 
 | ID | Decision | State after passes A and B |
@@ -32,7 +34,7 @@ reference material to develop against — read it before re-litigating a decisio
 | D11 | Deployment shape to optimize for | Still open — no per-shape budgets survived |
 | D12 | **Pass C** | **Done.** C1: marketplace rules. C2: action layer. |
 | D13 | **Pass D, commercial half** | **Split.** Multi-engine **answered** in `05-...md`. Pricing and licence enforcement **failed a third time** — and this time budget was not the cause. Pricing pages are JS shells and bot-protected (Fab 403'd automated fetches in C1). **Stop using the research harness for these**: it is a bounded list of about a dozen URLs, so fetch them by hand in a browser session. |
-| D14 | **Pass D, evolution half** — bounded, designer-controlled character change | **Open, and failed twice.** Diagnosed as sourcing, not absence. Target by name: Monolith's GDC Nemesis talks, Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, Sims 4 emotion GDC material, AI and Games essays on Nemesis and Radiant AI. **Explicitly permit community wikis and video essays, labelled as such** — these systems are documented far better there than in first-party engineering sources, which is why two first-party-only passes found nothing. |
+| D14 | **Pass D, evolution half** — bounded, designer-controlled character change | **ANSWERED.** Previously failed twice. Diagnosed as sourcing, not absence. Target by name: Monolith's GDC Nemesis talks, Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, Sims 4 emotion GDC material, AI and Games essays on Nemesis and Radiant AI. **Explicitly permit community wikis and video essays, labelled as such** — these systems are documented far better there than in first-party engineering sources, which is why two first-party-only passes found nothing. |
 | D15 | Action-layer architecture | **Proposed** in `PRODUCT.md` §3.7 from Pass C2, awaiting confirmation |
 
 ## Pass C — the unanswered questions
