@@ -296,6 +296,12 @@ Memory is never one of them — memory is always on. The switchable set:
 | Opinions and beliefs | What the NPC holds to be true, and how it judges things — distinct from remembering that something happened | no |
 | Goals and agendas | Standing desires that bias behavior and shift with experience | no (NEW-SPEC 2.2) |
 
+> **Status after two research passes: no verified prior art.** Passes B and C2 both returned zero
+> surviving claims on bounded, designer-controlled character evolution. Pass C2 diagnosed this as a
+> *sourcing* failure, not absence of evidence, and named the targets — Monolith's GDC Nemesis talks,
+> Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, the Sims 4 emotion
+> GDC material. Tracked as `D14`.
+
 Design consequence: "evolution" is not a boolean on the NPC definition. Every subsystem that mutates
 state on interaction needs its own switch, its own bounds, and its own audit trail — otherwise a
 studio cannot ship a character whose personality is authored and fixed but whose memory still works.
@@ -325,6 +331,55 @@ CognitionRuntime:
 The current parallel Mind+Speaker becomes one implementation of it. Transport, storage, licensing, and
 the engine SDK all bind to the interface, never to the implementation. This is the modularity you asked
 for, and it is what makes a fourth overhaul a contained change instead of another rewrite.
+
+---
+
+### 3.7 The action layer — `PROPOSED from Pass C2, awaiting your nod`
+
+[`research/04-game-prior-art-actions-and-evolution.md`](research/04-game-prior-art-actions-and-evolution.md)
+found that three independently-built shipped toolchains converged on the same architecture. This is the
+shape it implies for the "show anger while talking, then throw the wallet, then hand over the key" case.
+
+**1. The action travels on a channel separate from the prose.** Yarn Spinner (`<<command args>>` bound to
+a typed C# method, with an inspectable registry), ink (`# hashtags` read via `story.currentTags`, kept out
+of the visible text) and Valve's `.vcd` choreography (world triggers as timeline events on the spoken
+line) all do this. Yarn's typed, registry-listed commands are the closest analogue to a tool schema; ink
+is prior art for the *channel* only, since its tags carry no schema or validation.
+
+**2. Compose-vs-terminate is a property of the executor, not a field in the schema.** Yarn has **no
+blocking flag anywhere in its API** — a handler returning `void` lets dialogue continue; one returning an
+awaitable pauses it until the task completes. So `show_anger` is written to return immediately and
+composes; `walk_away` returns an awaitable and gates the next line. **This removes the need for a
+`terminates: true` field on every tool definition.**
+
+**3. Declare the side-effect on the line; dispatch it to the world subsystem.** A Valve choreo event only
+fires an *output* — the actual effect is executed by the entity I/O graph elsewhere. Keep the authoring
+locus and timing separate from the effect implementation.
+
+**4. Termination gets both mechanisms, because both ship.** An explicit declared terminator (ink's
+`-> END`, statically checked with a loose-ends warning) **and** late revalidation (Valve re-queries each
+follow-up line at the moment the next speaker begins, so a conversation whose preconditions have gone
+false simply finds no match — *"you don't need any kind of explicit interruption mechanism"*). The second
+is why `exit_convo` over-triggering has been a recurring problem: revalidation makes most explicit exits
+unnecessary.
+
+**5. Any blocking tool needs a guaranteed completion signal.** Bethesda's scene scheduler blocks by
+default with **no timeout**, and their own docs warn *"be careful that your scenes don't get stuck
+forever!"* A shipped AAA system chose deadlock over timeout and pushed completability onto the action
+author. Every gating tool needs a completion signal or a designer-set completion condition.
+
+**6. Legality is one predicate, checked before commitment, gating every issue path.** The Sims' per-
+interaction Check Tree removes an unavailable interaction from *both* the player's pie menu and the AI's
+autonomous candidate set. One validator, not two.
+
+**7. Results come back as authored facts merged into the next query.** Valve's matched rules write named
+key-value facts into a persistent store that is concatenated into every subsequent query. Note the limit:
+their per-fact expiry is a hard TTL for anti-repetition **pacing**, not memory decay — it is not prior art
+for salience or decay curves.
+
+**Caveat worth keeping:** The Sims 1 shipped with no tool-result-to-belief loop at all; its designers
+proposed one as an exercise. Returning tool results into the next turn's context has **no shipped prior
+art to copy** — only stated design intent.
 
 ---
 
@@ -493,6 +548,8 @@ deliberately left open — the research covers the range rather than assuming on
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
 | D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
 | D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
-| D11 | Deployment shape to optimize for | OPEN — research did not supply per-shape budgets |
-| D12 | Pass C | **C1 done** (marketplace rules answered; 3 sub-questions un-researched). C2 running. |
-| D13 | Pass D: multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **OPEN** — C1's search budget hit 200/200 before these ran; re-run by direct URL, not search |
+| D11 | Deployment shape to optimize for | OPEN — Pass C2 gave real numbers for the ambient and real-time tiers (GOAP <1 plan/sec/NPC, ≤4 actions; AI LOD scheduler 57 µs/frame = 0.17% frame time, 48 B/entity) but **nothing for deep conversational NPCs**, the tier that matters most here |
+| D12 | Pass C | **Done.** C1 answered the marketplace rules; C2 answered the action layer. Both left gaps, tracked as D13/D14. |
+| D13 | Pass D (commercial half): multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **OPEN** — C1's search budget hit 200/200 before these ran; re-run by direct URL, not search |
+| D14 | Pass D (evolution half): bounded designer-controlled character change | **OPEN** — failed twice as a sourcing problem; target named game-design sources, permit community wikis and video essays with labelling |
+| D15 | Action-layer architecture (§3.7) | **PROPOSED** from Pass C2 — awaiting confirmation |

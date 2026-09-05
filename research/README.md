@@ -18,7 +18,7 @@ reference material to develop against — read it before re-litigating a decisio
 |---|---|---|---|
 | `01-commercial-and-topology.md` | A | Competitor topology, API-key handling, one-core-many-engines, marketplace rules, pricing, licence enforcement (`PRODUCT.md` §5 Q1-Q7) | **done** — Q1-Q2 answered decisively, Q3-Q7 returned nothing |
 | `03-marketplace-and-multi-engine.md` | C1 | Unity/Fab/Godot marketplace rules, Verify Invoice, multi-engine SDK architecture, pricing and revenue splits, licence enforcement (re-run of Q3-Q7) | **done** — Unity/Fab/Godot rules answered decisively; multi-engine, pricing comparables and middleware enforcement **un-researched** (search budget exhausted) |
-| `04-game-prior-art-actions-and-evolution.md` | C2 | Composing vs terminating actions, action arbitration, results flowing back into dialogue, bounded designer-controlled evolution, memory pruning (re-run of Q10-Q11 against game-industry prior art) | running |
+| `04-game-prior-art-actions-and-evolution.md` | C2 | Composing vs terminating actions, action arbitration, results flowing back into dialogue, bounded designer-controlled evolution, memory pruning (re-run of Q10-Q11 against game-industry prior art) | **done** — action layer answered with shipped precedent; **character evolution returned nothing for the second time** (sourcing failure, targets named) |
 | `02-agent-architecture-and-actions.md` | B | Cognition architecture and recall latency, action/tool layer design, actions in dialogue, designer-controlled evolution, memory pruning, deployment shapes (`PRODUCT.md` §5 Q8-Q12) | **done** — Q8-Q9 answered, Q10-Q12 returned nothing |
 
 ## Decisions waiting on this
@@ -28,8 +28,10 @@ reference material to develop against — read it before re-litigating a decisio
 | D2 | Runtime topology | **DECIDED — Option B** (fat client + developer-run key broker), 2026-09-05 |
 | D6 | Multi-engine scope and timing | Still blocked — Q3 returned nothing |
 | D11 | Deployment shape to optimize for | Still open — no per-shape budgets survived |
-| D12 | **Pass C** | C1 **done**; C2 running |
-| D13 | **Pass D** — multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **Open.** C1 exhausted its 200/200 search budget before reaching these. Re-run by direct URL: `photonengine`, PlayFab SDKs, `RevenueCat/purchases-unity`, AudioKinetic/FMOD integration layers, `Steamworks.NET`, and vendor pricing pages. |
+| D12 | **Pass C** | **Done.** C1: marketplace rules. C2: action layer. |
+| D13 | **Pass D, commercial half** — multi-engine SDK architecture, comparable pricing, middleware licence enforcement | **Open.** C1 exhausted its 200/200 search budget before reaching these. Re-run by direct URL: `photonengine`, PlayFab SDKs, `RevenueCat/purchases-unity`, AudioKinetic/FMOD integration layers, `Steamworks.NET`, and vendor pricing pages. |
+| D14 | **Pass D, evolution half** — bounded, designer-controlled character change | **Open, and failed twice.** Diagnosed as sourcing, not absence. Target by name: Monolith's GDC Nemesis talks, Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, Sims 4 emotion GDC material, AI and Games essays on Nemesis and Radiant AI. **Explicitly permit community wikis and video essays, labelled as such** — these systems are documented far better there than in first-party engineering sources, which is why two first-party-only passes found nothing. |
+| D15 | Action-layer architecture | **Proposed** in `PRODUCT.md` §3.7 from Pass C2, awaiting confirmation |
 
 ## Pass C — the unanswered questions
 
