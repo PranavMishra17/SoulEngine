@@ -135,7 +135,8 @@
 | 5.9 | **Conversation replay + evaluation harness.** Deterministic, offline, no-cost replay of scripted conversations against the cognition stack, reporting per-stage turn latency, recall correctness and tool-call correctness. Records a baseline for the current parallel Mind+Speaker so the next overhaul can be judged on numbers. See [`PRODUCT.md`](PRODUCT.md) §4 W4. | L | — | unit + e2e | done |
 | 5.11 | **Replay harness must reproduce production's parallel turn topology.** `src/eval/replay.ts` runs Mind and Speaker sequentially and reports their sum as turn latency; production runs them concurrently, so real wall-clock is nearer `max()` than `sum()`. The recall measurement is unaffected. Also assess extracting one shared turn-orchestration function so the harness cannot drift from the shipped route. | S | 5.9 | unit | done |
 | 5.12 | **Give the broker its own signing secret.** `src/broker/token.ts:43` falls back to `config.encryptionKey` — the master secret encrypting every developer's BYOK provider keys at rest — for HMAC token signing. Key separation: compromise of one purpose must not imply the other. Also route it through `src/config.ts` rather than reading `process.env` inline. | S | 5.8 | reg | done |
-| 5.14 | **Broker vend strategies for voice.** ElevenLabs, Cartesia and Deepgram all issue short-lived credentials, but the broker implements only the `proxy` strategy so far. Until `vend` lands, Unity TTS and STT throw `NotSupportedException` and voice modes are unavailable. Unblocks voice end to end. | M | 5.8 | e2e | todo |
+| 5.14 | **Broker vend strategies for voice.** ElevenLabs, Cartesia and Deepgram all issue short-lived credentials, but the broker implements only the `proxy` strategy so far. Until `vend` lands, Unity TTS and STT throw `NotSupportedException` and voice modes are unavailable. Unblocks voice end to end. Endpoints verified from official docs 2026-09-05. | M | 5.8 | e2e | done |
+| 5.16 | **Unity client consumes the vend endpoint.** `TTSProviderFactory` and `VoicePipeline` currently throw `NotSupportedException`; wire them to `POST /broker/vend` via `BrokerCredentialClient`. Must request a fresh ElevenLabs token per connection (`single_use: true`). Separate repo (`SoulEngine-Unity`). | M | 5.14 | manual | todo |
 | 5.15 | **Streaming through the broker LLM proxy.** `POST /broker/llm` collects the full provider response before returning, so `BrokerLLMProvider` yields one terminal chunk and the Unity client cannot render text incrementally. Restores progressive display. | M | 5.8 | e2e | todo |
 | 5.13 | **Shared turn orchestration for the conversation route and the replay harness.** Deferred from 5.11 after assessment: extraction would touch ~70-80 lines across three files versus ~10 for the concurrency fix, and the two paths carry different concerns (HTTP vs eval). Revisit if the harness is observed drifting from the shipped route. | M | 5.11 | unit | deferred |
 | 5.10 | **Remove provider keys from the Unity build** (`SoulEngineConfig.asset` ships `LlmApiKey`/`MindApiKey`/`TtsApiKey`/`SttApiKey`). Violates Unity Submission Guidelines §1.5.b and would fail store submission. Replace `UseBackendProxy` with broker-token mode. Separate repo (`SoulEngine-Unity`), commit `e6ac2e0`. Verified by headless compile (0 errors). | L | 5.8 | manual | done |
@@ -166,9 +167,9 @@
 | 2 | 12 | 11 | **contract shipped**; remaining-routes pagination open (2.12) |
 | 3 | 13 | 0 | **planned** (Authoring Studio) — awaiting goahead; incl. 4 live UI bugs (L1-L4) |
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
-| 5 | 15 | 5 | broker + eval harness landed; provider keys removed from the Unity build; voice vending and broker streaming outstanding |
+| 5 | 15 | 6 | broker, eval harness and voice credential vending landed; provider keys removed from the Unity build; broker streaming and the Unity client wiring outstanding |
 | 6 | 8 | 0 | not started |
-| **Total** | **77** | **43** | — |
+| **Total** | **77** | **44** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
