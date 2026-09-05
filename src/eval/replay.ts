@@ -115,24 +115,6 @@ export async function runReplay(fixture: ConversationFixture): Promise<ReplayRep
     // Build conversation history for LLM
     const llmHistory = assembleConversationHistory(conversationHistory, 20);
 
-    // Run Mind agent (in parallel with Speaker in real system, but sequential here for measurement)
-    timer.mark('mind_start');
-    const mindResult = await runMindAgentLoop(
-      definition,
-      instance,
-      turn.playerInput,
-      llmHistory,
-      mindProvider,
-      definition.project_id,
-      knowledgeBase ?? null,
-      mcpToolRegistry,
-      securityContext,
-      projectTools,
-      new AbortController().signal,
-      null, // userId
-    );
-    timer.mark('mind_end');
-
     // Assemble Speaker prompt (slim, no knowledge)
     let speakerPrompt = await assembleSlimSystemPrompt(
       definition,
@@ -149,9 +131,30 @@ export async function runReplay(fixture: ConversationFixture): Promise<ReplayRep
       timer.mark('deferred_context_injected');
     }
 
+    // Run Mind and Speaker in parallel (matching production topology in src/routes/conversation.ts)
+    timer.mark('mind_start');
     timer.mark('speaker_start');
 
-    // Run Speaker
+    // Start Mind in background (returns promise, does not block)
+    const mindPromise = runMindAgentLoop(
+      definition,
+      instance,
+      turn.playerInput,
+      llmHistory,
+      mindProvider,
+      definition.project_id,
+      knowledgeBase ?? null,
+      mcpToolRegistry,
+      securityContext,
+      projectTools,
+      new AbortController().signal,
+      null, // userId
+    ).then(result => {
+      timer.mark('mind_end');
+      return result;
+    });
+
+    // Run Speaker immediately (streams while Mind runs in background)
     let speakerResponse = '';
     for await (const chunk of speakerProvider.streamChat({
       systemPrompt: speakerPrompt,
@@ -161,6 +164,9 @@ export async function runReplay(fixture: ConversationFixture): Promise<ReplayRep
     }
 
     timer.mark('speaker_end');
+
+    // Await Mind result (likely already complete)
+    const mindResult = await mindPromise;
 
     // Add assistant message to history
     conversationHistory.push({
