@@ -1,0 +1,56 @@
+name: Keep Supabase awake
+
+# Supabase pauses a free project after seven consecutive days with no database
+# activity, and a paused project has to be restored by hand from the dashboard.
+# Until then every request the app makes to it fails.
+#
+# The app cannot prevent this on its own: Cloud Run scales to zero, so a week
+# with no visitors is a week with no queries. This runs a real query on a
+# schedule instead, independently of whether anyone used the site.
+#
+# It queries the database rather than pinging a URL, because reaching the API
+# gateway is not what resets the inactivity clock -- a query against Postgres
+# is.
+
+on:
+  schedule:
+    # Every third day at 06:00 UTC. Well inside the seven-day window, so a
+    # single skipped run (GitHub drops scheduled runs under heavy load) cannot
+    # let the project lapse.
+    - cron: '0 6 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Query the database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Select one row
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in repository secrets."
+            echo "Without both, this workflow cannot keep the project alive. See DEPLOYMENT.md."
+            exit 1
+          fi
+
+          CODE=$(curl -s -o /tmp/response.json -w '%{http_code}' --max-time 30 \
+            "$SUPABASE_URL/rest/v1/projects?select=id&limit=1" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+
+          echo "HTTP $CODE"
+
+          if [ "$CODE" != "200" ]; then
+            # Loud on purpose. A silent failure here is indistinguishable from
+            # success right up until the project is already paused.
+            echo "The keep-alive query failed. The project may already be paused,"
+            echo "or the service role key may have been rotated."
+            echo "Restore it at https://supabase.com/dashboard -> your project -> Restore."
+            cat /tmp/response.json || true
+            exit 1
+          fi
+
+          echo "Supabase answered a query; the inactivity clock is reset."

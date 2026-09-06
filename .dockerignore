@@ -1,0 +1,25 @@
+# Keep the build context small and keep local state out of the image.
+node_modules
+dist
+.git
+.github
+.claude
+
+# Local runtime state. Production reads and writes Supabase, never these.
+data/projects
+data/sessions
+data/harness
+data/session-logs
+
+# Never ship secrets, even though .env is gitignored -- the build context is
+# taken from the working tree, not from git.
+.env
+.env.*
+!.env.example
+
+tests
+specs
+research
+Unity-SoulEngine
+*.md
+!README.md
