@@ -51,6 +51,7 @@ import type { ToolCall, ToolResult } from '../types/mcp.js';
 import type { MoodVector } from '../types/npc.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
 import type { MindResult, MindToolResult } from '../types/mind.js';
+import { appendSessionLog } from '../telemetry/session-log.js';
 
 const logger = createLogger('conversation-turn');
 
@@ -72,6 +73,8 @@ export interface RunTurnOptions {
   /** Global provider, used when the project has no key of its own. */
   fallbackProvider: LLMProvider | null;
   toolRegistry: MCPToolRegistry;
+  /** How this turn arrived, recorded in the session log. */
+  channel?: 'http' | 'voice' | 'harness';
 }
 
 export interface TurnTimings {
@@ -173,7 +176,7 @@ export function partitionMindToolResults(
  * request; this function does neither.
  */
 export async function runConversationTurn(options: RunTurnOptions): Promise<TurnResult> {
-  const { sessionId, content, fallbackProvider, toolRegistry } = options;
+  const { sessionId, content, fallbackProvider, toolRegistry, channel = 'unknown' } = options;
   const wallStart = Date.now();
 
   const stored = getSession(sessionId);
@@ -417,6 +420,47 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
     instance_updated.current_mood = blendMoods(instance.current_mood, distressedMood, 0.25);
   }
   updateSessionInstance(sessionId, instance_updated);
+
+  // Durable record of the turn. Every caller of this function is covered, which
+  // is why the log lives here rather than in each entry point.
+  await appendSessionLog(
+    {
+      sessionId,
+      projectId: state.project_id,
+      npcId: state.definition_id,
+      playerId: state.player_id,
+      channel,
+    },
+    'turn',
+    {
+      playerInput,
+      reply: responseText,
+      mindCompleted: mindResult?.completed ?? null,
+      toolsOffered: mindResult?.tools_offered ?? [],
+      toolsCalled: (mindResult?.tools_called ?? []).map((t) => ({
+        name: t.tool_name,
+        arguments: t.arguments,
+        status: t.status,
+        resultChars: t.result_content?.length ?? 0,
+      })),
+      recallInjected: deferredContextInjected,
+      recallDeferred: deferredContextForNextTurn,
+      mcpResultCount,
+      exitConvo: !!exitConvoResult,
+      moderationAction: moderationResult.action,
+      sanitizationViolations: sanitizationResult.violations,
+      stm: instance.short_term_memory?.length ?? 0,
+      ltm: instance.long_term_memory?.length ?? 0,
+      mood: instance_updated.current_mood,
+      timings: {
+        mindMs: mindResult?.duration_ms ?? null,
+        speakerMs,
+        followUpMs,
+        wallMs: Date.now() - wallStart,
+      },
+      usageEstimated,
+    }
+  );
 
   return {
     responseText,

@@ -9,6 +9,7 @@ dist/
 /data/projects
 /data/sessions
 /data/harness
+/data/session-logs
 
 # Unity SDK lives in its own repository (SoulEngine-Unity)
 /Unity-SoulEngine/
