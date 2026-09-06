@@ -48,10 +48,87 @@ jobs:
         run: npm run test:ci
 
   deploy:
-    name: Deploy to Render
+    name: Deploy to Cloud Run
     runs-on: ubuntu-latest
     needs: [typecheck, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Required for keyless auth to Google Cloud. No service-account JSON key
+    # is stored anywhere; GitHub mints a short-lived OIDC token per run.
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      SERVICE: soulengine
+      REGION: us-central1
+      REPOSITORY: soulengine
+
     steps:
-      - name: Trigger Render Deploy
-        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}
+        run: |
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - name: Deploy to Cloud Run
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}
+        run: |
+          # --max-instances=1 is load-bearing, not a cost tweak. Live sessions
+          # live in an in-memory Map (src/session/store.ts:39), so a second
+          # instance would strand every session that started on the first.
+          # See DEPLOYMENT.md, "Why one instance".
+          #
+          # --timeout caps how long a single request may run. Voice runs over a
+          # WebSocket, which is one long request, so this is also the ceiling on
+          # a voice session and on what a single connection can bill.
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE:${{ github.sha }}" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=1 \
+            --concurrency=80 \
+            --cpu=1 \
+            --memory=512Mi \
+            --timeout=900 \
+            --set-env-vars=NODE_ENV=production,DEFAULT_LLM_PROVIDER=gemini \
+            --set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,BROKER_TOKEN_SECRET=BROKER_TOKEN_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest \
+            --quiet
+
+      - name: Verify the new revision is serving
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+          echo "Service URL: $URL"
+          for attempt in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/health" || echo 000)
+            if [ "$CODE" = "200" ]; then
+              echo "Health check passed on attempt $attempt"
+              exit 0
+            fi
+            echo "Attempt $attempt: /api/health returned $CODE, retrying"
+            sleep 10
+          done
+          echo "Deployment is not serving traffic. Check: gcloud run services logs read $SERVICE --region $REGION"
+          exit 1

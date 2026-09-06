@@ -53,6 +53,9 @@ This applies to chat replies, commit messages, PR bodies, and docs alike.
 The project runs against a tracked backlog using spec-driven, test-first development. Full manual: [`WORKFLOW.md`](WORKFLOW.md). Short version:
 
 - **Source docs:** [`PRODUCT.md`](PRODUCT.md) (target state — what the finished product is; read first) · [`AUDIT.md`](AUDIT.md) (what's broken, tiered) · [`NEW-SPEC.md`](NEW-SPEC.md) (what to build) · [`backlog.md`](backlog.md) (tracked items + status) · [`ERRORS.md`](ERRORS.md) (bug → regression-test ledger).
+- **Deployment:** [`DEPLOYMENT.md`](DEPLOYMENT.md) — Google Cloud Run + Supabase, both on free
+  tiers, deployed from `main` by [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+  Render is gone. Supabase pauses itself after 7 idle days; a scheduled workflow prevents that.
 - **The Unity SDK is a separate repository** (`Unity-SoulEngine/SoulEngine`, gitignored here). It has its own `CLAUDE.md`. Changes there do not go through this repo's PR flow.
 - **Opus orchestrates, Sonnet implements.** This main session decomposes, dispatches, reviews, integrates. Each backlog item is built by one Sonnet `feature-builder` agent in an isolated git worktree. Commands: `/execute-feature <ID>`, `/orchestrate-tier <N>`.
 - **SDD + test-first, always.** Spec (`specs/<ID>.md`) → failing test → implement → green suite → commit. Never code without a spec and a test.
