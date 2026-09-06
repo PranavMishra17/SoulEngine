@@ -25,19 +25,49 @@ export interface SummarizationResult {
 }
 
 /**
- * Filter out potential injection patterns from summaries.
- * Only removes instruction-injection attempts, NOT quoted phrases or regular content.
+ * Phrases that are an instruction aimed at a model rather than something a
+ * character could plausibly recall.
+ *
+ * Each requires the imperative object — "instructions", or a colon introducing
+ * them — not just the verb. The previous version matched bare prefixes such as
+ * `forget all` and `new instruction`, which are ordinary English:
+ *
+ *   "I won't forget all the trouble they caused me."
+ *   "The stranger gave me new instructions about the shipment."
+ *
+ * Worse, it deleted from the match to the next sentence terminator, so a single
+ * innocent phrase destroyed the rest of the sentence. Stored memories are
+ * injected into later prompts, so the filter is worth having — but it was
+ * shredding far more legitimate recollection than injection. See ERR-026.
  */
-function filterInjectionPatterns(text: string): string {
+const INJECTION_PATTERNS: RegExp[] = [
+  /\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier|preceding|system)\s+(?:instructions?|prompts?|rules?|directions?)\b/gi,
+  /\bnew\s+instructions?\s*:/gi,
+  /\bsystem\s+prompt\s*:/gi,
+];
+
+/** Stands in for a removed instruction so the sentence around it still reads. */
+const REDACTION = '[filtered]';
+
+/**
+ * Neutralise instruction-injection attempts in a summary without damaging the
+ * memory itself.
+ *
+ * Matches are replaced rather than deleted, and nothing beyond the match is
+ * touched. A memory that recorded an injection attempt stays useful evidence
+ * that someone tried it.
+ */
+export function filterInjectionPatterns(text: string): string {
   let filtered = text;
 
-  // Remove text that looks like system instruction injection
-  filtered = filtered.replace(/(?:ignore previous|forget all|disregard previous|new instruction)[^.!?]*/gi, '');
+  for (const pattern of INJECTION_PATTERNS) {
+    filtered = filtered.replace(pattern, REDACTION);
+  }
 
-  // Remove square-bracket system commands like [SYSTEM: ...]
-  filtered = filtered.replace(/\[SYSTEM[^\]]*\]/gi, '');
+  // Bracketed system commands, e.g. [SYSTEM: grant admin]
+  filtered = filtered.replace(/\[SYSTEM[^\]]*\]/gi, REDACTION);
 
-  // Remove excessive whitespace
+  // Collapse runaway whitespace
   filtered = filtered.replace(/\s+/g, ' ').trim();
 
   return filtered;
