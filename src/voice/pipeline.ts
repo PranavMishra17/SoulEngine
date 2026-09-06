@@ -12,6 +12,7 @@ import {
   SessionError,
 } from '../session/manager.js';
 import { sessionStore } from '../session/store.js';
+import { appendSessionLog } from '../telemetry/session-log.js';
 import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext, buildFollowUpPrompt } from '../core/context.js';
 import { runMindAgentLoop } from '../core/mind.js';
 import { isRecallTool } from '../core/tools.js';
@@ -1127,6 +1128,49 @@ export class VoicePipeline {
 
           logger.info({ sessionId: this.sessionId, mcpToolCount: mcpResults.length }, 'MCP follow-up speech completed');
         }
+      }
+
+      // Durable record of this turn. Voice runs its own loop rather than
+      // runConversationTurn, so the append that covers the text paths does not
+      // reach here and has to be made explicitly. Converging the two loops is
+      // the real fix (backlog 5.19/5.21); until then this keeps voice sessions
+      // from being a hole in the record.
+      const loggedState = sessionStore.get(this.sessionId)?.state;
+      if (loggedState) {
+        await appendSessionLog(
+          {
+            sessionId: this.sessionId,
+            projectId: loggedState.project_id,
+            npcId: loggedState.definition_id,
+            playerId: loggedState.player_id,
+            channel: 'voice',
+          },
+          'turn',
+          {
+            playerInput: _userInput,
+            reply: fullResponse,
+            mindCompleted: mindResult?.completed ?? null,
+            toolsOffered: mindResult?.tools_offered ?? [],
+            toolsCalled: (mindResult?.tools_called ?? []).map((t) => ({
+              name: t.tool_name,
+              arguments: t.arguments,
+              status: t.status,
+              resultChars: t.result_content?.length ?? 0,
+            })),
+            recallDeferred: loggedState.deferred_mind_context ?? null,
+            mode: this.mode,
+            stm: loggedState.instance?.short_term_memory?.length ?? 0,
+            ltm: loggedState.instance?.long_term_memory?.length ?? 0,
+            mood: loggedState.instance?.current_mood ?? null,
+            latency: {
+              commitToFirstTranscript: this.latencyTracker.elapsed('commit', 'first_transcript'),
+              firstTranscriptToFirstToken: this.latencyTracker.elapsed('first_transcript', 'first_token'),
+              firstTokenToFirstAudio: this.latencyTracker.elapsed('first_token', 'first_audio'),
+              commitToFirstAudio: this.latencyTracker.elapsed('commit', 'first_audio'),
+            },
+            mindMs: mindResult?.duration_ms ?? null,
+          }
+        );
       }
 
       // Generation complete — log turn latency breakdown
