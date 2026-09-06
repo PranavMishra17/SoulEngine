@@ -4,7 +4,7 @@ import type { SecurityContext } from '../types/security.js';
 import type { Message, PlayerInfo } from '../types/session.js';
 import type { LLMMessage } from '../providers/llm/interface.js';
 import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
-import { formatMemoriesForPrompt, retrieveSTM, retrieveLTM } from './memory.js';
+import { formatMemoriesForPrompt, selectMemoriesForPrompt } from './memory.js';
 import { getStorage } from '../storage/factory.js';
 
 const logger = createLogger('context-assembly');
@@ -14,6 +14,9 @@ const logger = createLogger('context-assembly');
  * Prevents massive individual memories from inflating prompt size.
  */
 const MEMORY_SECTION_TOKEN_BUDGET = 1500;
+
+/** Memories offered to the Speaker each turn. Bounded again by the token budget above. */
+const SLIM_PROMPT_MAX_MEMORIES = 8;
 
 /**
  * Context assembly options
@@ -202,13 +205,14 @@ ${resolvedKnowledge}`;
  * Limits both count AND total token size to prevent unbounded prompt growth.
  */
 function formatMemories(instance: NPCInstance, maxMemories: number): string {
-  // Combine STM and LTM, prioritizing by salience
-  const stmMemories = retrieveSTM(instance.short_term_memory, Math.ceil(maxMemories / 2));
-  const ltmMemories = retrieveLTM(instance.long_term_memory, Math.floor(maxMemories / 2));
-
-  const allMemories = [...stmMemories, ...ltmMemories]
-    .sort((a, b) => b.salience - a.salience)
-    .slice(0, maxMemories);
+  // Recency-first, then salience, deduplicated. A fixed half-and-half split
+  // between the two stores used to hand the same promoted memory two slots and
+  // drop everything recent. See ERR-025.
+  const allMemories = selectMemoriesForPrompt(
+    instance.short_term_memory,
+    instance.long_term_memory,
+    maxMemories
+  );
 
   if (allMemories.length === 0) {
     return '';
@@ -621,8 +625,12 @@ ${definition.description}`);
 
   // NO world knowledge section in slim prompt
 
-  // Minimal memories -- top 2 by salience only
-  const memoriesSection = formatMemories(instance, 2);
+  // The slim prompt omits world knowledge and tools, not memory. Memory is the
+  // thing the character is judged on, and two slots meant an NPC holding
+  // thirteen memories about a player greeted them as a stranger (ERR-025).
+  // The section is separately capped by MEMORY_SECTION_TOKEN_BUDGET, so this
+  // bounds the count and the budget bounds the size.
+  const memoriesSection = formatMemories(instance, SLIM_PROMPT_MAX_MEMORIES);
   if (memoriesSection) {
     sections.push(memoriesSection);
   }

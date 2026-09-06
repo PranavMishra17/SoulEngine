@@ -189,6 +189,66 @@ export function matchMemoriesByQuery(
 }
 
 /**
+ * Slots reserved for the most recent memories, regardless of how strongly they
+ * were felt.
+ *
+ * Selecting purely by salience meant a character could not recall something
+ * said moments earlier if an older, more dramatic memory outscored it. That is
+ * the opposite of how being remembered feels to a player, and it is what made
+ * an NPC holding thirteen memories about someone greet them as a stranger.
+ * See ERR-025.
+ */
+const RECENCY_SLOTS = 3;
+
+/**
+ * Choose which memories go into a prompt.
+ *
+ * Recency first, then significance, then no repeats:
+ *
+ *  1. Up to RECENCY_SLOTS of the newest memories are always included, so the
+ *     last things that happened are never crowded out.
+ *  2. Remaining slots go to the most salient of what is left, so a defining
+ *     event still surfaces long after it happened.
+ *  3. A memory occupies at most one slot. A promoted memory can exist in both
+ *     the short- and long-term stores, and rendering it twice wasted a slot
+ *     while making the character look like it had only one memory.
+ *
+ * Returns fewest-first by nothing in particular; callers format the list.
+ */
+export function selectMemoriesForPrompt(
+  shortTerm: Memory[],
+  longTerm: Memory[],
+  maxMemories: number
+): Memory[] {
+  if (maxMemories <= 0) return [];
+
+  // Deduplicate by id, preferring the short-term copy so its timestamp is used.
+  const byId = new Map<string, Memory>();
+  for (const memory of [...longTerm, ...shortTerm]) {
+    byId.set(memory.id, memory);
+  }
+  const candidates = Array.from(byId.values());
+  if (candidates.length <= maxMemories) return candidates;
+
+  const chosen = new Map<string, Memory>();
+
+  const newestFirst = [...candidates].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  for (const memory of newestFirst.slice(0, Math.min(RECENCY_SLOTS, maxMemories))) {
+    chosen.set(memory.id, memory);
+  }
+
+  const mostSalientFirst = [...candidates].sort((a, b) => b.salience - a.salience);
+  for (const memory of mostSalientFirst) {
+    if (chosen.size >= maxMemories) break;
+    chosen.set(memory.id, memory);
+  }
+
+  return Array.from(chosen.values());
+}
+
+/**
  * Retrieve short-term memories (most recent and salient)
  */
 export function retrieveSTM(memories: Memory[], maxCount?: number): Memory[] {
