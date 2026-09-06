@@ -50,7 +50,7 @@ import type { SecurityContext } from '../types/security.js';
 import type { ToolCall, ToolResult } from '../types/mcp.js';
 import type { MoodVector } from '../types/npc.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
-import type { MindResult } from '../types/mind.js';
+import type { MindResult, MindToolResult } from '../types/mind.js';
 
 const logger = createLogger('conversation-turn');
 
@@ -127,6 +127,43 @@ export function stripNarration(text: string): string {
     .filter((line) => line.length > 0)
     .join('\n')
     .trim();
+}
+
+/**
+ * Split what the Mind did into the two things that happen to results:
+ * recall is deferred into the next turn's prompt, actions produce follow-up
+ * speech now.
+ *
+ * A recall result with no content is dropped rather than deferred. It used to
+ * arrive at the next turn as "- Retrieved (recall_memories): No matching
+ * memories found." — telling the character it remembers nothing about whatever
+ * the player just said. See ERR-022.
+ */
+export function partitionMindToolResults(
+  toolsCalled: MindToolResult[]
+): { recallLines: string[]; mcpLines: string[] } {
+  const recallLines: string[] = [];
+  const mcpLines: string[] = [];
+
+  for (const tr of toolsCalled) {
+    if (tr.status === 'error') continue;
+
+    if (isRecallTool(tr.tool_name)) {
+      if (tr.result_content) {
+        recallLines.push(`- Retrieved (${tr.tool_name}): ${tr.result_content}`);
+      }
+      continue;
+    }
+
+    const argsStr = Object.entries(tr.arguments)
+      .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+      .join(', ');
+    mcpLines.push(
+      `- Action taken (${tr.tool_name}): ${tr.result_content || 'executed successfully'}. Params: ${argsStr}`
+    );
+  }
+
+  return { recallLines, mcpLines };
 }
 
 /**
@@ -303,26 +340,8 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let followUpMs: number | null = null;
 
   if (mindResult && mindResult.tools_called.length > 0) {
-    const recallResults: string[] = [];
-    const mcpResults: string[] = [];
-
-    for (const tr of mindResult.tools_called) {
-      if (tr.status === 'error') continue;
-
-      const argsStr = Object.entries(tr.arguments)
-        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
-        .join(', ');
-
-      if (isRecallTool(tr.tool_name)) {
-        if (tr.result_content) {
-          recallResults.push(`- Retrieved (${tr.tool_name}): ${tr.result_content}`);
-        }
-      } else {
-        mcpResults.push(
-          `- Action taken (${tr.tool_name}): ${tr.result_content || 'executed successfully'}. Params: ${argsStr}`
-        );
-      }
-    }
+    const { recallLines: recallResults, mcpLines: mcpResults } =
+      partitionMindToolResults(mindResult.tools_called);
 
     recallResultCount = recallResults.length;
     mcpResultCount = mcpResults.length;

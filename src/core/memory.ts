@@ -128,6 +128,67 @@ export function retrieveMemories(
 }
 
 /**
+ * Words too common to carry meaning. Matching on these would make every query
+ * return every memory, which is the mirror image of matching on nothing.
+ */
+const QUERY_STOPWORDS = new Set([
+  'the', 'and', 'for', 'are', 'was', 'were', 'you', 'your', 'they', 'them', 'their',
+  'this', 'that', 'these', 'those', 'with', 'from', 'about', 'what', 'when', 'where',
+  'who', 'whom', 'why', 'how', 'has', 'have', 'had', 'did', 'does', 'not', 'but',
+  'can', 'could', 'would', 'should', 'will', 'shall', 'may', 'might',
+]);
+
+/** Split free text into meaningful lowercase terms. */
+function queryTerms(text: string): string[] {
+  return Array.from(
+    new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9']+/)
+        .map((t) => t.replace(/^'+|'+$/g, ''))
+        .filter((t) => t.length >= 3 && !QUERY_STOPWORDS.has(t))
+    )
+  );
+}
+
+/**
+ * Find memories relevant to a free-text query.
+ *
+ * The Mind emits natural-language queries, so the previous approach — using the
+ * entire query as one substring needle — essentially never matched: a whole
+ * sentence is not a substring of a stored memory. Scoring on shared terms and
+ * ranking by overlap, then salience, is the smallest change that makes recall
+ * work at all. Semantic retrieval is a separate, larger piece of work
+ * (backlog 6.6); this is deliberately deterministic and dependency-free.
+ *
+ * Returns an empty array when nothing matches, so callers can tell "found
+ * nothing" from "found something" without parsing a sentence.
+ */
+export function matchMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  maxCount: number = 5
+): Memory[] {
+  const terms = queryTerms(query);
+  if (terms.length === 0) return [];
+
+  const scored = memories
+    .map((memory) => {
+      const content = memory.content.toLowerCase();
+      const overlap = terms.filter((term) => content.includes(term)).length;
+      return { memory, overlap };
+    })
+    .filter((entry) => entry.overlap > 0);
+
+  scored.sort((a, b) => {
+    if (b.overlap !== a.overlap) return b.overlap - a.overlap;
+    return b.memory.salience - a.memory.salience;
+  });
+
+  return scored.slice(0, Math.max(0, maxCount)).map((entry) => entry.memory);
+}
+
+/**
  * Retrieve short-term memories (most recent and salient)
  */
 export function retrieveSTM(memories: Memory[], maxCount?: number): Memory[] {

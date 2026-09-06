@@ -32,6 +32,7 @@
 | ERR-021 | P1 | voice | Deepgram reconnect prepends stale pre-disconnect segments → garbled transcript | `finalizedSegments` accumulator not cleared before reconnect | 4.4 | `tests/regression/deepgram-reconnect.test.ts` | FIXED |
 | ERR-018 | P1 | security | Rate limiter bypassable by rotating client-supplied `player_id` | limiter keyed on untrusted `player_id`; in-memory only | 1.6 | `tests/regression/err-018-ratelimit-bypass.test.ts` | FIXED |
 | ERR-019 | P1 | storage | Local definition history stubbed; `rollbackDefinition` is a silent no-op | interface implemented in Supabase only; local returns current | 1.7 | `tests/regression/err-019-local-def-history.test.ts` | FIXED |
+| ERR-022 | P1 | core | `recall_memories` almost never matched, then told the NPC it remembered nothing | whole query used as one substring needle, so a natural-language query never matched; the miss returned `'No matching memories found.'` with status `success`, which the turn loop deferred into the next turn's speaker prompt | 5.18 | `tests/regression/err-022-recall-query-match.test.ts` | FIXED |
 | ERR-020 | P2 | packaging | Version mismatch: `package.json` 1.0.0 vs `/health` 2.0.0 | hardcoded version string in `index.ts` | 6.2 | `tests/unit/err-020-version-source.test.ts` (pending) | OPEN |
 
 ---
