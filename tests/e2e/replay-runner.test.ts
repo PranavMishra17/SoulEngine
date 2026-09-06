@@ -69,7 +69,9 @@ describe('Replay Runner', () => {
       expect(turn.timings.mindDurationMs).toBeGreaterThan(0);
       expect(turn.timings.speakerDurationMs).toBeGreaterThan(0);
       expect(turn.timings.totalMs).toBeGreaterThan(0);
-      expect(Object.keys(turn.timings.stages).length).toBeGreaterThan(0);
+      // Per-stage marks were dropped with src/eval/timer.ts; the shared turn
+      // reports the follow-up leg instead, null when the turn had none.
+      expect(turn.timings.followUpMs === null || turn.timings.followUpMs >= 0).toBe(true);
     }
   }, 30000);
 
@@ -83,8 +85,9 @@ describe('Replay Runner', () => {
 
     const report = await runReplay(parsed.data);
 
-    // Both turns should call recall_memories
+    // Turn 1 looks the preference up. Turn 2 does not need to: the result
+    // arrived as deferred context, which is the whole point of the fixture.
     expect(report.turns[0].tools.actualCalls).toContain('recall_memories');
-    expect(report.turns[1].tools.actualCalls).toContain('recall_memories');
+    expect(report.turns[1].tools.actualCalls).not.toContain('recall_memories');
   }, 30000);
 });

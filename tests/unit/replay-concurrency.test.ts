@@ -2,6 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { runReplay } from '../../src/eval/replay.js';
 import type { ConversationFixture } from '../../src/schema/eval.js';
 
+/**
+ * Mind and Speaker must overlap; a sequential loop would show wall-clock time
+ * near the sum of the two stages rather than near the longer of them.
+ *
+ * The scripted latencies are deliberately large. Wall-clock now measures a real
+ * turn -- sanitization, moderation, session context loading, storage writes and
+ * the session log append all sit inside it -- so the fixed overhead has to stay
+ * small next to the stage times for the ratio below to mean anything. At the
+ * original 100ms per stage the margin was under 50ms and the overhead ate it.
+ */
 describe('Replay Concurrency', () => {
   it('runs Mind and Speaker in parallel, wall-clock < sum of stages', async () => {
     // Create a minimal fixture with known latencies
@@ -65,18 +75,18 @@ describe('Replay Concurrency', () => {
       turns: [
         {
           playerInput: 'Hello',
-          // Mind takes 100ms
+          // Mind takes 400ms
           mindResponses: [
             {
               text: 'thinking',
-              latencyMs: 100,
+              latencyMs: 400,
             },
           ],
-          // Speaker takes 100ms
+          // Speaker takes 400ms
           speakerResponses: [
             {
               text: 'Hello there',
-              latencyMs: 100,
+              latencyMs: 400,
             },
           ],
         },
@@ -165,18 +175,18 @@ describe('Replay Concurrency', () => {
       turns: [
         {
           playerInput: 'Hello',
-          // Mind takes 150ms
+          // Mind takes 800ms
           mindResponses: [
             {
               text: 'thinking',
-              latencyMs: 150,
+              latencyMs: 800,
             },
           ],
-          // Speaker takes 50ms
+          // Speaker takes 400ms
           speakerResponses: [
             {
               text: 'Hi',
-              latencyMs: 50,
+              latencyMs: 400,
             },
           ],
         },
@@ -186,12 +196,15 @@ describe('Replay Concurrency', () => {
     const report = await runReplay(fixture);
     const turn = report.turns[0];
 
-    // Wall-clock should be close to max(mind, speaker) = max(150, 50) = 150
-    // Sequential would be 150 + 50 = 200
     const wallClockTotal = turn.timings.totalMs;
-    const sumOfStages = turn.timings.mindDurationMs + turn.timings.speakerDurationMs;
+    const longestStage = Math.max(turn.timings.mindDurationMs, turn.timings.speakerDurationMs);
+    const shortestStage = Math.min(turn.timings.mindDurationMs, turn.timings.speakerDurationMs);
 
-    expect(wallClockTotal).toBeLessThan(sumOfStages * 0.85);
-    expect(wallClockTotal).toBeGreaterThan(Math.max(turn.timings.mindDurationMs, turn.timings.speakerDurationMs) * 0.9);
+    // Overlapping, wall-clock lands at the longer stage plus turn overhead
+    // (~5ms typically, occasionally over 150ms under load). Sequential, it
+    // would land at the sum -- a further 400ms out. The bound sits between the
+    // two: it absorbs 240ms of overhead and still fails a sequential loop.
+    expect(wallClockTotal).toBeLessThan(longestStage + shortestStage * 0.6);
+    expect(wallClockTotal).toBeGreaterThan(longestStage * 0.9);
   }, 60000);
 });

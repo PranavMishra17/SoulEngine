@@ -80,6 +80,14 @@ export class InMemoryCooldownStore implements CooldownStore {
     this.cleanupInterval = setInterval(() => {
       this.cleanup();
     }, 60000); // Clean up every minute
+
+    // Sweeping a cache that dies with the process must never be the reason the
+    // process stays alive. This store is constructed at module load by
+    // src/mcp/exit-handler.ts, so without unref() merely importing the
+    // conversation turn pinned the event loop forever: the server never noticed
+    // because it runs indefinitely, but `npm run eval` and every other
+    // short-lived entry point hung after finishing its work. See ERR-027.
+    this.cleanupInterval.unref?.();
   }
 
   get(key: string): number | null {
