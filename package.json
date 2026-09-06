@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "test:ci": "vitest run --reporter=dot",
     "precommit": "npm run typecheck && npm run test",
-    "eval": "tsx src/eval/cli.ts"
+    "eval": "tsx src/eval/cli.ts",
+    "npc": "tsx src/harness/cli.ts"
   },
   "keywords": [],
   "author": "",

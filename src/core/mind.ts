@@ -300,6 +300,7 @@ export async function runMindAgentLoop(
 ): Promise<MindResult> {
   const startTime = Date.now();
   const toolsCalled: MindToolResult[] = [];
+  let toolsOffered: string[] = [];
   const rawToolCalls: ToolCall[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -329,6 +330,7 @@ export async function runMindAgentLoop(
 
     // 3. Get available mind tools (recall tools constrained to known enum values)
     const mindTools = getMindAvailableTools(definition, securityContext, projectTools, networkNames);
+    toolsOffered = mindTools.map((t) => t.name);
 
     logger.info({ npcId: definition.id, toolCount: mindTools.length }, 'Mind agent loop started');
 
@@ -375,6 +377,7 @@ export async function runMindAgentLoop(
         },
         completed: true,
         exit_convo_used: false,
+        tools_offered: toolsOffered,
         duration_ms: Date.now() - startTime,
       };
     }
@@ -422,6 +425,7 @@ export async function runMindAgentLoop(
         completed: false,
         exit_convo_used: exitConvoUsed,
         exit_convo_reason: exitConvoReason,
+        tools_offered: toolsOffered,
         duration_ms: Date.now() - startTime,
       };
     }
@@ -455,6 +459,7 @@ export async function runMindAgentLoop(
       completed: true,
       exit_convo_used: exitConvoUsed,
       exit_convo_reason: exitConvoReason,
+      tools_offered: toolsOffered,
       duration_ms,
     };
 
@@ -480,6 +485,7 @@ export async function runMindAgentLoop(
       completed: false,
       exit_convo_used: exitConvoUsed,
       exit_convo_reason: exitConvoReason,
+      tools_offered: toolsOffered,
       duration_ms: Date.now() - startTime,
     };
   }

@@ -462,7 +462,21 @@ export async function getSessionContext(sessionId: SessionID): Promise<SessionCo
     storage.getProject(state.project_id),
     storage.getDefinition(state.project_id, state.definition_id),
     storage.getKnowledgeBase(state.project_id),
-    storage.loadApiKeys(state.project_id),
+    // A project whose stored keys cannot be read must not become unusable. The
+    // caller falls back to the globally configured provider when a project has
+    // no key of its own, and an unreadable key is the same situation as an
+    // absent one. Failing here instead made an encryption-key rotation
+    // permanently brick every conversation in the affected project.
+    storage.loadApiKeys(state.project_id).catch((err: unknown) => {
+      logger.warn(
+        {
+          projectId: state.project_id,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        },
+        'Could not read project API keys; falling back to the configured provider'
+      );
+      return {} as Awaited<ReturnType<typeof storage.loadApiKeys>>;
+    }),
   ]);
 
   // Load MCP tools from storage and register in the singleton registry.

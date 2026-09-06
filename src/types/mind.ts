@@ -24,6 +24,13 @@ export interface MindResult {
   tool_context: string;
   /** All tools called during this turn (both recall and conversation tools) */
   tools_called: MindToolResult[];
+  /**
+   * Names of every tool the Mind was offered this turn, whether or not it used
+   * one. Purely observational: a mind that never calls a tool it was never
+   * offered is a configuration problem, and without this the two are
+   * indistinguishable. Empty when the loop failed before tools were assembled.
+   */
+  tools_offered: string[];
   /** Raw tool calls as returned by the LLM (for forwarding to client) */
   raw_tool_calls: ToolCall[];
   /** Token usage for the Mind's LLM calls */

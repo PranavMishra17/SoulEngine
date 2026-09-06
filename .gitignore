@@ -8,6 +8,7 @@ dist/
 !/.claude/commands/
 /data/projects
 /data/sessions
+/data/harness
 
 # Unity SDK lives in its own repository (SoulEngine-Unity)
 /Unity-SoulEngine/
