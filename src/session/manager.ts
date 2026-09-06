@@ -1,4 +1,5 @@
 import { createLogger } from '../logger.js';
+import { appendSessionLog } from '../telemetry/session-log.js';
 import { getConfig } from '../config.js';
 import { sessionStore, StoredSession } from './store.js';
 import { randomBytes, createHash, timingSafeEqual } from 'crypto';
@@ -46,6 +47,32 @@ export interface SessionStartResult {
 /**
  * Result of ending a session
  */
+/**
+ * Read a project's stored provider keys, treating an unreadable store as an
+ * empty one.
+ *
+ * Callers resolve a provider from these keys and already fall back to the
+ * globally configured provider when a project has none of its own. An
+ * unreadable key is the same situation as an absent one, so throwing here
+ * turned a rotated ENCRYPTION_KEY into a permanent outage for every
+ * conversation in the affected project — including ending sessions, which meant
+ * the project's memories could never be written either. See ERR-023.
+ */
+async function loadApiKeysOrEmpty(
+  storage: { loadApiKeys: (projectId: string) => Promise<ApiKeys> },
+  projectId: string
+): Promise<ApiKeys> {
+  try {
+    return await storage.loadApiKeys(projectId);
+  } catch (err) {
+    logger.warn(
+      { projectId, error: err instanceof Error ? err.message : 'Unknown error' },
+      'Could not read project API keys; falling back to the configured provider'
+    );
+    return {} as ApiKeys;
+  }
+}
+
 export interface SessionEndResult {
   success: boolean;
   version: string;
@@ -238,6 +265,19 @@ export async function startSession(
       'Session started'
     );
 
+    await appendSessionLog(
+      { sessionId, projectId, npcId, playerId, channel: 'unknown' },
+      'session_started',
+      {
+        npcName: definition.name,
+        instanceId: instance.id,
+        mode: mode ?? null,
+        mood: instance.current_mood,
+        stm: instance.short_term_memory?.length ?? 0,
+        ltm: instance.long_term_memory?.length ?? 0,
+      }
+    );
+
     return {
       session_id: sessionId,
       session_token: sessionToken,
@@ -292,7 +332,7 @@ export async function endSession(
     const [project, definition, apiKeys] = await Promise.all([
       storage.getProject(state.project_id),
       storage.getDefinition(state.project_id, state.definition_id),
-      storage.loadApiKeys(state.project_id),
+      loadApiKeysOrEmpty(storage, state.project_id),
     ]);
 
     // Resolve per-project LLM provider (BYOK), falling back to global default
@@ -421,6 +461,29 @@ export async function endSession(
       'Session ended'
     );
 
+    // The memory a session produced is the most consequential thing it does, so
+    // it is recorded whether or not it succeeded.
+    await appendSessionLog(
+      {
+        sessionId,
+        projectId: state.project_id,
+        npcId: state.definition_id,
+        playerId: state.player_id,
+        channel: 'unknown',
+      },
+      'session_ended',
+      {
+        version: saveResult.version,
+        memorySaved,
+        exitConvoUsed,
+        turns: state.conversation_history.filter((m) => m.role === 'user').length,
+        stm: instance.short_term_memory?.length ?? 0,
+        ltm: instance.long_term_memory?.length ?? 0,
+        newestMemory: instance.short_term_memory?.[instance.short_term_memory.length - 1] ?? null,
+        tokenUsage: state.token_usage,
+      }
+    );
+
     return {
       success: true,
       version: saveResult.version,
@@ -462,21 +525,7 @@ export async function getSessionContext(sessionId: SessionID): Promise<SessionCo
     storage.getProject(state.project_id),
     storage.getDefinition(state.project_id, state.definition_id),
     storage.getKnowledgeBase(state.project_id),
-    // A project whose stored keys cannot be read must not become unusable. The
-    // caller falls back to the globally configured provider when a project has
-    // no key of its own, and an unreadable key is the same situation as an
-    // absent one. Failing here instead made an encryption-key rotation
-    // permanently brick every conversation in the affected project.
-    storage.loadApiKeys(state.project_id).catch((err: unknown) => {
-      logger.warn(
-        {
-          projectId: state.project_id,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        },
-        'Could not read project API keys; falling back to the configured provider'
-      );
-      return {} as Awaited<ReturnType<typeof storage.loadApiKeys>>;
-    }),
+    loadApiKeysOrEmpty(storage, state.project_id),
   ]);
 
   // Load MCP tools from storage and register in the singleton registry.

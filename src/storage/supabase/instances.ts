@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from './client.js';
+import { generateInstanceId } from '../instance-id.js';
 import { createLogger } from '../../logger.js';
 import type { NPCInstance, NPCDefinition, MoodVector } from '../../types/npc.js';
 import { StorageError, StorageNotFoundError, StorageVersion, StorageVersionResult } from '../interface.js';
@@ -7,14 +8,6 @@ import { getConfig } from '../../config.js';
 
 const logger = createLogger('supabase-instances');
 
-/**
- * Generate a unique instance ID
- */
-function generateInstanceId(npcId: string, playerId: string): string {
-  // Instance ID is deterministic based on NPC and player
-  const hash = Buffer.from(`${npcId}:${playerId}`).toString('base64url').substring(0, 12);
-  return `inst_${hash}`;
-}
 
 /**
  * Create an initial instance from a definition

@@ -116,6 +116,7 @@ export function createConversationRoutes(
           content: parsed.data.content,
           fallbackProvider: llmProvider,
           toolRegistry,
+          channel: 'http',
         });
       } catch (err) {
         if (err instanceof TurnError && err.code === 'NO_LLM_PROVIDER') {

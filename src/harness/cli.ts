@@ -35,8 +35,9 @@ import { mcpToolRegistry } from '../mcp/registry.js';
 import { createLlmProvider, getDefaultLlmProviderType, getDefaultModel } from '../providers/llm/factory.js';
 import { StubLLMProvider } from '../providers/llm/stub.js';
 import { runDailyPulse, runWeeklyWhisper, runPersonaShift } from '../core/cycles.js';
-import { loadState, saveState, appendTelemetry, readTelemetry, type HarnessState } from './state.js';
-import { computeAffordances, renderAffordances, renderTurnDiagnostics, countRecallResults } from './diagnostics.js';
+import { loadState, saveState, type HarnessState } from './state.js';
+import { readSessionLog, listLoggedSessions } from '../telemetry/session-log.js';
+import { computeAffordances, renderAffordances, renderTurnDiagnostics } from './diagnostics.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
 import type { NPCDefinition } from '../types/npc.js';
 import type { LLMProviderType } from '../providers/llm/interface.js';
@@ -251,6 +252,7 @@ async function cmdTalk(state: HarnessState, npcId: string, text: string, flags: 
       content: text,
       fallbackProvider: provider,
       toolRegistry: mcpToolRegistry,
+      channel: 'harness',
     });
   } catch (error) {
     if (error instanceof TurnError) {
@@ -288,29 +290,6 @@ async function cmdTalk(state: HarnessState, npcId: string, text: string, flags: 
   if (stored) {
     await persistSession(stored.state);
   }
-
-  await appendTelemetry(sessionId, {
-    turn: entry.turns,
-    npcId,
-    playerId: flags.player,
-    input: text,
-    reply: turn.responseText,
-    toolsOffered: turn.mindResult?.tools_offered ?? [],
-    toolsCalled: (turn.mindResult?.tools_called ?? []).map((t) => ({
-      name: t.tool_name,
-      status: t.status,
-      chars: t.result_content?.length ?? 0,
-    })),
-    mindCompleted: turn.mindResult?.completed ?? null,
-    recallInjected: countRecallResults(turn.deferredContextInjected),
-    recallDeferred: turn.recallResultCount,
-    stm: context.instance.short_term_memory?.length ?? 0,
-    ltm: context.instance.long_term_memory?.length ?? 0,
-    mood: context.instance.current_mood,
-    timings: turn.timings,
-    usageEstimated: turn.usageEstimated,
-    stub: flags.stub,
-  });
 
   await saveState(state);
 }
@@ -386,13 +365,17 @@ async function cmdInspect(state: HarnessState, npcId: string, flags: Flags): Pro
   const { projectId, definition } = await findNpc(npcId);
   const storage = getStorage(null);
   const instances = await storage.listInstancesForNpc(projectId, npcId);
-  const instance = instances.find((i) => i.player_id === flags.player) ?? instances[0];
+  const instance = instances.find((i) => i.player_id === flags.player);
 
   out(`${definition.name} (${definition.id})`);
   out(`anchor    : ${definition.core_anchor?.backstory?.slice(0, 200) ?? '(none)'}`);
 
   if (!instance) {
-    out('instance  : none yet for this player - talk to create one');
+    const others = instances.map((i) => i.player_id).filter((p) => p !== flags.player);
+    out(`instance  : none yet for player "${flags.player}" - talk to create one`);
+    if (others.length > 0) {
+      out(`            (other players with a mind here: ${others.join(', ')})`);
+    }
     return;
   }
 
@@ -458,10 +441,12 @@ async function cmdCycle(state: HarnessState, kind: string, npcId: string, flags:
   const { projectId, definition } = await findNpc(npcId);
   const storage = getStorage(null);
   const instances = await storage.listInstancesForNpc(projectId, npcId);
-  const instance = instances.find((i) => i.player_id === flags.player) ?? instances[0];
+  const instance = instances.find((i) => i.player_id === flags.player);
 
   if (!instance) {
-    out(`No instance for ${npcId} yet. Talk to it first.`);
+    // Running a cycle against another player's mind would be the same mistake
+    // ERR-024 was: one player's history leaking into another's character.
+    out(`No instance for ${npcId} and player "${flags.player}". Talk to it first.`);
     return;
   }
 
@@ -520,14 +505,24 @@ async function cmdCycle(state: HarnessState, kind: string, npcId: string, flags:
 
 async function cmdLog(state: HarnessState, flags: Flags, npcId?: string): Promise<void> {
   const sessionId = flags.session ?? (npcId ? state.sessions[npcId]?.sessionId : undefined);
+
   if (!sessionId) {
-    out('Give --session <id>, or an npc id with an open session.');
+    // Sessions are logged by the engine regardless of who drove them, so a
+    // harness with no open session can still show what has been recorded.
+    const sessions = await listLoggedSessions();
+    if (sessions.length === 0) {
+      out('No session logs yet.');
+      return;
+    }
+    out('Give --session <id>. Recorded sessions, newest first:');
+    for (const id of sessions.slice(0, flags.last ?? 20)) out(`  ${id}`);
     return;
   }
-  const records = await readTelemetry(sessionId);
+
+  const records = await readSessionLog(sessionId);
   const slice = flags.last ? records.slice(-flags.last) : records;
   for (const r of slice) out(JSON.stringify(r));
-  out(`(${slice.length} of ${records.length} turns from ${sessionId})`);
+  out(`(${slice.length} of ${records.length} records from ${sessionId})`);
 }
 
 async function main(): Promise<void> {

@@ -5,6 +5,7 @@ import { getConfig } from '../../config.js';
 import type { NPCInstance, NPCDefinition, MoodVector } from '../../types/npc.js';
 import { StorageError, StorageNotFoundError, StorageVersion, StorageVersionResult } from '../interface.js';
 import { getDefinition } from './definitions.js';
+import { generateInstanceId, legacyInstanceId } from '../instance-id.js';
 
 const logger = createLogger('instance-storage');
 
@@ -40,14 +41,6 @@ async function withInstanceLock<T>(
   }
 }
 
-/**
- * Generate a unique instance ID
- */
-function generateInstanceId(npcId: string, playerId: string): string {
-  // Instance ID is deterministic based on NPC and player
-  const hash = Buffer.from(`${npcId}:${playerId}`).toString('base64url').substring(0, 12);
-  return `inst_${hash}`;
-}
 
 /**
  * Get the path to a project's instances directory
@@ -271,6 +264,32 @@ export async function getOrCreateInstance(
   } catch (error) {
     if (!(error instanceof StorageNotFoundError)) {
       throw error;
+    }
+  }
+
+  // Data written before ERR-024 lives under an id that ignored the player. Adopt
+  // it only for the player who actually owns it, so the rightful owner keeps
+  // their history while everyone else correctly starts fresh. Read-only: the id
+  // is left as it is, because instance history directories are keyed on it.
+  const legacyId = legacyInstanceId(npcId, playerId);
+  if (legacyId !== instanceId) {
+    try {
+      const legacy = await getInstance(projectId, legacyId);
+      if (legacy.player_id === playerId && legacy.definition_id === npcId) {
+        logger.info(
+          { projectId, legacyId, playerId },
+          'Adopted a pre-ERR-024 instance for its owning player'
+        );
+        return legacy;
+      }
+      logger.debug(
+        { projectId, legacyId, playerId, storedPlayer: legacy.player_id },
+        'Legacy instance belongs to a different player; starting a fresh one'
+      );
+    } catch (error) {
+      if (!(error instanceof StorageNotFoundError)) {
+        throw error;
+      }
     }
   }
 
