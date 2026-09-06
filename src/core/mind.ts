@@ -13,7 +13,7 @@ import type { MCPToolRegistry } from '../mcp/registry.js';
 import { getMindAvailableTools, isExitConvoTool, isRecallTool } from './tools.js';
 import { formatTier1Npc, formatTier2Npc, formatTier3Npc } from './context.js';
 import { resolveCategoryKnowledge } from './knowledge.js';
-import { retrieveSTM, retrieveLTM, formatMemoriesForPrompt } from './memory.js';
+import { retrieveSTM, retrieveLTM, formatMemoriesForPrompt, matchMemoriesByQuery } from './memory.js';
 import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
 import { getStorage } from '../storage/factory.js';
 
@@ -233,8 +233,8 @@ export async function executeMindTool(
 
     // ------ recall_memories ------
     if (toolCall.name === 'recall_memories') {
-      const query = String(toolCall.arguments.query ?? '').toLowerCase();
-      if (!query) {
+      const query = String(toolCall.arguments.query ?? '');
+      if (!query.trim()) {
         return { ...baseResult, result_content: '', status: 'error', error: 'No query provided' };
       }
 
@@ -242,14 +242,14 @@ export async function executeMindTool(
       const ltm = retrieveLTM(instance.long_term_memory);
       const allMemories: Memory[] = [...stm, ...ltm];
 
-      // Simple case-insensitive substring match on memory content
-      const matched = allMemories
-        .filter((m) => m.content.toLowerCase().includes(query))
-        .sort((a, b) => b.salience - a.salience)
-        .slice(0, 5);
+      const matched = matchMemoriesByQuery(allMemories, query, 5);
 
       if (matched.length === 0) {
-        return { ...baseResult, result_content: 'No matching memories found.', status: 'success' };
+        // Empty rather than a sentence saying nothing was found. The turn loop
+        // only defers recall results that have content, so a fruitless lookup
+        // no longer reaches the next prompt as an affirmative statement that
+        // the character remembers nothing. See ERR-022.
+        return { ...baseResult, result_content: '', status: 'success' };
       }
 
       const formatted = formatMemoriesForPrompt(matched, 5);
