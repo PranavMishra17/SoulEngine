@@ -25,7 +25,8 @@ function printTurnReport(report: ReplayReport): void {
 
   for (const turn of report.turns) {
     console.log(`\nTurn ${turn.turn}: ${turn.playerInput.substring(0, 60)}${turn.playerInput.length > 60 ? '...' : ''}`);
-    console.log(`  Mind: ${turn.timings.mindDurationMs}ms | Speaker: ${turn.timings.speakerDurationMs}ms | Total: ${turn.timings.totalMs}ms`);
+    const followUp = turn.timings.followUpMs === null ? '' : ` | Follow-up: ${turn.timings.followUpMs}ms`;
+    console.log(`  Mind: ${turn.timings.mindDurationMs}ms | Speaker: ${turn.timings.speakerDurationMs}ms${followUp} | Total: ${turn.timings.totalMs}ms`);
 
     if (turn.recall.expectedFacts.length > 0) {
       const hitPercent = (turn.recall.hitRate * 100).toFixed(0);

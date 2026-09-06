@@ -1,6 +1,6 @@
 {
   "name": "deferred-recall",
-  "description": "Player states a fact, then asks about it next turn. Tests whether recall results arrive in time for the reply or are deferred.",
+  "description": "Player asks about a preference the NPC already holds in memory. Turn 1 recalls it; the result must reach turn 2 as deferred context, because recall never lands in the same turn that asked for it.",
   "npc": {
     "definition": {
       "id": "test-npc-1",
@@ -9,7 +9,10 @@
       "description": "A shopkeeper who remembers customer preferences",
       "core_anchor": {
         "backstory": "Runs a small bookshop in the town square",
-        "principles": ["Honesty", "Helpfulness"],
+        "principles": [
+          "Honesty",
+          "Helpfulness"
+        ],
         "trauma_flags": []
       },
       "personality_baseline": {
@@ -45,7 +48,15 @@
         "dominance": 0.5
       },
       "trait_modifiers": {},
-      "short_term_memory": [],
+      "short_term_memory": [
+        {
+          "id": "mem_alex_books",
+          "content": "Alex told me they love mystery novels with historical settings.",
+          "salience": 0.8,
+          "timestamp": "2026-09-05T00:00:00Z",
+          "type": "short_term"
+        }
+      ],
       "long_term_memory": [],
       "relationships": {},
       "daily_pulse": null,
@@ -75,6 +86,10 @@
             }
           ],
           "latencyMs": 20
+        },
+        {
+          "text": "Recalled what they like to read.",
+          "latencyMs": 10
         }
       ],
       "speakerResponses": [
@@ -84,33 +99,33 @@
         }
       ],
       "expectations": {
-        "toolsCalled": ["recall_memories"]
+        "toolsCalled": [
+          "recall_memories"
+        ]
       }
     },
     {
       "playerInput": "Do you remember what kind of books I like?",
       "mindResponses": [
         {
-          "toolCalls": [
-            {
-              "name": "recall_memories",
-              "arguments": {
-                "query": "Alex books preferences"
-              }
-            }
-          ],
-          "latencyMs": 25
+          "text": "Nothing further to look up.",
+          "latencyMs": 10
         }
       ],
       "speakerResponses": [
         {
-          "text": "Hmm, let me think. I believe you mentioned something recently, but I need to recall the details.",
+          "text": "Of course -- mystery novels, the historical ones.",
           "latencyMs": 35
         }
       ],
       "expectations": {
-        "recallFacts": ["mystery novels", "historical"],
-        "toolsCalled": ["recall_memories"]
+        "recallFacts": [
+          "mystery novels",
+          "historical"
+        ],
+        "toolsNotCalled": [
+          "recall_memories"
+        ]
       }
     }
   ]

@@ -74,7 +74,17 @@ export interface RunTurnOptions {
   fallbackProvider: LLMProvider | null;
   toolRegistry: MCPToolRegistry;
   /** How this turn arrived, recorded in the session log. */
-  channel?: 'http' | 'voice' | 'harness';
+  channel?: 'http' | 'voice' | 'harness' | 'eval';
+  /**
+   * Bypass provider resolution and drive the turn with these instead.
+   *
+   * Only the offline evaluator sets this: it scripts the Mind and the Speaker
+   * separately per turn, which project settings cannot express. Registering a
+   * stub provider type in the factory would have put a test-only branch in the
+   * path every real conversation takes; an override production never sets is
+   * the smaller seam. See specs/5.19.md.
+   */
+  providers?: { speaker: LLMProvider; mind: LLMProvider };
 }
 
 export interface TurnTimings {
@@ -236,9 +246,11 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   const modelId = projectSettings.llm_model || getDefaultModel(providerType);
   const projectApiKey = sessionContext.apiKeys[providerType as keyof typeof sessionContext.apiKeys];
 
-  const activeProvider = projectApiKey
-    ? createLlmProvider({ provider: providerType, apiKey: projectApiKey, model: modelId })
-    : fallbackProvider;
+  const activeProvider = options.providers
+    ? options.providers.speaker
+    : projectApiKey
+      ? createLlmProvider({ provider: providerType, apiKey: projectApiKey, model: modelId })
+      : fallbackProvider;
 
   if (!activeProvider) {
     throw new TurnError('No LLM provider configured', 'NO_LLM_PROVIDER');
@@ -250,9 +262,11 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   const mindModelId = projectSettings.mind_model || getDefaultModel(mindProviderType as LLMProviderType);
   const mindApiKey = sessionContext.apiKeys[mindProviderType as keyof typeof sessionContext.apiKeys];
 
-  const mindProvider = mindApiKey
-    ? createLlmProvider({ provider: mindProviderType as LLMProviderType, apiKey: mindApiKey, model: mindModelId })
-    : activeProvider;
+  const mindProvider = options.providers
+    ? options.providers.mind
+    : mindApiKey
+      ? createLlmProvider({ provider: mindProviderType as LLMProviderType, apiKey: mindApiKey, model: mindModelId })
+      : activeProvider;
 
   // Parallel Mind + Speaker
   const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 15000;

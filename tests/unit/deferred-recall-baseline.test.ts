@@ -42,9 +42,16 @@ describe('Deferred Recall Baseline Metrics', () => {
     // Verify the deferred-recall behavior is still correct
     expect(report.turns.length).toBe(2);
 
-    // Turn 2 should have 0% recall hit rate (fact deferred to next turn)
-    expect(report.turns[1].recall.hitRate).toBe(0);
+    // Deferral is the behaviour under measurement: a recall issued in turn 1
+    // cannot reach turn 1's own reply, and must reach turn 2.
+    //
+    // This used to assert turn 2 scored 0%, which recorded a broken fixture as
+    // the baseline -- its instance held no memories, so recall could never
+    // match anything. With a memory to find, the deferred result lands.
+    expect(report.turns[0].recall.factsInReply).toHaveLength(0);
     expect(report.turns[1].recall.expectedFacts).toHaveLength(2);
+    expect(report.turns[1].recall.factsInPrompt).toEqual(report.turns[1].recall.expectedFacts);
+    expect(report.turns[1].recall.hitRate).toBe(1.0);
 
     // Tool accuracy should be 100%
     expect(report.aggregate.toolAccuracy).toBe(1.0);
