@@ -11,6 +11,10 @@ and had been failing on every push.
 - Deploy pipeline: [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
 - Supabase keep-alive: [`.github/workflows/keep-supabase-awake.yml`](.github/workflows/keep-supabase-awake.yml)
 
+**Section 3 is copy-paste runnable.** Set five values once in 3.3 and every
+later block uses them. Run the blocks in **Git Bash**, not PowerShell — they use
+bash syntax (`$VAR`, loops, `read`). Git Bash ships with Git for Windows.
+
 ---
 
 ## 1. What was wrong
@@ -55,104 +59,154 @@ on file. Section 7 covers capping spend so that stays theoretical.
 
 ---
 
-## 3. One-time setup
+## 3. Setup, step by step
 
-Run once, from a machine with the [gcloud CLI](https://cloud.google.com/sdk/docs/install)
-installed. Replace `YOUR_PROJECT_ID` and `OWNER/REPO` throughout.
+### 3.1 First: rescue two values from Render
 
-### 3.1 Project and APIs
+> **Do this before deleting the Render service.** `ENCRYPTION_KEY` decrypts every
+> project API key stored in the `project_secrets` table. Deploy Cloud Run with a
+> different value and every stored key becomes permanently unreadable, and every
+> conversation in every project fails. That exact failure is ERR-023 in
+> [`ERRORS.md`](ERRORS.md).
+
+1. Open <https://dashboard.render.com> and sign in.
+2. Click the **soulengine** service.
+3. Click **Environment** in the left sidebar.
+4. Reveal and copy these two values somewhere safe:
+   - `ENCRYPTION_KEY`
+   - `BROKER_TOKEN_SECRET`
+
+You will paste both in step 3.5. Do not delete the Render service until Cloud Run
+is serving.
+
+If `BROKER_TOKEN_SECRET` was never set on Render, generate a fresh one — nothing
+persisted depends on it, unlike `ENCRYPTION_KEY`:
 
 ```bash
-gcloud config set project YOUR_PROJECT_ID
+openssl rand -hex 32
+```
 
+Both must be at least 32 characters (`src/config.ts:10` and `:13`) and must be
+different values.
+
+### 3.2 Collect your Supabase keys
+
+1. Open <https://supabase.com/dashboard> and sign in.
+2. Click your SoulEngine project. **If it shows as paused, click `Restore` now**
+   and wait for it to come back.
+3. Go to **Project Settings** (the gear, bottom left) then **API**.
+4. Copy three values:
+   - **Project URL** -> `SUPABASE_URL` (looks like `https://abcdefgh.supabase.co`)
+   - **anon / public** key -> `SUPABASE_ANON_KEY`
+   - **service_role / secret** key -> `SUPABASE_SERVICE_ROLE_KEY` (click to reveal)
+
+### 3.3 Create the Google Cloud project
+
+1. Install the gcloud CLI if you have not: <https://cloud.google.com/sdk/docs/install-sdk>
+   (Windows installer, then reopen Git Bash).
+2. Open <https://console.cloud.google.com/projectcreate>, sign in with your Google
+   account, name the project `soulengine`, and click **Create**. Note the
+   **Project ID** it generates — usually `soulengine-XXXXXX`, not the name.
+3. Open <https://console.cloud.google.com/billing>, click **Link a billing
+   account**, and add a card. Required even for the free tier. New accounts get
+   $300 of credit for 90 days; the always-free allowances continue after that.
+4. Log the CLI in:
+
+```bash
+gcloud auth login
+```
+
+### 3.4 Set your five values
+
+Edit the first line only — the rest are already correct for this repo.
+
+```bash
+export GCP_PROJECT_ID="soulengine-XXXXXX"          # <- paste your Project ID from 3.3
+export GITHUB_REPO="PranavMishra17/SoulEngine"
+export REGION="us-central1"
+export SERVICE="soulengine"
+export REPOSITORY="soulengine"
+
+gcloud config set project "$GCP_PROJECT_ID"
+export PROJECT_NUMBER="$(gcloud projects describe "$GCP_PROJECT_ID" --format='value(projectNumber)')"
+export DEPLOYER="github-deployer@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+export RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+echo "Project $GCP_PROJECT_ID (number $PROJECT_NUMBER) — deployer $DEPLOYER"
+```
+
+That last line must print a real project number. If it is blank, the project id
+is wrong or `gcloud auth login` did not complete.
+
+> Everything below reuses these variables. If you close the terminal, re-run this
+> block before continuing.
+
+### 3.5 Enable services and create the registry
+
+```bash
 gcloud services enable \
   run.googleapis.com \
   artifactregistry.googleapis.com \
   secretmanager.googleapis.com \
-  iamcredentials.googleapis.com
-```
+  iamcredentials.googleapis.com \
+  cloudresourcemanager.googleapis.com
 
-### 3.2 Somewhere to put the image
-
-```bash
-gcloud artifacts repositories create soulengine \
+gcloud artifacts repositories create "$REPOSITORY" \
   --repository-format=docker \
-  --location=us-central1 \
+  --location="$REGION" \
   --description="SoulEngine container images"
 ```
 
-Artifact Registry gives 0.5 GB of free storage. The pipeline pushes one image
-per commit, so prune old ones occasionally (section 7).
+### 3.6 Store the secrets
 
-### 3.3 Secrets
-
-Everything sensitive lives in Secret Manager, never in the workflow file and
-never in the image. Create one secret per value:
+This prompts for each value in turn. Nothing is echoed to the screen and nothing
+lands in your shell history. Paste the value, press Enter.
 
 ```bash
 for NAME in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY \
             ENCRYPTION_KEY BROKER_TOKEN_SECRET GEMINI_API_KEY; do
-  gcloud secrets create "$NAME" --replication-policy=automatic
+  printf 'Paste value for %s: ' "$NAME"
+  read -rs VALUE
+  echo
+  # printf, not echo: a trailing newline inside an API key breaks auth in ways
+  # that look like a wrong key.
+  printf '%s' "$VALUE" \
+    | gcloud secrets create "$NAME" --replication-policy=automatic --data-file=- 2>/dev/null \
+    || printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" --data-file=-
 done
+unset VALUE
+
+gcloud secrets list
 ```
 
-Then add each value (this reads from your terminal, so the value never becomes a
-shell-history entry):
+`gcloud secrets list` should show all six.
 
-```bash
-gcloud secrets versions add SUPABASE_URL --data-file=-
-# paste the value, then press Ctrl-D
-```
-
-Repeat for each name. `ENCRYPTION_KEY` and `BROKER_TOKEN_SECRET` **must be
-different values** — they are separate secrets precisely so that compromising one
-does not implicate the other.
-
-> `ENCRYPTION_KEY` decrypts every stored project API key. If you change it,
-> every key already stored becomes unreadable and every conversation in that
-> project fails. That has happened before; see ERR-023 in
-> [`ERRORS.md`](ERRORS.md).
-
-### 3.4 A service account for deploys
+### 3.7 Create the deploy identity
 
 ```bash
 gcloud iam service-accounts create github-deployer \
   --display-name="GitHub Actions deployer"
 
-SA="github-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+# The deployer may ship revisions, push images, and act as the runtime account.
+for ROLE in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser; do
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+    --member="serviceAccount:${DEPLOYER}" --role="$ROLE" --condition=None --quiet
+done
 
-# Deploy revisions
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:$SA" --role="roles/run.admin"
-
-# Push images
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:$SA" --role="roles/artifactregistry.writer"
-
-# Act as the runtime service account when deploying
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:$SA" --role="roles/iam.serviceAccountUser"
-```
-
-The Cloud Run **runtime** service account (the default compute one, unless you
-made another) needs to read the secrets:
-
-```bash
-PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
-
+# The RUNTIME account is a different account, and it is the one that reads the
+# secrets at request time. Missing this is the most common setup failure.
 for NAME in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY \
             ENCRYPTION_KEY BROKER_TOKEN_SECRET GEMINI_API_KEY; do
   gcloud secrets add-iam-policy-binding "$NAME" \
-    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-    --role="roles/secretmanager.secretAccessor"
+    --member="serviceAccount:${RUNTIME_SA}" \
+    --role="roles/secretmanager.secretAccessor" --quiet
 done
 ```
 
-### 3.5 Keyless auth from GitHub
+### 3.8 Let GitHub authenticate without a stored key
 
-Workload Identity Federation lets GitHub Actions authenticate with a
-short-lived token minted per run. Nothing long-lived is stored in the
-repository, so there is no key to leak or rotate.
+Workload Identity Federation mints a short-lived token per workflow run, so no
+long-lived credential is ever stored in the repository.
 
 ```bash
 gcloud iam workload-identity-pools create github \
@@ -163,66 +217,84 @@ gcloud iam workload-identity-pools providers create-oidc github \
   --workload-identity-pool=github \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-  --attribute-condition="assertion.repository == 'OWNER/REPO'"
-```
+  --attribute-condition="assertion.repository == '${GITHUB_REPO}'"
 
-The attribute condition is required, and it is the security boundary: without
-it, any repository on GitHub could impersonate this service account.
-
-Let that repository act as the deployer:
-
-```bash
-PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
-
-gcloud iam service-accounts add-iam-policy-binding \
-  "github-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/OWNER/REPO"
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${GITHUB_REPO}"
+
+export WIF_PROVIDER="$(gcloud iam workload-identity-pools providers describe github \
+  --location=global --workload-identity-pool=github --format='value(name)')"
+
+echo "$WIF_PROVIDER"
 ```
 
-Print the provider resource name for the next step:
+The `--attribute-condition` is the security boundary, not a formality: without it
+any repository on GitHub could impersonate this service account.
+
+### 3.9 Give GitHub its secrets
+
+`gh` is already authenticated in this repo, so this needs no browser. Run it from
+the repository directory.
 
 ```bash
-gcloud iam workload-identity-pools providers describe github \
-  --location=global --workload-identity-pool=github \
-  --format='value(name)'
+gh secret set GCP_PROJECT_ID --body "$GCP_PROJECT_ID"
+gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --body "$WIF_PROVIDER"
+gh secret set GCP_SERVICE_ACCOUNT --body "$DEPLOYER"
+
+# The keep-alive workflow talks to Supabase directly and never touches Google,
+# so it needs its own copy of these two.
+printf 'Paste SUPABASE_URL again: ' && read -rs V && echo && gh secret set SUPABASE_URL --body "$V"
+printf 'Paste SUPABASE_SERVICE_ROLE_KEY again: ' && read -rs V && echo && gh secret set SUPABASE_SERVICE_ROLE_KEY --body "$V"
+unset V
+
+gh secret delete RENDER_DEPLOY_HOOK_URL 2>/dev/null || true
+gh secret list
 ```
 
-### 3.6 Repository secrets
+If you would rather click: <https://github.com/PranavMishra17/SoulEngine/settings/secrets/actions>
 
-In GitHub, under **Settings -> Secrets and variables -> Actions**:
+### 3.10 Deploy and check
 
-| Secret | Value |
-| --- | --- |
-| `GCP_PROJECT_ID` | Your GCP project id |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | The provider name printed in 3.5 |
-| `GCP_SERVICE_ACCOUNT` | `github-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com` |
-| `SUPABASE_URL` | Same value as the Secret Manager entry |
-| `SUPABASE_SERVICE_ROLE_KEY` | Same value as the Secret Manager entry |
+```bash
+git commit --allow-empty -m "Trigger first Cloud Run deploy"
+git push origin main
 
-The last two are duplicated here on purpose: the keep-alive workflow talks to
-Supabase directly and never touches Google Cloud.
+gh run watch
+```
 
-You can now delete `RENDER_DEPLOY_HOOK_URL`.
+When it goes green:
+
+```bash
+export URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
+echo "$URL"
+curl -s "$URL/api/health"
+```
+
+You want `"storage":"supabase"` in that response. If it says `"local"`, the
+Supabase variables did not reach the container — see section 9.
+
+Open `$URL` in a browser to confirm the studio loads. Only then delete the Render
+service.
+
+### 3.11 Turn on the keep-alive
+
+Run it once by hand to prove it works: <https://github.com/PranavMishra17/SoulEngine/actions/workflows/keep-supabase-awake.yml>
+-> **Run workflow**. A green run means the database answered. After that it runs
+itself every three days.
 
 ---
 
-## 4. Deploying
+## 4. Deploying from now on
 
 Push to `main`. The pipeline type-checks, runs the full test suite, builds the
 image, pushes it, deploys the revision, and then polls `/api/health` on the live
 URL until it answers `200`. A deploy that does not serve traffic fails the run.
 
-To deploy by hand:
+To deploy by hand without going through GitHub:
 
 ```bash
-gcloud run deploy soulengine --source . --region us-central1
-```
-
-Find the URL at any time:
-
-```bash
-gcloud run services describe soulengine --region us-central1 --format='value(status.url)'
+gcloud run deploy "$SERVICE" --source . --region "$REGION"
 ```
 
 ### Why one instance
@@ -239,7 +311,8 @@ pinned to one instance while the REST calls around it are not.
 
 `--concurrency=80` means that one instance still handles up to 80 simultaneous
 requests, which is far beyond current traffic. Raising `--max-instances` requires
-moving the session store into Supabase or Redis first.
+moving the session store into Supabase or Redis first (backlog 5.24 in
+[`backlog.md`](backlog.md)).
 
 ---
 
@@ -257,12 +330,9 @@ Two things to know:
   inactivity.** If you stop pushing for two months, the keep-alive stops too and
   the project will pause. Re-enable it from the Actions tab, or push anything.
 
-To confirm it works, trigger it by hand: Actions -> Keep Supabase awake -> Run
-workflow. A green run means the database answered.
-
 If the project has already paused, restore it at
-`https://supabase.com/dashboard` -> your project -> **Restore**, then run the
-workflow to reset the clock.
+<https://supabase.com/dashboard> -> your project -> **Restore**, then run the
+workflow by hand to reset the clock.
 
 ---
 
@@ -273,21 +343,29 @@ the deploy step. Everything else is mounted from Secret Manager.
 
 | Variable | Source | Notes |
 | --- | --- | --- |
-| `PORT` | Cloud Run | Injected automatically; the server reads it via [`src/config.ts:63`](src/config.ts:63) |
+| `PORT` | Cloud Run | Injected automatically; read via [`src/config.ts:63`](src/config.ts:63) |
 | `NODE_ENV` | Deploy step | `production` — also what switches storage from local files to Supabase ([`src/storage/index.ts:19`](src/storage/index.ts:19)) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Secret Manager | Postgres, auth and image storage |
-| `ENCRYPTION_KEY` | Secret Manager | Decrypts stored project API keys — never rotate casually |
-| `BROKER_TOKEN_SECRET` | Secret Manager | Signs broker tokens; must differ from `ENCRYPTION_KEY` |
+| `ENCRYPTION_KEY` | Secret Manager | Decrypts stored project API keys. Min 32 chars. Never rotate casually |
+| `BROKER_TOKEN_SECRET` | Secret Manager | Signs broker tokens. Min 32 chars, must differ from `ENCRYPTION_KEY` |
 | `GEMINI_API_KEY` | Secret Manager | Fallback provider when a project has no key of its own |
 
 Storage only switches to Supabase when **both** `NODE_ENV=production` and the
 Supabase variables are present. Miss one and the service silently runs on local
 files inside the container, which vanish on the next deploy. `/api/health`
-reports which backend is live — check `"storage":"supabase"` after any change.
+reports which backend is live.
 
-Adding a provider key later means creating the secret, granting the runtime
-service account access to it, and adding it to `--set-secrets` in the deploy
-step.
+To change a secret later — this creates a new version, then a redeploy picks it
+up because the deploy step pins `:latest`:
+
+```bash
+printf 'new value' | gcloud secrets versions add GEMINI_API_KEY --data-file=-
+gcloud run services update "$SERVICE" --region "$REGION"
+```
+
+To add a **new** provider key: create the secret (3.6), grant the runtime account
+access (3.7), then add it to `--set-secrets` in
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
 ---
 
@@ -302,7 +380,8 @@ duration.** 180,000 vCPU-seconds is about 50 hours of a single 1-vCPU instance
 actively serving. `--timeout=900` caps any one connection at 15 minutes, which
 bounds both a runaway session and its cost.
 
-Set a budget alert so surprises arrive by email rather than on a statement:
+Set a budget alert so surprises arrive by email rather than on a statement. Get
+the billing account id from <https://console.cloud.google.com/billing>:
 
 ```bash
 gcloud billing budgets create \
@@ -312,15 +391,15 @@ gcloud billing budgets create \
   --threshold-rule=percent=100
 ```
 
-Artifact Registry keeps every image, and the free allowance is 0.5 GB. Prune
-occasionally:
+Artifact Registry keeps every image and the free allowance is 0.5 GB. Prune
+occasionally, keeping the newest ten:
 
 ```bash
 gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/YOUR_PROJECT_ID/soulengine/soulengine \
+  "${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/${SERVICE}" \
   --format='value(version)' --sort-by=~UPDATE_TIME | tail -n +11 | \
-  xargs -I{} gcloud artifacts docker images delete \
-  "us-central1-docker.pkg.dev/YOUR_PROJECT_ID/soulengine/soulengine@{}" --quiet
+  xargs -r -I{} gcloud artifacts docker images delete \
+  "${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/${SERVICE}@{}" --quiet
 ```
 
 ---
@@ -330,10 +409,10 @@ gcloud artifacts docker images list \
 Revisions are immutable, so rolling back is a traffic switch, not a rebuild:
 
 ```bash
-gcloud run revisions list --service soulengine --region us-central1
+gcloud run revisions list --service "$SERVICE" --region "$REGION"
 
-gcloud run services update-traffic soulengine \
-  --region us-central1 --to-revisions REVISION_NAME=100
+gcloud run services update-traffic "$SERVICE" \
+  --region "$REGION" --to-revisions REVISION_NAME=100
 ```
 
 ---
@@ -343,15 +422,17 @@ gcloud run services update-traffic soulengine \
 **Logs:**
 
 ```bash
-gcloud run services logs read soulengine --region us-central1 --limit 100
+gcloud run services logs read "$SERVICE" --region "$REGION" --limit 100
 ```
 
 | Symptom | Cause |
 | --- | --- |
 | `/api/health` says `"storage":"local"` | `NODE_ENV` or a Supabase variable is missing. Data is being written into the container and lost on redeploy |
 | Health is fine, but every studio action fails | Supabase is paused. Restore it (section 5) |
+| Stored project API keys all fail to decrypt | `ENCRYPTION_KEY` does not match the one Render used. Recover it (3.1); a wrong value cannot be worked around. See ERR-023 in [`ERRORS.md`](ERRORS.md) |
+| `Permission denied on secret` | The **runtime** service account was not granted `secretAccessor` (3.7). Easy to miss — it is a different account from the deployer |
+| Workflow fails at "Authenticate to Google Cloud" | The three `GCP_*` repository secrets are missing or the WIF attribute condition does not match `OWNER/REPO` exactly |
 | Deploy fails at "Verify the new revision is serving" | The container started but is not answering. Read the logs; usually a missing secret |
-| `Permission denied on secret` | The **runtime** service account was not granted `secretAccessor` (section 3.4). Easy to miss — it is a different account from the deployer |
 | WebSocket voice disconnects at 15 minutes | `--timeout=900` doing its job. Raise it up to 3600 if sessions need to be longer, and watch the vCPU-second budget |
 | First request after a quiet period takes seconds | Cold start from zero instances. Expected. `--min-instances=1` removes it but bills continuously and would leave the free tier |
 | Scheduled keep-alive stopped running | GitHub disables schedules after 60 days of repository inactivity. Re-enable in the Actions tab |
