@@ -71,23 +71,16 @@ $$;
 -- archived that version, allowing a clean conflict error rather than
 -- silent duplicate rows.
 -- ============================================
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'npc_instance_history_instance_id_version_key'
-      AND conrelid = 'public.npc_instance_history'::regclass
-  ) THEN
-    ALTER TABLE public.npc_instance_history
-      ADD CONSTRAINT npc_instance_history_instance_id_version_key
-      UNIQUE (instance_id, version) NOT VALID;
-
-    -- Validate the constraint in a non-blocking way
-    ALTER TABLE public.npc_instance_history
-      VALIDATE CONSTRAINT npc_instance_history_instance_id_version_key;
-  END IF;
-END;
-$$;
+-- A unique INDEX rather than a unique CONSTRAINT. Postgres accepts NOT VALID
+-- only for CHECK and FOREIGN KEY constraints, so the ADD CONSTRAINT ... UNIQUE
+-- ... NOT VALID this used to run failed outright with 0A000, taking the rest of
+-- the migration with it. See ERR-028.
+--
+-- An index is enough: instances.ts:183 keys off SQLSTATE 23505 and never names
+-- the constraint, and a unique index raises exactly that. IF NOT EXISTS keeps
+-- the statement idempotent without the surrounding catalog lookup.
+CREATE UNIQUE INDEX IF NOT EXISTS npc_instance_history_instance_id_version_key
+  ON public.npc_instance_history (instance_id, version);
 
 -- ============================================
 -- knowledge_categories: description column

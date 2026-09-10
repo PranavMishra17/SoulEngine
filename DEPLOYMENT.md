@@ -85,6 +85,26 @@ on file. Section 7 covers capping spend so that stays theoretical.
 
 ## 3. Setup, step by step
 
+### 3.0 What is already provisioned
+
+Google Cloud is done. Project **`soulengine-484220`** (number `436058560797`)
+already has all of this, so **skip 3.3 through 3.5 and 3.7 through 3.9**:
+
+| Done | Detail |
+| --- | --- |
+| Billing | Enabled |
+| APIs | Cloud Run, Artifact Registry, Secret Manager, IAM Credentials, Cloud Resource Manager |
+| Image registry | `us-central1-docker.pkg.dev/soulengine-484220/soulengine` |
+| Deploy identity | `github-deployer@soulengine-484220.iam.gserviceaccount.com` with `run.admin`, `artifactregistry.writer`, `iam.serviceAccountUser` |
+| Keyless GitHub auth | Pool `github`, provider locked to `PranavMishra17/SoulEngine` |
+| `ENCRYPTION_KEY` | Generated (64 hex chars) and stored in Secret Manager |
+| `BROKER_TOKEN_SECRET` | Generated, distinct from the above, stored |
+| GitHub secrets | `GCP_PROJECT_ID`, `GCP_SERVICE_ACCOUNT`, `GCP_WORKLOAD_IDENTITY_PROVIDER` set; the stale `RENDER_DEPLOY_HOOK_URL` removed |
+
+**What is left:** create the Supabase project (3.1), then put four values in
+`.env` and run one script (3.6).
+
+
 ### 3.1 Create a new Supabase project and load the schema
 
 There is nothing to migrate — the old project is gone — so this builds a clean
@@ -122,30 +142,30 @@ one.
 
 Keep them to hand for step 3.6.
 
-### 3.2 Generate the two application secrets
+### 3.2 The two application secrets (already done)
 
-Both must be at least 32 characters ([`src/config.ts:10`](src/config.ts:10) and
-[`:13`](src/config.ts:13)) and must be **different values** — they are separate
-secrets so that compromising one does not implicate the other.
+`ENCRYPTION_KEY` and `BROKER_TOKEN_SECRET` are generated and stored in Secret
+Manager for `soulengine-484220`. Nothing to do. They are 64 hex characters each,
+distinct from one another, and the Cloud Run runtime account can read both.
+
+Read one back if you ever need it:
 
 ```bash
-echo "ENCRYPTION_KEY      = $(openssl rand -hex 32)"
-echo "BROKER_TOKEN_SECRET = $(openssl rand -hex 32)"
+gcloud secrets versions access latest --secret=ENCRYPTION_KEY --project=soulengine-484220
 ```
 
-Copy both somewhere safe. You will paste them in step 3.6.
+If you ever regenerate them, strip whitespace explicitly — on Windows a bare
+`openssl rand -hex 32 | tr -d '
+'` leaves a carriage return inside the value:
 
-Generate fresh values rather than reusing the one in your local `.env`. That key
-is a 32-character placeholder that has been shared in plain text, and it no
-longer opens anything: the local `data/projects/*/secrets.enc` file does not
-decrypt with it, and the database it was written for no longer exists.
+```bash
+openssl rand -hex 32 | tr -dc '0-9a-f' | gcloud secrets versions add ENCRYPTION_KEY --data-file=-
+```
 
-> **From the first deploy onward, `ENCRYPTION_KEY` must never change.** It
-> encrypts every provider API key in the `project_secrets` table. Change it and
-> every stored key becomes permanently unreadable and every conversation fails,
-> with no way back. That is ERR-023 in [`ERRORS.md`](ERRORS.md). Right now there
-> is nothing to lose, which is exactly why now is the time to set it and record
-> it somewhere durable.
+> **`ENCRYPTION_KEY` must never change after the first deploy.** It encrypts
+> every provider API key in `project_secrets`. Change it and every stored key
+> becomes permanently unreadable and every conversation fails, with no way back.
+> That is ERR-023 in [`ERRORS.md`](ERRORS.md).
 
 ### 3.3 Create the Google Cloud project
 
@@ -204,29 +224,28 @@ gcloud artifacts repositories create "$REPOSITORY" \
   --description="SoulEngine container images"
 ```
 
-### 3.6 Store the secrets
+### 3.6 Put the four remaining values in .env, then sync
 
-This prompts for each value in turn. Nothing is echoed to the screen and nothing
-lands in your shell history. Paste the value, press Enter.
+Paste these four into **`.env` in the repository root** (gitignored, stays
+local). Three come from Supabase step 3.1; the fourth is your Gemini key:
 
-```bash
-for NAME in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY \
-            ENCRYPTION_KEY BROKER_TOKEN_SECRET GEMINI_API_KEY; do
-  printf 'Paste value for %s: ' "$NAME"
-  read -rs VALUE
-  echo
-  # printf, not echo: a trailing newline inside an API key breaks auth in ways
-  # that look like a wrong key.
-  printf '%s' "$VALUE" \
-    | gcloud secrets create "$NAME" --replication-policy=automatic --data-file=- 2>/dev/null \
-    || printf '%s' "$VALUE" | gcloud secrets versions add "$NAME" --data-file=-
-done
-unset VALUE
-
-gcloud secrets list
+```
+SUPABASE_URL=https://YOURPROJECT.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOi...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
+GEMINI_API_KEY=AIza...
 ```
 
-`gcloud secrets list` should show all six.
+Then push them into Secret Manager and mirror the two the keep-alive needs into
+GitHub:
+
+```bash
+bash scripts/sync-secrets.sh
+```
+
+The script strips whitespace from every value, grants the Cloud Run runtime
+account read access to each secret, and is safe to re-run. It reads only those
+four names and never touches `ENCRYPTION_KEY` or `BROKER_TOKEN_SECRET`.
 
 ### 3.7 Create the deploy identity
 
