@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomBytes, createHash } from 'crypto';
 import { sessionStore } from '../../src/session/store.js';
 import { startSession } from '../../src/session/manager.js';
-import { getStorageForUser } from '../../src/storage/hybrid.js';
+import { getStorage } from '../../src/storage/factory.js';
 import {
   generateSessionId,
   generateSessionToken,
@@ -181,12 +181,12 @@ describe('Named revocable game-client keys', () => {
 describe('startSession session token binding', () => {
   let testProjectId: string;
   let testNpcId: string;
-  let storage: ReturnType<typeof getStorageForUser>;
+  let storage: ReturnType<typeof getStorage>;
 
   beforeEach(async () => {
     process.env.ENCRYPTION_KEY = 'test-encryption-key-for-vitest-only-not-production';
     sessionStore.clear();
-    storage = getStorageForUser(null);
+    storage = getStorage(null);
 
     const project = await storage.createProject('Auth Token Test', null);
     testProjectId = project.id;
