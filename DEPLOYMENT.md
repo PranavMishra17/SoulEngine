@@ -4,8 +4,8 @@ SoulEngine runs as a single Node service on **Google Cloud Run**, with
 **Supabase** behind it for Postgres, auth and image storage. Both sit inside
 free tiers. Deploys happen automatically on every push to `main`.
 
-This replaced Render, which was configured on the `starter` plan at $7/month
-and had been failing on every push.
+It replaces a Render deployment that no longer exists. Nothing carries over
+from it, so section 3 sets up a **new** Supabase project from scratch.
 
 - Container: [`Dockerfile`](Dockerfile)
 - Deploy pipeline: [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
@@ -19,24 +19,21 @@ bash syntax (`$VAR`, loops, `read`). Git Bash ships with Git for Windows.
 
 ## 1. What was wrong
 
-Two separate problems that looked like one.
+**Supabase paused itself, then went away.** A free Supabase project is paused
+after seven consecutive days with no database activity, and only a human can
+restore it. The original SoulEngine project was paused and is now gone from the
+account entirely, so there is no data to migrate and no key to preserve. Section
+3 builds a fresh one.
 
-**Supabase paused itself.** A free Supabase project is paused after seven
-consecutive days with no database activity, and only a human can restore it from
-the dashboard. Once paused, every request the app makes to it fails. The app
-cannot prevent this by itself: the host scales to zero, so a quiet week is a week
-with no queries.
+The app could never have prevented that pause on its own: the host scales to
+zero, so a quiet week is a week with no queries. Section 5 covers the fix.
 
-**The Render deploy was failing separately.** GitHub Actions was green on every
-push, including the most recent ones. The old workflow's last step was a bare
-`curl -X POST "$RENDER_DEPLOY_HOOK_URL"` whose response was never checked, so a
-failing deploy on Render's side could never turn CI red. Whatever Render was
-reporting never reached the repository.
+**The deploy was failing invisibly.** GitHub Actions was green on every push. The
+old workflow's last step was a bare `curl -X POST "$RENDER_DEPLOY_HOOK_URL"`
+whose response was never checked, so a failing deploy could never turn CI red.
 
 The new pipeline closes that hole: it deploys inline and then polls
 `/api/health` on the live URL, so a broken deploy fails the run.
-
----
 
 ## 2. Why Cloud Run
 
@@ -54,6 +51,33 @@ voice, which rules out serverless platforms that only do request/response
 Cold starts are acceptable here, which is what makes scale-to-zero the right
 trade: the service costs nothing while nobody is using it.
 
+### Why the database stays on Supabase
+
+Neon is the obvious alternative, and its headline advantage is real: its compute
+auto-suspends when idle but **resumes on the next connection**, so there is no
+paused state a human has to clear. Neon now also offers auth and object storage,
+so it could in principle cover all three jobs Supabase does here.
+
+It is still the wrong move, because the schema and the code are welded to
+Supabase specifically:
+
+| Bound to Supabase | Count |
+| --- | --- |
+| `auth.uid()` calls in RLS policies | 37, across five files in `sql/` |
+| `.from('table')` PostgREST call sites | 56 |
+| Storage modules importing `supabase-js` | 11, in `src/storage/supabase/` |
+| Foreign keys into the `auth.users` table | [`sql/01-schema.sql`](sql/01-schema.sql) |
+| Supabase's `storage.` schema | [`sql/03-storage.sql`](sql/03-storage.sql) |
+
+Neon has neither `auth.uid()` nor `auth.users`, so every policy would have to be
+rewritten and the PostgREST client swapped for a Postgres driver across 56 call
+sites. That is a rewrite of the authorization layer, which is the worst place to
+introduce new bugs for an operational convenience.
+
+And the convenience is already bought: the keep-alive in section 5 queries the
+database every three days, well inside the seven-day window. Same outcome, no
+migration. Revisit Neon only if the storage layer is being rewritten anyway.
+
 **Billing must be enabled on the GCP project even to use the free tier** — a card
 on file. Section 7 covers capping spend so that stays theoretical.
 
@@ -61,44 +85,67 @@ on file. Section 7 covers capping spend so that stays theoretical.
 
 ## 3. Setup, step by step
 
-### 3.1 First: rescue two values from Render
+### 3.1 Create a new Supabase project and load the schema
 
-> **Do this before deleting the Render service.** `ENCRYPTION_KEY` decrypts every
-> project API key stored in the `project_secrets` table. Deploy Cloud Run with a
-> different value and every stored key becomes permanently unreadable, and every
-> conversation in every project fails. That exact failure is ERR-023 in
-> [`ERRORS.md`](ERRORS.md).
-
-1. Open <https://dashboard.render.com> and sign in.
-2. Click the **soulengine** service.
-3. Click **Environment** in the left sidebar.
-4. Reveal and copy these two values somewhere safe:
-   - `ENCRYPTION_KEY`
-   - `BROKER_TOKEN_SECRET`
-
-You will paste both in step 3.5. Do not delete the Render service until Cloud Run
-is serving.
-
-If `BROKER_TOKEN_SECRET` was never set on Render, generate a fresh one — nothing
-persisted depends on it, unlike `ENCRYPTION_KEY`:
-
-```bash
-openssl rand -hex 32
-```
-
-Both must be at least 32 characters (`src/config.ts:10` and `:13`) and must be
-different values.
-
-### 3.2 Collect your Supabase keys
+There is nothing to migrate — the old project is gone — so this builds a clean
+one.
 
 1. Open <https://supabase.com/dashboard> and sign in.
-2. Click your SoulEngine project. **If it shows as paused, click `Restore` now**
-   and wait for it to come back.
-3. Go to **Project Settings** (the gear, bottom left) then **API**.
-4. Copy three values:
+2. Click **New project**. Name it `soulengine`, pick a region near you, and let
+   it generate a database password (you will not need it; the app authenticates
+   with the service role key). Click **Create new project** and wait ~2 minutes.
+3. Open the **SQL Editor** in the left sidebar.
+4. Run the seven files in [`sql/`](sql/) **in numbered order**, one at a time:
+   open the file, paste the whole contents into a new query, press **Run**, wait
+   for success, then move to the next.
+
+   | Order | File | Creates |
+   | --- | --- | --- |
+   | 1 | `sql/01-schema.sql` | The 11 tables |
+   | 2 | `sql/02-rls-policies.sql` | Row-level security on all of them |
+   | 3 | `sql/03-storage.sql` | The bucket for NPC profile images |
+   | 4 | `sql/04-definition-history.sql` | NPC version history |
+   | 5 | `sql/05-usage-tracking.sql` | Per-project usage counters |
+   | 6 | `sql/06-waitlist.sql` | The Unity waitlist table |
+   | 7 | `sql/07-session-and-integrity.sql` | Session persistence + constraints |
+
+   Order matters: later files add columns and policies to tables the earlier ones
+   create. The statements are idempotent, so re-running one is safe.
+
+5. Confirm it worked — **Table Editor** should list `projects`,
+   `npc_definitions`, `npc_instances`, `project_secrets` and the rest.
+6. Now collect the keys. **Project Settings** (the gear, bottom left) then
+   **API**, and copy three values:
    - **Project URL** -> `SUPABASE_URL` (looks like `https://abcdefgh.supabase.co`)
    - **anon / public** key -> `SUPABASE_ANON_KEY`
    - **service_role / secret** key -> `SUPABASE_SERVICE_ROLE_KEY` (click to reveal)
+
+Keep them to hand for step 3.6.
+
+### 3.2 Generate the two application secrets
+
+Both must be at least 32 characters ([`src/config.ts:10`](src/config.ts:10) and
+[`:13`](src/config.ts:13)) and must be **different values** — they are separate
+secrets so that compromising one does not implicate the other.
+
+```bash
+echo "ENCRYPTION_KEY      = $(openssl rand -hex 32)"
+echo "BROKER_TOKEN_SECRET = $(openssl rand -hex 32)"
+```
+
+Copy both somewhere safe. You will paste them in step 3.6.
+
+Generate fresh values rather than reusing the one in your local `.env`. That key
+is a 32-character placeholder that has been shared in plain text, and it no
+longer opens anything: the local `data/projects/*/secrets.enc` file does not
+decrypt with it, and the database it was written for no longer exists.
+
+> **From the first deploy onward, `ENCRYPTION_KEY` must never change.** It
+> encrypts every provider API key in the `project_secrets` table. Change it and
+> every stored key becomes permanently unreadable and every conversation fails,
+> with no way back. That is ERR-023 in [`ERRORS.md`](ERRORS.md). Right now there
+> is nothing to lose, which is exactly why now is the time to set it and record
+> it somewhere durable.
 
 ### 3.3 Create the Google Cloud project
 
@@ -274,8 +321,12 @@ curl -s "$URL/api/health"
 You want `"storage":"supabase"` in that response. If it says `"local"`, the
 Supabase variables did not reach the container — see section 9.
 
-Open `$URL` in a browser to confirm the studio loads. Only then delete the Render
-service.
+Open `$URL` in a browser to confirm the studio loads.
+
+The database is new and empty, so there are no projects yet. Create one in the
+studio and enter your provider API keys there — they are encrypted with
+`ENCRYPTION_KEY` and stored in `project_secrets`. The `GEMINI_API_KEY` secret you
+set in 3.6 is only the fallback used when a project has no key of its own.
 
 ### 3.11 Turn on the keep-alive
 
@@ -346,7 +397,7 @@ the deploy step. Everything else is mounted from Secret Manager.
 | `PORT` | Cloud Run | Injected automatically; read via [`src/config.ts:63`](src/config.ts:63) |
 | `NODE_ENV` | Deploy step | `production` — also what switches storage from local files to Supabase ([`src/storage/index.ts:19`](src/storage/index.ts:19)) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Secret Manager | Postgres, auth and image storage |
-| `ENCRYPTION_KEY` | Secret Manager | Decrypts stored project API keys. Min 32 chars. Never rotate casually |
+| `ENCRYPTION_KEY` | Secret Manager | Encrypts stored project API keys. Min 32 chars. Fixed for the life of the database — see 3.2 |
 | `BROKER_TOKEN_SECRET` | Secret Manager | Signs broker tokens. Min 32 chars, must differ from `ENCRYPTION_KEY` |
 | `GEMINI_API_KEY` | Secret Manager | Fallback provider when a project has no key of its own |
 
@@ -429,7 +480,7 @@ gcloud run services logs read "$SERVICE" --region "$REGION" --limit 100
 | --- | --- |
 | `/api/health` says `"storage":"local"` | `NODE_ENV` or a Supabase variable is missing. Data is being written into the container and lost on redeploy |
 | Health is fine, but every studio action fails | Supabase is paused. Restore it (section 5) |
-| Stored project API keys all fail to decrypt | `ENCRYPTION_KEY` does not match the one Render used. Recover it (3.1); a wrong value cannot be worked around. See ERR-023 in [`ERRORS.md`](ERRORS.md) |
+| Stored project API keys all fail to decrypt | `ENCRYPTION_KEY` changed since those keys were saved. There is no way to recover them: set the original value back, or re-enter the provider keys in the studio. See ERR-023 in [`ERRORS.md`](ERRORS.md) |
 | `Permission denied on secret` | The **runtime** service account was not granted `secretAccessor` (3.7). Easy to miss — it is a different account from the deployer |
 | Workflow fails at "Authenticate to Google Cloud" | The three `GCP_*` repository secrets are missing or the WIF attribute condition does not match `OWNER/REPO` exactly |
 | Deploy fails at "Verify the new revision is serving" | The container started but is not answering. Read the logs; usually a missing secret |
