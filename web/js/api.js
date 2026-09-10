@@ -37,7 +37,7 @@ async function request(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Timeout via AbortController (handles Render cold starts and hung requests)
+  // Timeout via AbortController (handles Cloud Run cold starts and hung requests)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 

@@ -2,7 +2,7 @@
 
 ![SoulEngine Demo](img/demo.gif)
 
-[![Website](https://img.shields.io/badge/Live_Demo-soulengine.dev-9d4edd?style=for-the-badge)](https://soulengine.onrender.com)
+[![Website](https://img.shields.io/badge/Live_Demo-Cloud_Run-9d4edd?style=for-the-badge)](https://soulengine-twhe7z33nq-uc.a.run.app)
 [![Bun](https://img.shields.io/badge/Runtime-Bun-f9f9f9?style=for-the-badge&logo=bun&logoColor=black)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/License-Research_Only-orange?style=for-the-badge)](LICENSE)
