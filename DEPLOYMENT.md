@@ -516,5 +516,10 @@ gcloud run services logs read "$SERVICE" --region "$REGION" --limit 100
   [`backlog.md`](backlog.md).
 - **No staging environment.** `main` deploys straight to production. The health
   check catches a dead container, not a bad release.
+- **Only signed-in users work in production.** Any request without a user JWT --
+  anonymous studio visitors and, more importantly, game clients authenticating
+  with a project API key -- is routed to local file storage, which fails on Cloud
+  Run's read-only filesystem. `GET /api/v1/projects` returns 500 today for that
+  reason. Tracked as ERR-029 in [`ERRORS.md`](ERRORS.md) and backlog 5.25.
 - **No custom domain.** The service answers on its generated `*.run.app` URL.
   Mapping a domain is `gcloud run domain-mappings create` plus a DNS record.
