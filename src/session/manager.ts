@@ -6,7 +6,7 @@ import { randomBytes, createHash, timingSafeEqual } from 'crypto';
 import {
   type ApiKeys,
 } from '../storage/index.js';
-import { getStorageForUser } from '../storage/hybrid.js';
+import { getStorage } from '../storage/factory.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
 import type { Tool } from '../types/mcp.js';
 import { validateAnchorIntegrity, enforceAnchorImmutability } from '../security/anchor-guard.js';
@@ -186,7 +186,7 @@ export async function startSession(
   const startTime = Date.now();
   logger.info({ projectId, npcId, playerId }, 'Starting session');
 
-  const storage = getStorageForUser(userId);
+  const storage = getStorage(userId);
 
   try {
     // Check if project can accept more sessions
@@ -325,7 +325,7 @@ export async function endSession(
   }
 
   const { state, originalAnchor, userId } = stored;
-  const storage = getStorageForUser(userId);
+  const storage = getStorage(userId);
 
   try {
     // Load project, definition, and API keys for per-project LLM resolution
@@ -519,7 +519,7 @@ export async function getSessionContext(sessionId: SessionID): Promise<SessionCo
   }
 
   const { state, userId } = stored;
-  const storage = getStorageForUser(userId);
+  const storage = getStorage(userId);
 
   const [project, definition, knowledgeBase, apiKeys] = await Promise.all([
     storage.getProject(state.project_id),
@@ -719,7 +719,7 @@ export async function resumeSession(
   const startTime = Date.now();
   logger.info({ sessionId }, 'Resuming session');
 
-  const storage = getStorageForUser(userId);
+  const storage = getStorage(userId);
 
   try {
     // Load the persisted session state from storage

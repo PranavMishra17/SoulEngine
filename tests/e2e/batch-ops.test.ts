@@ -19,7 +19,7 @@ import { Hono } from 'hono';
 import { npcRoutes } from '../../src/routes/npcs.js';
 import { knowledgeRoutes } from '../../src/routes/knowledge.js';
 import { applyVersioning } from '../../src/http/versioning.js';
-import { getStorageForUser } from '../../src/storage/hybrid.js';
+import { getStorage } from '../../src/storage/factory.js';
 import { optionalAuthMiddleware } from '../../src/middleware/auth.js';
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ function buildTestApp(): Hono {
 
 describe('Batch NPC create', () => {
   let projectId: string;
-  const storage = getStorageForUser(null);
+  const storage = getStorage(null);
   const app = buildTestApp();
 
   beforeEach(async () => {
@@ -145,7 +145,7 @@ describe('Batch NPC update', () => {
   let projectId: string;
   let npc1Id: string;
   let npc2Id: string;
-  const storage = getStorageForUser(null);
+  const storage = getStorage(null);
   const app = buildTestApp();
 
   beforeEach(async () => {
@@ -230,7 +230,7 @@ describe('Batch NPC update', () => {
 
 describe('Batch knowledge category upsert', () => {
   let projectId: string;
-  const storage = getStorageForUser(null);
+  const storage = getStorage(null);
   const app = buildTestApp();
 
   beforeEach(async () => {

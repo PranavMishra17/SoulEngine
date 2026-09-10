@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as local from '../../src/storage/local/index.js';
-import { getStorageForUser } from '../../src/storage/hybrid.js';
+import { getStorage } from '../../src/storage/factory.js';
 import { getStorage, isSupabaseAvailable } from '../../src/storage/factory.js';
 import { isSupabaseEnabled } from '../../src/storage/supabase/client.js';
 
@@ -27,8 +27,8 @@ describe('local mode without Supabase', () => {
   it('falls back to the local backend even when a userId is present', () => {
     if (supabaseConfigured) return;
     // Identity check: the returned namespace IS the local module.
-    expect(getStorageForUser(null).getProject).toBe(local.getProject);
-    expect(getStorageForUser('user_123').getProject).toBe(local.getProject);
+    expect(getStorage(null).getProject).toBe(local.getProject);
+    expect(getStorage('user_123').getProject).toBe(local.getProject);
     expect(getStorage('user_123').getProject).toBe(local.getProject);
   });
 

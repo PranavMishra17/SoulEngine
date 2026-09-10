@@ -239,7 +239,7 @@ if (isDevLoginEnabled()) {
 }
 
 if (isAuthEnabled()) {
-  logger.info('Authentication enabled - hybrid storage active (logged-in→Supabase, logged-out→local)');
+  logger.info('Authentication enabled - Supabase storage active for all callers');
 } else {
   logger.info('Authentication disabled - running in development mode');
 }

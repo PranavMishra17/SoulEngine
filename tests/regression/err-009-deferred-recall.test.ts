@@ -1,20 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { sessionStore } from '../../src/session/store.js';
 import { startSession, getSession } from '../../src/session/manager.js';
-import { getStorageForUser } from '../../src/storage/hybrid.js';
+import { getStorage } from '../../src/storage/factory.js';
 import type { NPCDefinition } from '../../src/types/npc.js';
 
 describe('ERR-009: Deferred recall context persistence and transactional clearing', () => {
   let testProjectId: string;
   let testNpcId: string;
   let testPlayerId: string;
-  let storage: ReturnType<typeof getStorageForUser>;
+  let storage: ReturnType<typeof getStorage>;
 
   beforeEach(async () => {
     sessionStore.clear();
     testNpcId = `test_npc_${Date.now()}`;
     testPlayerId = `test_player_${Date.now()}`;
-    storage = getStorageForUser(null);
+    storage = getStorage(null);
 
     // Create test project
     const project = await storage.createProject('Recall Test Project', null);

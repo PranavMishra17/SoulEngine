@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { sessionStore } from '../../src/session/store.js';
 import { startSession, endSession } from '../../src/session/manager.js';
-import { getStorageForUser } from '../../src/storage/hybrid.js';
+import { getStorage } from '../../src/storage/factory.js';
 import type { NPCDefinition } from '../../src/types/npc.js';
 import type { LLMProvider } from '../../src/providers/llm/interface.js';
 
@@ -9,7 +9,7 @@ describe('ERR-002: Core Anchor immutability enforcement', () => {
   let testProjectId: string;
   let testNpcId: string;
   let testPlayerId: string;
-  let storage: ReturnType<typeof getStorageForUser>;
+  let storage: ReturnType<typeof getStorage>;
 
   // Mock LLM provider for endSession (summarization)
   const mockLlmProvider: LLMProvider = {
@@ -28,7 +28,7 @@ describe('ERR-002: Core Anchor immutability enforcement', () => {
     sessionStore.clear();
     testNpcId = `test_npc_${Date.now()}`;
     testPlayerId = `test_player_${Date.now()}`;
-    storage = getStorageForUser(null); // local storage
+    storage = getStorage(null); // local storage
 
     // Create test project (createProject returns the project with generated ID)
     const project = await storage.createProject('Anchor Test Project', null);

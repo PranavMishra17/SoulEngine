@@ -24,7 +24,7 @@ import {
 } from '../../src/security/dev-auth.js';
 import { devAuthRoutes } from '../../src/routes/dev-auth.js';
 import { getStorage, getStorageMode } from '../../src/storage/factory.js';
-import { getStorageForUser } from '../../src/storage/hybrid.js';
+import { getStorage } from '../../src/storage/factory.js';
 import * as local from '../../src/storage/local/index.js';
 import * as supabaseStorage from '../../src/storage/supabase/index.js';
 
@@ -187,9 +187,9 @@ describe('a dev userId always resolves to local storage (never Supabase)', () =>
     expect(getStorage(devUserId)).not.toBe(supabaseStorage);
   });
 
-  it('getStorageForUser(devUserId) returns the local backend', () => {
-    expect(getStorageForUser(devUserId)).toBe(local);
-    expect(getStorageForUser(devUserId)).not.toBe(supabaseStorage);
+  it('getStorage(devUserId) returns the local backend', () => {
+    expect(getStorage(devUserId)).toBe(local);
+    expect(getStorage(devUserId)).not.toBe(supabaseStorage);
   });
 
   it("getStorageMode(devUserId) reports 'local'", () => {

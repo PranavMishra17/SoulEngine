@@ -8,9 +8,22 @@ import {
 } from '../storage/index.js';
 import { getStorage } from '../storage/factory.js';
 import { requireProjectOwnership } from '../middleware/ownership.js';
+import { isAuthEnabled } from '../middleware/auth.js';
 import { parsePagination, paginatedResponse } from '../http/pagination.js';
+import { ApiErrorCode, errorResponse } from '../http/envelope.js';
 
 const logger = createLogger('routes-projects');
+
+/**
+ * The collection routes below cannot be ownership-checked -- there is no project
+ * yet to compare an owner against. Every `/:projectId` route is covered by
+ * verifyProjectOwnership, which denies a null user whenever auth is on; these
+ * two carry their own guard inline.
+ *
+ * Without it, `listProjects(undefined)` runs unfiltered through the service-role
+ * client, which bypasses RLS, and returns every project belonging to every user.
+ * See ERR-029.
+ */
 
 /**
  * Zod schemas for request validation
@@ -85,8 +98,10 @@ projectRoutes.post('/', async (c) => {
       return c.json({ error: 'Invalid request', details: parsed.error.issues }, 400);
     }
 
-    // Get user ID from auth context (null if logged out → local storage)
     const userId = c.get('userId') ?? null;
+    if (isAuthEnabled() && !userId) {
+      return errorResponse(c, 401, ApiErrorCode.UNAUTHORIZED, 'Sign in to create a project');
+    }
     const storage = getStorage(userId);
 
     const project = await storage.createProject(parsed.data.name, userId ?? undefined);
@@ -99,7 +114,7 @@ projectRoutes.post('/', async (c) => {
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ error: errorMessage, duration }, 'Failed to create project');
-    return c.json({ error: 'Failed to create project', details: errorMessage }, 500);
+    return errorResponse(c, 500, ApiErrorCode.INTERNAL, 'Failed to create project');
   }
 });
 
@@ -112,8 +127,11 @@ projectRoutes.get('/', async (c) => {
   const startTime = Date.now();
 
   try {
-    // Get user ID from auth context to filter projects (undefined in dev mode = all projects)
+    // Anonymous listing would be unscoped, and unscoped means every tenant.
     const userId = c.get('userId') ?? null;
+    if (isAuthEnabled() && !userId) {
+      return errorResponse(c, 401, ApiErrorCode.UNAUTHORIZED, 'Sign in to list projects');
+    }
     const storage = getStorage(userId);
 
     const allProjects = await storage.listProjects(userId ?? undefined);
@@ -132,7 +150,9 @@ projectRoutes.get('/', async (c) => {
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ error: errorMessage, duration }, 'Failed to list projects');
-    return c.json({ error: 'Failed to list projects', details: errorMessage }, 500);
+    // The message is logged above; it is not the caller's business. It has
+    // leaked infrastructure detail before now ('EACCES ... mkdir data/projects').
+    return errorResponse(c, 500, ApiErrorCode.INTERNAL, 'Failed to list projects');
   }
 });
 
