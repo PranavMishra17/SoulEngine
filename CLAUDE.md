@@ -138,7 +138,7 @@ The project runs against a tracked backlog using spec-driven, test-first develop
 
 ## Git Conventions
 
-- **Code** goes on a feature branch + PR (the human merges). **Docs/markdown** (`*.md`: AUDIT, backlog, ERRORS, specs, README, etc.) are **committed directly to `main` — NEVER open a PR for docs.**
+- **No PRs (since 2026-09-12, PR #10 was the last).** Work happens in a worktree branch; when an item is green (typecheck + full suite), fast-forward `main` to it (`git -C E:/Evolve-NPC merge --ff-only <branch>`) and `git push origin main`. This applies to code and docs alike. Never rewrite `main` history; if `main` has moved, rebase the worktree branch onto it first, re-run the suite, then fast-forward.
 - **Don't sprawl new `.md` files.** Update the existing doc (e.g. fold a UI audit + Tier-3 plan into `AUDIT.md`'s existing sections) instead of creating parallel files. Prefer editing over adding.
 - **Tests run on every commit** via the pre-commit hook (`npm run precommit` = typecheck + Vitest). A red suite blocks the commit — fix it, don't bypass it.
 - **Human-readable messages**: a commit or PR must make sense to someone with zero project context. Describe the behavior change. Do NOT reference backlog/tier IDs (no `[0.4]`, no "Tier 0").
