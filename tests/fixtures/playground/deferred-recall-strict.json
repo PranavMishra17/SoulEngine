@@ -1,0 +1,95 @@
+{
+  "name": "deferred-recall-strict",
+  "description": "Same conversation as deferred-recall, plus the check that turn 2 does not deny the player's own turn-1 statement. Fails on the current parallel runtime (ERR-030, 4 of 5 trials on both Gemini and OpenAI, 2026-09-12); passing 5 of 5 on both providers is the acceptance gate for backlog 7.13 and the recall bar for 7.5.",
+  "npc": {
+    "definition": {
+      "id": "mira",
+      "project_id": "scratch",
+      "name": "Mira",
+      "description": "A harbourmaster who keeps ledgers and grudges.",
+      "core_anchor": {
+        "backstory": "Mira has run the harbour office for twenty years and remembers every debt.",
+        "principles": [
+          "Honesty"
+        ],
+        "trauma_flags": []
+      },
+      "personality_baseline": {
+        "openness": 0.5,
+        "conscientiousness": 0.6,
+        "extraversion": 0.4,
+        "agreeableness": 0.5,
+        "neuroticism": 0.3
+      },
+      "voice": {
+        "provider": "cartesia",
+        "voice_id": "default",
+        "speed": 1.0
+      },
+      "schedule": [],
+      "mcp_permissions": {
+        "conversation_tools": [],
+        "game_event_tools": [],
+        "denied": []
+      },
+      "knowledge_access": {},
+      "network": []
+    },
+    "instance": {
+      "id": "scratch-instance",
+      "definition_id": "mira",
+      "project_id": "scratch",
+      "player_id": "player-1",
+      "created_at": "2026-09-12T00:00:00.000Z",
+      "current_mood": {
+        "valence": 0.5,
+        "arousal": 0.5,
+        "dominance": 0.5
+      },
+      "trait_modifiers": {},
+      "short_term_memory": [],
+      "long_term_memory": [],
+      "relationships": {},
+      "daily_pulse": null,
+      "cycle_metadata": {
+        "last_weekly": null,
+        "last_persona_shift": null
+      }
+    }
+  },
+  "player": {
+    "id": "player-1",
+    "script": [
+      "My brother Kael owes you forty crowns.",
+      "Do you remember what I told you about my brother?"
+    ]
+  },
+  "events": [
+    {
+      "afterTurn": 1,
+      "text": "A storm warning was posted at the harbour gate.",
+      "salience": 0.7
+    }
+  ],
+  "expect": [
+    {
+      "turn": 1,
+      "moderationAction": "none",
+      "toolsNotCalled": [
+        "exit_convo"
+      ]
+    },
+    {
+      "turn": 2,
+      "moderationAction": "none",
+      "toolsNotCalled": [
+        "exit_convo"
+      ],
+      "recallFacts": [
+        "Kael"
+      ],
+      "replyNotMatches": "first (time|meeting|interaction)|haven'?t told me|never (told|met)|don'?t (recall|remember) (you )?(telling|mentioning)|don'?t remember you|don'?t know you"
+    }
+  ],
+  "trials": 5
+}

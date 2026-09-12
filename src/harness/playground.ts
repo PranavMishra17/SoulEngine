@@ -244,6 +244,17 @@ export function evaluateExpectations(
       });
     }
 
+    if (expect.replyNotMatches) {
+      const regex = new RegExp(expect.replyNotMatches, 'i');
+      const clean = !regex.test(record.reply);
+      results.push({
+        turn: expect.turn,
+        check: 'replyNotMatches',
+        passed: clean,
+        detail: clean ? undefined : `reply matched forbidden pattern: ${expect.replyNotMatches}`,
+      });
+    }
+
     if (expect.exitRequested !== undefined) {
       const matches = record.exit.requested === expect.exitRequested;
       results.push({

@@ -29,7 +29,7 @@ reference material to develop against — read it before re-litigating a decisio
 
 | `08-middleware-licence-enforcement.md` | manual | What FMOD, Wwise, SpeedTree and Simplygon actually require for licence enforcement | **done** — closes the last research gap; revises `D3` |
 
-| [`09-npc-runtime/`](09-npc-runtime/) | E | Replacement for the parallel Mind+Speaker cognition (single streamed turn), knowledge tiers and world events as a scoped fact table, quest-state tool gating, patience ladder, role-play persona practice, LLM player simulators and the playground harness — six angle files (`a-` to `f-`), four code diagnoses in `diagnosis/`, claim ledgers in `raw/`, verdict in [`PROPOSAL.md`](09-npc-runtime/PROPOSAL.md) | **done** 2026-09-12 — 35/48 claims survived a three-lens adversarial check; empty sub-questions are listed per file under "Coverage gaps" as manual browser fetches |
+| [`09-npc-runtime/`](09-npc-runtime/) | E | Replacement for the parallel Mind+Speaker cognition (single streamed turn), knowledge tiers and world events as a scoped fact table, quest-state tool gating, patience ladder, role-play persona practice, LLM player simulators and the playground harness — six angle files (`a-` to `f-`), four code diagnoses in `diagnosis/`, claim ledgers in `raw/`, verdict in [`PROPOSAL.md`](09-npc-runtime/PROPOSAL.md), measured baseline of the parallel runtime in [`BASELINE.md`](09-npc-runtime/BASELINE.md) | **done** 2026-09-12 — 35/48 claims survived a three-lens adversarial check; empty sub-questions are listed per file under "Coverage gaps" as manual browser fetches |
 
 ## Decisions waiting on this
 

@@ -294,6 +294,23 @@ describe('playground scenario', () => {
       expect(result[0].check).toBe('replyMatches');
     });
 
+    it('fails when replyNotMatches regex matches the reply', () => {
+      const record = mockTurnRecord({ reply: 'Hello, how are you?' });
+      const expectation = { turn: 1, replyNotMatches: 'hello.*you' };
+      const result = evaluateExpectations([record], [expectation]);
+
+      expect(result[0].passed).toBe(false);
+      expect(result[0].check).toBe('replyNotMatches');
+    });
+
+    it('passes when replyNotMatches regex is absent from the reply', () => {
+      const record = mockTurnRecord({ reply: 'Kael owes me forty crowns, as you said.' });
+      const expectation = { turn: 1, replyNotMatches: "first (time|meeting)|haven't told me" };
+      const result = evaluateExpectations([record], [expectation]);
+
+      expect(result[0].passed).toBe(true);
+    });
+
     it('fails when replyMatches regex does not match', () => {
       const record = mockTurnRecord({ reply: 'Greetings' });
       const expectation = { turn: 1, replyMatches: 'hello' };

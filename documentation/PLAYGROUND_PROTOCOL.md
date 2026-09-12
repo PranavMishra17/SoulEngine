@@ -119,8 +119,8 @@ afterwards; an existing `npcId` is never deleted.
 
 One of `npc` (embedded, materialised into a scratch project) or `npcId` (existing) is required.
 Expectation checks: `toolsCalled`, `toolsNotCalled`, `recallFacts` (case-insensitive substrings of
-`reply`), `replyMatches` (regular expression source), `exitRequested`, `moderationAction`
-(`none` | `warn` | `exit`).
+`reply`), `replyMatches` and `replyNotMatches` (regular expression sources; the second asserts a
+failure phrase is absent), `exitRequested`, `moderationAction` (`none` | `warn` | `exit`).
 
 **`summary`** closes the run:
 
@@ -138,7 +138,9 @@ non-zero otherwise, so a scenario is a CI gate. Scores from a scripted or simula
 **relative** signal between two builds, not an absolute quality score.
 
 Fixtures: [`tests/fixtures/playground/deferred-recall.json`](../tests/fixtures/playground/deferred-recall.json),
-[`tests/fixtures/playground/abusive-player.json`](../tests/fixtures/playground/abusive-player.json).
+[`deferred-recall-strict.json`](../tests/fixtures/playground/deferred-recall-strict.json) (the ERR-030 gate),
+[`abusive-player.json`](../tests/fixtures/playground/abusive-player.json). Recorded baselines and their
+cassettes: [`research/09-npc-runtime/BASELINE.md`](../research/09-npc-runtime/BASELINE.md).
 
 ## Cassettes
 

@@ -83,6 +83,8 @@ export const PlaygroundExpectationSchema = z.object({
   recallFacts: z.array(z.string()).optional(),
   /** Regex pattern that SHOULD match the reply */
   replyMatches: z.string().optional(),
+  /** Regular expression source the reply must NOT match, for asserting the absence of a failure phrase. */
+  replyNotMatches: z.string().optional(),
   /** Whether exit_convo SHOULD be requested */
   exitRequested: z.boolean().optional(),
   /** Expected moderation action (allow, block, warn) */
