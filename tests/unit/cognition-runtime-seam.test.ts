@@ -193,8 +193,34 @@ describe('CognitionRuntime seam (Phase A)', () => {
       });
 
       expect(result.responseText).toBe('Hello.');
+      expect(result.runtime).toBe('parallel');
       // Verify it ran successfully with the override
       expect(result.timings.mindMs).toBeTypeOf('number');
+    });
+
+    it('abandons the Mind at the project mind_timeout_ms and still answers', async () => {
+      const project = await storage.getProject(projectId);
+      await storage.updateProject(projectId, {
+        settings: { ...project.settings, mind_timeout_ms: 40 },
+      });
+      // A Mind that would take far longer than the budget; a Speaker that answers at once.
+      const mindProvider = new StubLLMProvider({ responses: [{ text: 'NO_ACTION', latencyMs: 2000 }] });
+      const speakerProvider = new StubLLMProvider({ responses: [{ text: 'Move along.' }] });
+
+      const started = Date.now();
+      const result = await runConversationTurn({
+        sessionId,
+        content: 'Hi',
+        fallbackProvider: null,
+        toolRegistry: mcpToolRegistry,
+        channel: 'harness',
+        providers: { speaker: speakerProvider, mind: mindProvider },
+      });
+
+      expect(result.responseText).toBe('Move along.');
+      // The turn must not have waited for the 2 s Mind; the budget was 40 ms.
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(result.toolCalls).toEqual([]);
     });
   });
 });

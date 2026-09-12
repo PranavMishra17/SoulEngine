@@ -54,6 +54,9 @@ import { appendSessionLog } from '../telemetry/session-log.js';
 
 const logger = createLogger('conversation-turn');
 
+/** Mind budget when a project sets none; the Speaker never waits on it. */
+const DEFAULT_MIND_TIMEOUT_MS = 15000;
+
 /** Raised when the turn cannot proceed for a reason the caller must map to a status. */
 export class TurnError extends Error {
   constructor(
@@ -107,6 +110,8 @@ export interface TurnTimings {
 }
 
 export interface TurnResult {
+  /** Which cognition runtime produced this turn. */
+  runtime: 'parallel' | 'single';
   /** Primary reply plus, when an action produced one, the follow-up utterance joined by a blank line. */
   responseText: string;
   /** The follow-up utterance alone, or null when the turn produced none. */
@@ -308,6 +313,11 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   const runtimeName = options.runtime ?? (projectSettings.cognition_runtime as 'parallel' | 'single' | undefined) ?? 'parallel';
   const runtime = selectRuntime(runtimeName);
 
+  // The Mind is abandoned, not awaited, when it overruns the project's budget.
+  const mindTimeoutMs = projectSettings.mind_timeout_ms ?? DEFAULT_MIND_TIMEOUT_MS;
+  const mindAbortController = new AbortController();
+  const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+
   const cognitionInput: CognitionInput = {
     prompt: { stable: promptParts.stable, dynamic: speakerDynamic },
     history: llmMessages,
@@ -316,7 +326,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
     toolRegistry,
     providers: { speaker: activeProvider, mind: mindProvider },
     cacheKey,
-    signal: new AbortController().signal, // TODO: use a timeout from project settings
+    signal: mindAbortController.signal,
     context: {
       definition,
       instance,
@@ -347,6 +357,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let usageEstimated = false;
   let primarySpeechAdded = false;
 
+  try {
   for await (const event of runtime.generate(cognitionInput)) {
     if (event.type === 'text') {
       responseText += event.delta;
@@ -407,6 +418,9 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
       usageEstimated = summary.usageEstimated;
       mindResult = summary.mindResult;
     }
+  }
+  } finally {
+    clearTimeout(mindTimeout);
   }
 
   // Reconstruct full speaker prompt for the return value
@@ -488,6 +502,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   );
 
   return {
+    runtime: runtimeName,
     responseText,
     followUpText,
     mood: instance_updated.current_mood,

@@ -56,6 +56,7 @@ interface Flags {
   npc?: string;
   scenario?: string;
   trials?: number;
+  runtime?: 'parallel' | 'single';
   record?: string;
   replay?: string;
   endSession: boolean;
@@ -85,6 +86,7 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Flags } {
     else if (arg === '--npc') flags.npc = argv[++i];
     else if (arg === '--scenario') flags.scenario = argv[++i];
     else if (arg === '--trials') flags.trials = Number(argv[++i]);
+    else if (arg === '--runtime') flags.runtime = argv[++i] as 'parallel' | 'single';
     else if (arg === '--record') flags.record = argv[++i];
     else if (arg === '--replay') flags.replay = argv[++i];
     else positional.push(arg);
@@ -95,14 +97,6 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Flags } {
 function out(text: string): void {
   process.stdout.write(text + '\n');
 }
-
-/**
- * The encryption key is required even in stub mode: opening a project calls
- * loadApiKeys, which throws without it. Say so plainly rather than surfacing a
- * storage stack trace.
- */
-
-
 
 /** Bring the NPC's session into this process, starting one if needed. */
 async function ensureSession(
@@ -466,6 +460,7 @@ async function cmdPlay(flags: Flags): Promise<void> {
       playerId: flags.player,
       stub: flags.stub,
       trials: flags.trials,
+      runtime: flags.runtime,
       record: flags.record,
       replay: flags.replay,
       endSession: flags.endSession,
@@ -521,7 +516,7 @@ async function main(): Promise<void> {
       default:
         out('Commands: world | talk | affordances | inspect | endsession | cycle | log | play');
         out('Flags: --player <id> --stub --show-prompt --turn-cap <n> --session <id> --last <n>');
-        out('Play flags: --npc <id> --scenario <file> --trials <k> --record <file> --replay <file> --end-session');
+        out('Play flags: --npc <id> --scenario <file> --trials <k> --runtime parallel|single --record <file> --replay <file> --end-session');
     }
   } catch (error) {
     out(`Error: ${explainStorageFailure(error)}`);

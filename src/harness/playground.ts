@@ -69,6 +69,7 @@ interface TurnSnapshot {
 export interface TurnRecord {
   type: 'turn';
   turn: number;
+  runtime: 'parallel' | 'single';
   sessionId: string;
   input: string;
   reply: string;
@@ -130,6 +131,7 @@ export function buildTurnRecord(
   return {
     type: 'turn',
     turn: turnNumber,
+    runtime: turnResult.runtime,
     sessionId,
     input: sanitizedInput,
     reply: primaryReply,
@@ -403,6 +405,8 @@ export interface PlayOptions {
   stub?: boolean;
   /** Number of trials for a scenario run; overrides the scenario's own value. */
   trials?: number;
+  /** Cognition runtime override for every turn; the project setting applies when unset. */
+  runtime?: 'parallel' | 'single';
   /** Record every provider call into this cassette file. */
   record?: string;
   /** Serve every provider call from this cassette file; needs no API key. */
@@ -436,6 +440,8 @@ const NEUTRAL_SECURITY: SecurityContext = {
 
 interface ProviderChoice {
   provider: LLMProvider;
+  /** Cognition runtime override, from --runtime. */
+  runtime?: 'parallel' | 'single';
   /** True when the turn's own provider resolution is bypassed (cassette modes). */
   overridden: boolean;
   /** The cassette being recorded, written out when the run ends. */
@@ -463,14 +469,14 @@ async function chooseProvider(projectId: string, options: PlayOptions): Promise<
   const note = options.note ?? ((message: string) => logger.info({ note: message }, 'playground'));
   if (options.replay) {
     const cassette = await readCassette(options.replay);
-    return { provider: new PlaybackLLMProvider(cassette), overridden: true, recording: null };
+    return { provider: new PlaybackLLMProvider(cassette), overridden: true, recording: null, runtime: options.runtime };
   }
   const base = await resolveProvider(projectId, options.stub ?? false, note);
   if (options.record) {
     const recording: Cassette = { version: 1, entries: [] };
-    return { provider: new RecordingLLMProvider(base, recording), overridden: true, recording };
+    return { provider: new RecordingLLMProvider(base, recording), overridden: true, recording, runtime: options.runtime };
   }
-  return { provider: base, overridden: false, recording: null };
+  return { provider: base, overridden: false, recording: null, runtime: options.runtime };
 }
 
 /**
@@ -560,6 +566,7 @@ async function executeTurn(
     toolRegistry: mcpToolRegistry,
     channel: 'playground',
     providers: choice.overridden ? { speaker: choice.provider, mind: choice.provider } : undefined,
+    runtime: choice.runtime,
   });
 
   const after = snapshot(requireSession(sessionId).state);
@@ -603,6 +610,7 @@ async function stateRecord(sessionId: string, turns: number, choice: ProviderCho
     memories: { stm: snap.stmCount, ltm: snap.ltmCount },
     tools: tools.filter((t) => t.offered).map((t) => t.name),
     providers: { name: choice.provider.name, overridden: choice.overridden },
+    runtime: choice.runtime ?? 'project-default',
   };
 }
 

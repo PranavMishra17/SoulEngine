@@ -48,7 +48,7 @@ export class StubLLMProvider implements LLMProvider {
     this.defaultLatencyMs = config.defaultLatencyMs ?? 0;
   }
 
-  async *streamChat(_request: LLMChatRequest): AsyncIterable<LLMStreamChunk> {
+  async *streamChat(request: LLMChatRequest): AsyncIterable<LLMStreamChunk> {
     // Get next response (cycle if exhausted)
     const response = this.responses[this.currentIndex % this.responses.length];
     this.currentIndex++;
@@ -56,7 +56,13 @@ export class StubLLMProvider implements LLMProvider {
     // Simulate latency
     const latency = response.latencyMs ?? this.defaultLatencyMs;
     if (latency > 0) {
-      await new Promise(resolve => setTimeout(resolve, latency));
+      // A real provider stops when the caller aborts; the stub must too, or a
+      // timeout test cannot tell an abandoned Mind from a finished one.
+      const aborted = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), latency);
+        request.signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(true); }, { once: true });
+      });
+      if (aborted) return;
     }
 
     // Return single chunk with full response

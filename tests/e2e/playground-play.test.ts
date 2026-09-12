@@ -95,6 +95,7 @@ describe('playground play mode', () => {
         stub: true,
         endSession: false,
         playerId: 'player-1',
+        runtime: 'parallel',
       },
       input,
       collectOutput
@@ -110,6 +111,10 @@ describe('playground play mode', () => {
     expect(turn1.timings.speakerMs).toBeGreaterThan(0);
     // The stub provider reports no token usage, so the record carries an estimate flag rather than usage.
     expect(turn1.usage).toBeDefined();
+    // The runtime that produced the turn is on every record; the override is echoed on state.
+    expect(turn1.runtime).toBe('parallel');
+    const state = outputs.find((o) => o.type === 'state');
+    expect(state.runtime).toBe('parallel');
 
     // Event record has mechanism
     const eventRecord = outputs.find((o) => o.type === 'event');

@@ -65,11 +65,7 @@ export class ParallelRuntime implements CognitionRuntime {
     const { definition, instance, knowledgeBase, projectId, sessionId, securityContext, userId } = context;
     const { speaker: activeProvider, mind: mindProvider } = providers;
 
-    // Mind timeout (controlled by project settings in the host, passed via signal or a timeout we create)
-    // For now, we create our own timeout matching the current behavior
-    const mindTimeoutMs = 15000; // TODO: pass from project settings via input
-    const mindAbortController = new AbortController();
-    const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+    // The host arms the Mind timeout from the project's mind_timeout_ms and hands it in as `signal`.
 
     const mindPromise = runMindAgentLoop(
       definition,
@@ -82,14 +78,12 @@ export class ParallelRuntime implements CognitionRuntime {
       toolRegistry,
       securityContext,
       tools,
-      mindAbortController.signal,
+      input.signal,
       userId,
     ).catch((err) => {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
       return null as MindResult | null;
-    }).finally(() => {
-      clearTimeout(mindTimeout);
     });
 
     // Speaker streams immediately; it does not wait for the Mind

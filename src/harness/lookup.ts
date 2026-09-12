@@ -30,6 +30,11 @@ export async function findNpc(npcId: string): Promise<{ projectId: string; defin
   throw new Error(`NPC ${npcId} was not found in any local project`);
 }
 
+/**
+ * The encryption key is required even in stub mode: opening a project calls
+ * loadApiKeys, which throws without it. Say so plainly rather than surfacing a
+ * storage stack trace.
+ */
 export function explainStorageFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('ENCRYPTION_KEY') || message.includes('Encryption key')) {
