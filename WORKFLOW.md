@@ -96,6 +96,7 @@ Built-in agents worth using: **Explore** (read-only fan-out search — cheap cod
 - **Layout:** `tests/{unit,regression,e2e,conformance}/`; fixtures in `tests/fixtures/`.
 - **CI:** `.github/workflows/deploy.yml` runs `typecheck` + `test` jobs; `deploy` needs both green. Add no item without a test; CI will (eventually) fail PRs that drop coverage on touched code.
 - **First run:** `npm install` (adds Vitest) then `npm test`.
+- **Live NPC testing:** `npm run npc -- talk <npcId> "..."` for a human-readable turn; `npm run npc -- play` for the JSON-lines playground an agent or CI drives (scenarios, `--trials` pass^k, `--record`/`--replay` cassettes). Protocol: [`documentation/PLAYGROUND_PROTOCOL.md`](documentation/PLAYGROUND_PROTOCOL.md).
 
 ---
 
