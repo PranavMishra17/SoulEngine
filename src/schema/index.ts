@@ -191,6 +191,15 @@ export const ProjectSettingsSchema = z.object({
   mind_provider: z.string().optional(),
   mind_model: z.string().optional(),
   mind_timeout_ms: z.number().optional(),
+  /** Voice latency budget: configurable endpointing timers */
+  voice_latency: z.object({
+    /** Deepgram utterance_end_ms (server-side VAD silence detection, default 1000) */
+    utterance_end_ms: z.number().int().positive().optional(),
+    /** Deepgram endpointing minimum silence for endpoint (default 500) */
+    endpointing_ms: z.number().int().positive().optional(),
+    /** Client-side aggregation window debounce (default 400) */
+    aggregation_window_ms: z.number().int().positive().optional(),
+  }).optional(),
 });
 
 export const ProjectLimitsSchema = z.object({

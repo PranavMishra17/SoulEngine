@@ -14,6 +14,8 @@ const logger = createLogger('deepgram-provider');
 const DEFAULT_MODEL = 'nova-2';
 const DEFAULT_SAMPLE_RATE = 16000;
 const DEFAULT_LANGUAGE = 'en';
+const DEFAULT_UTTERANCE_END_MS = 1000; // Server-side VAD silence detection timeout
+const DEFAULT_ENDPOINTING_MS = 500; // Minimum silence for endpoint
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 1000;
 const KEEPALIVE_INTERVAL_MS = 5000; // Send keepalive every 5 seconds
@@ -27,7 +29,7 @@ class DeepgramSession implements STTSession {
   private reconnectAttempts = 0;
   private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
   private readonly events: STTSessionEvents;
-  private readonly config: Required<STTSessionConfig>;
+  private readonly config: Required<Omit<STTSessionConfig, 'utteranceEndMs' | 'endpointingMs'>> & Pick<STTSessionConfig, 'utteranceEndMs' | 'endpointingMs'>;
   private readonly providerConfig: STTProviderConfig;
 
   // Accumulate finalized segments within an utterance so emitted transcripts
@@ -49,6 +51,8 @@ class DeepgramSession implements STTSession {
       language: sessionConfig.language ?? providerConfig.language ?? DEFAULT_LANGUAGE,
       punctuate: sessionConfig.punctuate ?? true,
       interimResults: sessionConfig.interimResults ?? true,
+      utteranceEndMs: sessionConfig.utteranceEndMs,
+      endpointingMs: sessionConfig.endpointingMs,
     };
   }
 
@@ -79,11 +83,9 @@ class DeepgramSession implements STTSession {
         interim_results: this.config.interimResults,
         // Keep connection alive during silence (prevents idle timeout)
         keep_alive: true,
-        // Latency budget: server-side VAD gets 1000ms; the pipeline adds a
-        // short 400ms aggregation debounce (AGGREGATION_WINDOW_MS). Total
-        // worst-case endpointing latency: ~1.4s (was ~3s with both at 1500ms).
-        utterance_end_ms: 1000,  // Reduced from 1500ms to cut end-of-turn latency
-        endpointing: 500,        // Minimum silence for endpoint (ms)
+        // Latency budget: configurable per-project via ProjectSettings.voice_latency
+        utterance_end_ms: this.config.utteranceEndMs ?? DEFAULT_UTTERANCE_END_MS,
+        endpointing: this.config.endpointingMs ?? DEFAULT_ENDPOINTING_MS,
       });
 
       this.setupEventHandlers();

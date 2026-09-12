@@ -32,6 +32,15 @@ export interface ProjectSettings {
   mind_model?: string;
   /** Timeout for the Mind agent loop in milliseconds (default: 5000) */
   mind_timeout_ms?: number;
+  /** Voice latency budget: configurable endpointing timers */
+  voice_latency?: {
+    /** Deepgram utterance_end_ms (server-side VAD silence detection, default 1000) */
+    utterance_end_ms?: number;
+    /** Deepgram endpointing minimum silence for endpoint (default 500) */
+    endpointing_ms?: number;
+    /** Client-side aggregation window debounce (default 400) */
+    aggregation_window_ms?: number;
+  };
 }
 
 export interface ProjectLimits {

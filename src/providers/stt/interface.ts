@@ -25,6 +25,10 @@ export interface STTSessionConfig {
   punctuate?: boolean;
   /** Enable interim results */
   interimResults?: boolean;
+  /** Utterance end timeout in ms (provider-specific, e.g. Deepgram utterance_end_ms) */
+  utteranceEndMs?: number;
+  /** Endpointing minimum silence in ms (provider-specific, e.g. Deepgram endpointing) */
+  endpointingMs?: number;
 }
 
 /**
