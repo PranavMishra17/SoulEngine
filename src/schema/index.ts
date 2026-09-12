@@ -200,6 +200,8 @@ export const ProjectSettingsSchema = z.object({
     /** Client-side aggregation window debounce (default 400) */
     aggregation_window_ms: z.number().int().positive().optional(),
   }).optional(),
+  /** Cognition runtime: 'parallel' (Mind + Speaker in parallel) or 'single' (one call with tools) */
+  cognition_runtime: z.enum(['parallel', 'single']).optional(),
 });
 
 export const ProjectLimitsSchema = z.object({

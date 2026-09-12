@@ -32,9 +32,8 @@ import {
   assembleSlimSystemPromptParts,
   assembleConversationHistory,
   augmentPromptWithMindContext,
-  buildFollowUpPrompt,
 } from '../core/context.js';
-import { runMindAgentLoop } from '../core/mind.js';
+import { selectRuntime, type CognitionInput } from '../core/runtime.js';
 import { isRecallTool } from '../core/tools.js';
 import { blendMoods } from '../core/personality.js';
 import {
@@ -85,6 +84,11 @@ export interface RunTurnOptions {
    * the smaller seam. See specs/5.19.md.
    */
   providers?: { speaker: LLMProvider; mind: LLMProvider };
+  /**
+   * Override the cognition runtime (bypasses project setting).
+   * Used by the playground and tests.
+   */
+  runtime?: 'parallel' | 'single';
 }
 
 export interface TurnTimings {
@@ -282,11 +286,6 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
       ? createLlmProvider({ provider: mindProviderType as LLMProviderType, apiKey: mindApiKey, model: mindModelId })
       : activeProvider;
 
-  // Parallel Mind + Speaker
-  const mindTimeoutMs = projectSettings.mind_timeout_ms ?? 15000;
-  const llmMessages: LLMMessage[] = conversationHistory;
-  const projectTools = toolRegistry.getProjectTools(state.project_id);
-
   // Deferred recall from the previous turn goes into this turn's speaker prompt dynamic suffix.
   const deferredContextInjected = state.deferred_mind_context ?? null;
   let speakerDynamic = promptParts.dynamic;
@@ -302,160 +301,135 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   // Cache key for provider-level prompt caching
   const cacheKey = `${definition.id}:${definition.version ?? 0}`;
 
-  const mindAbortController = new AbortController();
-  const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
+  const llmMessages: LLMMessage[] = conversationHistory;
+  const projectTools = toolRegistry.getProjectTools(state.project_id);
 
-  const mindPromise = runMindAgentLoop(
-    definition,
-    instance,
+  // Select and invoke the cognition runtime
+  const runtimeName = options.runtime ?? (projectSettings.cognition_runtime as 'parallel' | 'single' | undefined) ?? 'parallel';
+  const runtime = selectRuntime(runtimeName);
+
+  const cognitionInput: CognitionInput = {
+    prompt: { stable: promptParts.stable, dynamic: speakerDynamic },
+    history: llmMessages,
     playerInput,
-    conversationHistory,
-    mindProvider,
-    state.project_id,
-    sessionContext.knowledgeBase,
+    tools: projectTools,
     toolRegistry,
-    securityContext,
-    projectTools,
-    mindAbortController.signal,
-    state.user_id,
-  ).catch((err) => {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    logger.error({ sessionId, error: msg }, 'Mind agent loop failed');
-    return null as MindResult | null;
-  }).finally(() => {
-    clearTimeout(mindTimeout);
-  });
-
-  // Speaker streams immediately; it does not wait for the Mind.
-  const speakerStart = Date.now();
-  let responseText = '';
-  let providerUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
-  let speakerTtftMs: number | null = null;
-
-  for await (const chunk of activeProvider.streamChat({
-    systemPromptPrefix: promptParts.stable,
-    systemPrompt: speakerDynamic,
+    providers: { speaker: activeProvider, mind: mindProvider },
     cacheKey,
-    messages: llmMessages,
-  })) {
-    if (chunk.text && speakerTtftMs === null) {
-      speakerTtftMs = Date.now() - speakerStart;
-    }
-    if (chunk.text) responseText += chunk.text;
-    if (chunk.done && chunk.usage) providerUsage = chunk.usage;
-  }
-  const speakerMs = Date.now() - speakerStart;
+    signal: new AbortController().signal, // TODO: use a timeout from project settings
+    context: {
+      definition,
+      instance,
+      knowledgeBase: sessionContext.knowledgeBase,
+      projectId: state.project_id,
+      sessionId,
+      securityContext,
+      userId: state.user_id,
+    },
+  };
 
-  responseText = stripNarration(responseText);
-  addMessageToSession(sessionId, { role: 'assistant', content: responseText });
-
-  const mindResult = await mindPromise;
-
-  const toolCalls: ToolCall[] = mindResult?.raw_tool_calls ?? [];
+  // Consume runtime events
+  let responseText = '';
+  let followUpText: string | null = null;
+  const toolCalls: ToolCall[] = [];
   const toolResults: ToolResult[] = [];
   let exitConvoResult: ExitConvoResult | undefined;
+  let deferredContextForNextTurn: string | null = null;
+  let recallResultCount = 0;
+  let mcpResultCount = 0;
+  let mindResult: MindResult | null = null;
+  let timings = { mindMs: null as number | null, speakerMs: 0, speakerTtftMs: null as number | null, followUpMs: null as number | null, followUpTtftMs: null as number | null, wallMs: 0 };
+  let usage: {
+    speaker?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
+    mind?: { input_tokens: number; output_tokens: number };
+    followUp?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
+  } = {};
+  let usageEstimated = false;
+  let primarySpeechAdded = false;
 
-  // Reconstruct full system prompt for follow-up leg (if needed)
-  const fullSystemPrompt = promptParts.stable + '\n\n' + promptParts.dynamic;
-
-  if (mindResult && mindResult.tools_called.length > 0) {
-    for (const tr of mindResult.tools_called) {
+  for await (const event of runtime.generate(cognitionInput)) {
+    if (event.type === 'text') {
+      responseText += event.delta;
+    } else if (event.type === 'tool_call') {
+      toolCalls.push(event.call);
+    } else if (event.type === 'tool_result') {
+      const tr = event.result;
       toolResults.push({
         tool_call_id: tr.tool_name,
         result: tr.status === 'success' ? tr.result_content : null,
         error: tr.status === 'error' ? tr.error : undefined,
       });
+      if (tr.status === 'success' && tr.result_content) {
+        if (isRecallTool(tr.tool_name)) {
+          recallResultCount++;
+        } else {
+          mcpResultCount++;
+        }
+      }
+    } else if (event.type === 'follow_up') {
+      followUpText = (followUpText ?? '') + event.delta;
+    } else if (event.type === 'done') {
+      const summary = event.summary;
+
+      // Use the stripped speech from the summary
+      responseText = summary.speech;
+      followUpText = summary.followUp;
+
+      // Add primary speech to session
+      if (!primarySpeechAdded) {
+        addMessageToSession(sessionId, { role: 'assistant', content: summary.speech });
+        primarySpeechAdded = true;
+      }
+
+      // Add follow-up to session if it exists
+      if (summary.followUp) {
+        responseText += '\n\n' + summary.followUp;
+        addMessageToSession(sessionId, { role: 'assistant', content: summary.followUp });
+      }
+
+      // Handle exit
+      if (summary.exit?.requested) {
+        exitConvoResult = handleExitConvo(
+          sessionId,
+          { reason: summary.exit.reason ?? 'Mind decided to end conversation' },
+          securityContext
+        );
+      }
+
+      // Deferred context
+      if (summary.deferredForNextTurn) {
+        deferredContextForNextTurn = summary.deferredForNextTurn;
+        state.deferred_mind_context = deferredContextForNextTurn;
+      }
+
+      timings = summary.timings;
+      usage = summary.usage;
+      usageEstimated = summary.usageEstimated;
+      mindResult = summary.mindResult;
     }
   }
 
-  if (mindResult?.exit_convo_used) {
-    exitConvoResult = handleExitConvo(
-      sessionId,
-      { reason: mindResult.exit_convo_reason ?? 'Mind decided to end conversation' },
-      securityContext
-    );
-  }
-
-  // Recall results defer to the next turn; MCP actions produce follow-up speech now.
-  let deferredContextForNextTurn: string | null = null;
-  let recallResultCount = 0;
-  let mcpResultCount = 0;
-  let followUpMs: number | null = null;
-  let followUpTtftMs: number | null = null;
-  /** Follow-up utterance after an action, kept apart from the primary reply for callers that report them separately. */
-  let followUpSpeech: string | null = null;
-  let followUpUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
-
-  // Reconstruct full speaker prompt for token accounting and return value
+  // Reconstruct full speaker prompt for the return value
   const speakerPrompt = promptParts.stable + '\n\n' + speakerDynamic;
 
-  if (mindResult && mindResult.tools_called.length > 0) {
-    const { recallLines: recallResults, mcpLines: mcpResults } =
-      partitionMindToolResults(mindResult.tools_called);
-
-    recallResultCount = recallResults.length;
-    mcpResultCount = mcpResults.length;
-
-    if (recallResults.length > 0) {
-      deferredContextForNextTurn = recallResults.join('\n');
-      state.deferred_mind_context = deferredContextForNextTurn;
-      logger.info({ sessionId, recallCount: recallResults.length }, 'Recall results deferred to next turn');
-    }
-
-    if (mcpResults.length > 0) {
-      const mcpContext = mcpResults.join('\n');
-      const followUpPrompt = buildFollowUpPrompt(fullSystemPrompt, mcpContext, definition.name);
-
-      const updatedHistory: LLMMessage[] = [
-        ...llmMessages,
-        { role: 'model' as const, content: responseText },
-        { role: 'user' as const, content: '[System: You just took an action. Briefly address it.]' },
-      ];
-
-      const followUpStart = Date.now();
-      let followUpText = '';
-      for await (const chunk of activeProvider.streamChat({
-        systemPrompt: followUpPrompt,
-        messages: updatedHistory,
-      })) {
-        if (chunk.text && followUpTtftMs === null) {
-          followUpTtftMs = Date.now() - followUpStart;
-        }
-        if (chunk.text) followUpText += chunk.text;
-        if (chunk.done && chunk.usage) followUpUsage = chunk.usage;
-      }
-      followUpMs = Date.now() - followUpStart;
-
-      followUpText = stripNarration(followUpText);
-
-      if (followUpText.trim()) {
-        followUpSpeech = followUpText;
-        responseText += '\n\n' + followUpText;
-        addMessageToSession(sessionId, { role: 'assistant', content: followUpText });
-      }
-    }
-  }
-
   // Token accounting must never break a conversation.
-  let usageEstimated = false;
   try {
-    if (providerUsage) {
+    if (usage.speaker) {
       addTokensToSession(sessionId, {
-        text_input_tokens: providerUsage.input_tokens,
-        text_output_tokens: providerUsage.output_tokens,
+        text_input_tokens: usage.speaker.input_tokens,
+        text_output_tokens: usage.speaker.output_tokens,
       });
-    } else {
-      usageEstimated = true;
+    } else if (!usageEstimated) {
       const inputText = speakerPrompt + conversationHistory.map((m) => m.content).join('') + playerInput;
       addTokensToSession(sessionId, {
         text_input_tokens: Math.ceil(inputText.length / 4),
         text_output_tokens: Math.ceil(responseText.length / 4),
       });
     }
-    if (mindResult?.usage) {
+    if (usage.mind) {
       addTokensToSession(sessionId, {
-        text_input_tokens: mindResult.usage.input_tokens,
-        text_output_tokens: mindResult.usage.output_tokens,
+        text_input_tokens: usage.mind.input_tokens,
+        text_output_tokens: usage.mind.output_tokens,
       });
     }
   } catch {
@@ -472,6 +446,9 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
     instance_updated.current_mood = blendMoods(instance.current_mood, distressedMood, 0.25);
   }
   updateSessionInstance(sessionId, instance_updated);
+
+  // Compute final wallMs
+  timings.wallMs = Date.now() - wallStart;
 
   // Durable record of the turn. Every caller of this function is covered, which
   // is why the log lives here rather than in each entry point.
@@ -504,26 +481,15 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
       stm: instance.short_term_memory?.length ?? 0,
       ltm: instance.long_term_memory?.length ?? 0,
       mood: instance_updated.current_mood,
-      timings: {
-        mindMs: mindResult?.duration_ms ?? null,
-        speakerMs,
-        speakerTtftMs,
-        followUpMs,
-        followUpTtftMs,
-        wallMs: Date.now() - wallStart,
-      },
-      usage: {
-        speaker: providerUsage,
-        mind: mindResult?.usage,
-        followUp: followUpUsage,
-      },
+      timings,
+      usage,
       usageEstimated,
     }
   );
 
   return {
     responseText,
-    followUpText: followUpSpeech,
+    followUpText,
     mood: instance_updated.current_mood,
     mindResult,
     toolCalls,
@@ -537,19 +503,8 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
     securityContext,
     moderationAction: moderationResult.action,
     sanitizationViolations: sanitizationResult.violations,
-    timings: {
-      mindMs: mindResult?.duration_ms ?? null,
-      speakerMs,
-      speakerTtftMs,
-      followUpMs,
-      followUpTtftMs,
-      wallMs: Date.now() - wallStart,
-    },
-    usage: {
-      speaker: providerUsage,
-      mind: mindResult?.usage,
-      followUp: followUpUsage,
-    },
+    timings,
+    usage,
     usageEstimated,
   };
 }

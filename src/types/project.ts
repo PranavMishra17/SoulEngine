@@ -41,6 +41,8 @@ export interface ProjectSettings {
     /** Client-side aggregation window debounce (default 400) */
     aggregation_window_ms?: number;
   };
+  /** Cognition runtime: 'parallel' (Mind + Speaker in parallel) or 'single' (one call with tools) */
+  cognition_runtime?: 'parallel' | 'single';
 }
 
 export interface ProjectLimits {
