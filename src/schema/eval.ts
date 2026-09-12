@@ -70,9 +70,81 @@ export const ConversationFixtureSchema = z.object({
 });
 
 /**
+ * Expectations for a turn in a playground scenario.
+ */
+export const PlaygroundExpectationSchema = z.object({
+  /** Turn number (1-indexed) */
+  turn: z.number().int().min(1),
+  /** Tool names that SHOULD be called */
+  toolsCalled: z.array(z.string()).optional(),
+  /** Tool names that SHOULD NOT be called */
+  toolsNotCalled: z.array(z.string()).optional(),
+  /** Facts that SHOULD appear in the reply */
+  recallFacts: z.array(z.string()).optional(),
+  /** Regex pattern that SHOULD match the reply */
+  replyMatches: z.string().optional(),
+  /** Whether exit_convo SHOULD be requested */
+  exitRequested: z.boolean().optional(),
+  /** Expected moderation action (allow, block, warn) */
+  moderationAction: z.string().optional(),
+});
+
+/**
+ * A world event to inject between turns in a playground scenario.
+ */
+export const PlaygroundEventSchema = z.object({
+  /** Inject this event after this turn number */
+  afterTurn: z.number().int().min(0),
+  /** Event description text */
+  text: z.string().min(1),
+  /** Salience (0-1), defaults to 0.5 */
+  salience: z.number().min(0).max(1).optional(),
+});
+
+/**
+ * A playground scenario for live or cassette-recorded play.
+ *
+ * Reuses the fixture's NPC structure but adds scripted player dialogue,
+ * event injection, and expectations for real (not stubbed) model behavior.
+ */
+export const PlaygroundScenarioSchema = z.object({
+  /** Human-readable scenario name */
+  name: z.string().min(1),
+  /** Description of what this scenario tests */
+  description: z.string().min(1),
+  /** Embedded NPC definition and instance */
+  npc: z.object({
+    definition: NPCDefinitionSchema,
+    instance: NPCInstanceSchema,
+    knowledgeBase: KnowledgeBaseSchema.optional(),
+  }).optional(),
+  /** Reference to an existing NPC by id */
+  npcId: z.string().optional(),
+  /** Player configuration */
+  player: z.object({
+    /** Player id, defaults to 'playground-player' */
+    id: z.string().optional(),
+    /** Scripted player lines, one per turn */
+    script: z.array(z.string()),
+  }).optional(),
+  /** World events to inject between turns */
+  events: z.array(PlaygroundEventSchema).optional(),
+  /** Expectations to evaluate */
+  expect: z.array(PlaygroundExpectationSchema).optional(),
+  /** Number of trials to run (default 1) */
+  trials: z.number().int().min(1).optional(),
+}).refine(
+  (data) => (data.npc && !data.npcId) || (!data.npc && data.npcId),
+  { message: 'Exactly one of npc or npcId must be provided' }
+);
+
+/**
  * Re-export inferred types
  */
 export type StubResponse = z.infer<typeof StubResponseSchema>;
 export type TurnExpectations = z.infer<typeof TurnExpectationsSchema>;
 export type FixtureTurn = z.infer<typeof FixtureTurnSchema>;
 export type ConversationFixture = z.infer<typeof ConversationFixtureSchema>;
+export type PlaygroundExpectation = z.infer<typeof PlaygroundExpectationSchema>;
+export type PlaygroundEvent = z.infer<typeof PlaygroundEventSchema>;
+export type PlaygroundScenario = z.infer<typeof PlaygroundScenarioSchema>;

@@ -48,10 +48,10 @@ export interface SessionLogRecord {
   playerId: string;
   /**
    * How the turn arrived: the HTTP route, the voice pipeline, the text
-   * harness, or a scripted eval run. A reader must be able to tell a replayed
+   * harness, a scripted eval run, or the playground. A reader must be able to tell a replayed
    * fixture from something a person actually said.
    */
-  channel: 'http' | 'voice' | 'harness' | 'eval' | 'unknown';
+  channel: 'http' | 'voice' | 'harness' | 'eval' | 'playground' | 'unknown';
   /** Event-specific payload. Shapes are additive; readers must tolerate new keys. */
   data: Record<string, unknown>;
 }

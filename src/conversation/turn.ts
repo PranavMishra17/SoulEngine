@@ -74,7 +74,7 @@ export interface RunTurnOptions {
   fallbackProvider: LLMProvider | null;
   toolRegistry: MCPToolRegistry;
   /** How this turn arrived, recorded in the session log. */
-  channel?: 'http' | 'voice' | 'harness' | 'eval';
+  channel?: 'http' | 'voice' | 'harness' | 'eval' | 'playground';
   /**
    * Bypass provider resolution and drive the turn with these instead.
    *
@@ -103,7 +103,10 @@ export interface TurnTimings {
 }
 
 export interface TurnResult {
+  /** Primary reply plus, when an action produced one, the follow-up utterance joined by a blank line. */
   responseText: string;
+  /** The follow-up utterance alone, or null when the turn produced none. */
+  followUpText: string | null;
   mood: MoodVector;
   mindResult: MindResult | null;
   toolCalls: ToolCall[];
@@ -379,6 +382,8 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let mcpResultCount = 0;
   let followUpMs: number | null = null;
   let followUpTtftMs: number | null = null;
+  /** Follow-up utterance after an action, kept apart from the primary reply for callers that report them separately. */
+  let followUpSpeech: string | null = null;
   let followUpUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
 
   // Reconstruct full speaker prompt for token accounting and return value
@@ -424,6 +429,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
       followUpText = stripNarration(followUpText);
 
       if (followUpText.trim()) {
+        followUpSpeech = followUpText;
         responseText += '\n\n' + followUpText;
         addMessageToSession(sessionId, { role: 'assistant', content: followUpText });
       }
@@ -517,6 +523,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
 
   return {
     responseText,
+    followUpText: followUpSpeech,
     mood: instance_updated.current_mood,
     mindResult,
     toolCalls,

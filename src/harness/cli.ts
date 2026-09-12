@@ -21,7 +21,6 @@ import './bootstrap.js';
 
 import { createLogger } from '../logger.js';
 import { getStorage } from '../storage/factory.js';
-import { getConfig } from '../config.js';
 import { persistSession } from '../storage/local/sessions.js';
 import {
   startSession,
@@ -32,15 +31,13 @@ import {
 } from '../session/manager.js';
 import { runConversationTurn, TurnError } from '../conversation/turn.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
-import { createLlmProvider, getDefaultLlmProviderType, getDefaultModel } from '../providers/llm/factory.js';
-import { StubLLMProvider } from '../providers/llm/stub.js';
 import { runDailyPulse, runWeeklyWhisper, runPersonaShift } from '../core/cycles.js';
 import { loadState, saveState, type HarnessState } from './state.js';
 import { readSessionLog, listLoggedSessions } from '../telemetry/session-log.js';
 import { computeAffordances, renderAffordances, renderTurnDiagnostics } from './diagnostics.js';
-import type { LLMProvider } from '../providers/llm/interface.js';
+import { runPlay } from './playground.js';
+import { findNpc, resolveProvider, registerProjectTools, explainStorageFailure } from './lookup.js';
 import type { NPCDefinition } from '../types/npc.js';
-import type { LLMProviderType } from '../providers/llm/interface.js';
 import type { ConversationMode } from '../types/voice.js';
 
 const logger = createLogger('harness');
@@ -56,6 +53,12 @@ interface Flags {
   session?: string;
   last?: number;
   clean: boolean;
+  npc?: string;
+  scenario?: string;
+  trials?: number;
+  record?: string;
+  replay?: string;
+  endSession: boolean;
 }
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Flags } {
@@ -66,6 +69,7 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Flags } {
     showPrompt: false,
     turnCap: DEFAULT_TURN_CAP,
     clean: false,
+    endSession: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -73,10 +77,16 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Flags } {
     if (arg === '--stub') flags.stub = true;
     else if (arg === '--show-prompt') flags.showPrompt = true;
     else if (arg === '--clean') flags.clean = true;
+    else if (arg === '--end-session') flags.endSession = true;
     else if (arg === '--player') flags.player = argv[++i] ?? DEFAULT_PLAYER_ID;
     else if (arg === '--session') flags.session = argv[++i];
     else if (arg === '--turn-cap') flags.turnCap = Number(argv[++i]) || DEFAULT_TURN_CAP;
     else if (arg === '--last') flags.last = Number(argv[++i]) || 10;
+    else if (arg === '--npc') flags.npc = argv[++i];
+    else if (arg === '--scenario') flags.scenario = argv[++i];
+    else if (arg === '--trials') flags.trials = Number(argv[++i]);
+    else if (arg === '--record') flags.record = argv[++i];
+    else if (arg === '--replay') flags.replay = argv[++i];
     else positional.push(arg);
   }
   return { positional, flags };
@@ -91,79 +101,8 @@ function out(text: string): void {
  * loadApiKeys, which throws without it. Say so plainly rather than surfacing a
  * storage stack trace.
  */
-function explainStorageFailure(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes('ENCRYPTION_KEY') || message.includes('Encryption key')) {
-    return (
-      'ENCRYPTION_KEY is not set. It is required even with --stub, because opening a project ' +
-      'reads its stored provider keys. Set it to the value this data directory was written with.'
-    );
-  }
-  if (message.includes('Decryption failed')) {
-    return (
-      'The project secrets could not be decrypted with the current ENCRYPTION_KEY. This usually means ' +
-      'the key was rotated. Re-enter the provider keys in the web UI, or use "seed" to make a fresh ' +
-      'project this harness can talk to.'
-    );
-  }
-  return message;
-}
 
-/** Locate which project holds a definition, so the caller only needs an npc id. */
-async function findNpc(npcId: string): Promise<{ projectId: string; definition: NPCDefinition }> {
-  const storage = getStorage(null);
-  const projects = await storage.listProjects(undefined);
-  for (const project of projects) {
-    try {
-      const definition = await storage.getDefinition(project.id, npcId);
-      return { projectId: project.id, definition };
-    } catch {
-      // Not in this project.
-    }
-  }
-  throw new Error(`NPC ${npcId} was not found in any local project`);
-}
 
-async function resolveProvider(projectId: string, stub: boolean): Promise<LLMProvider> {
-  if (stub) {
-    return new StubLLMProvider({
-      defaultLatencyMs: 5,
-      responses: [{ text: '[stub speaker reply]' }],
-    });
-  }
-  const storage = getStorage(null);
-  const project = await storage.getProject(projectId);
-  const providerType = (project.settings.llm_provider || getDefaultLlmProviderType()) as LLMProviderType;
-  const model = project.settings.llm_model || getDefaultModel(providerType);
-
-  // Prefer the project's own stored key, as the route does.
-  let apiKey: string | undefined;
-  try {
-    const keys = await storage.loadApiKeys(projectId);
-    apiKey = keys[providerType as keyof typeof keys];
-  } catch (error) {
-    out(`(project keys unreadable: ${explainStorageFailure(error)})`);
-  }
-
-  // Fall back to the environment, which is what the route does when a project
-  // has no usable key of its own.
-  if (!apiKey) {
-    const envKey = getConfig().providers?.[`${providerType}ApiKey` as keyof ReturnType<typeof getConfig>['providers']];
-    if (typeof envKey === 'string' && envKey.length > 0) {
-      out(`(using ${providerType} key from the environment, not the project)`);
-      apiKey = envKey;
-    }
-  }
-
-  if (!apiKey) {
-    throw new Error(
-      `No ${providerType} API key available for project ${projectId}: the project's key could not be read ` +
-      `and none is set in the environment. Add one in the web UI, export ${providerType.toUpperCase()}_API_KEY, or run with --stub.`
-    );
-  }
-
-  return createLlmProvider({ provider: providerType, apiKey, model });
-}
 
 /** Bring the NPC's session into this process, starting one if needed. */
 async function ensureSession(
@@ -243,7 +182,7 @@ async function cmdTalk(state: HarnessState, npcId: string, text: string, flags: 
 
   if (started) out(`(started session ${sessionId} for ${npcId} as ${flags.player})`);
 
-  const provider = await resolveProvider(projectId, flags.stub);
+  const provider = await resolveProvider(projectId, flags.stub, out);
 
   let turn;
   try {
@@ -299,30 +238,6 @@ async function cmdTalk(state: HarnessState, npcId: string, text: string, flags: 
  * opens a session sees an empty one and would report every configured tool as
  * withheld. Load them the same way the session layer does.
  */
-async function registerProjectTools(projectId: string): Promise<void> {
-  try {
-    const storage = getStorage(null);
-    const mcpTools = await storage.getMCPTools(projectId);
-    const allTools = [
-      ...mcpTools.conversation_tools.map((t: { id: string; description: string; parameters?: unknown }) => ({
-        name: t.id,
-        description: t.description,
-        parameters: (t.parameters as Record<string, unknown>) ?? { type: 'object', properties: {} },
-      })),
-      ...mcpTools.game_event_tools.map((t: { id: string; description: string; parameters?: unknown }) => ({
-        name: t.id,
-        description: t.description,
-        parameters: (t.parameters as Record<string, unknown>) ?? { type: 'object', properties: {} },
-      })),
-    ];
-    if (allTools.length > 0) mcpToolRegistry.registerTools(projectId, allTools);
-  } catch (error) {
-    logger.warn(
-      { projectId, error: error instanceof Error ? error.message : 'Unknown' },
-      'Could not load project MCP tools'
-    );
-  }
-}
 
 async function cmdAffordances(npcId: string, flags: Flags): Promise<void> {
   const { projectId, definition } = await findNpc(npcId);
@@ -456,7 +371,7 @@ async function cmdCycle(state: HarnessState, kind: string, npcId: string, flags:
     mood: { ...instance.current_mood },
   };
 
-  const provider = await resolveProvider(projectId, flags.stub);
+  const provider = await resolveProvider(projectId, flags.stub, out);
 
   // The cycle functions mutate the instance in place and return a summary.
   if (kind === 'daily') {
@@ -525,6 +440,45 @@ async function cmdLog(state: HarnessState, flags: Flags, npcId?: string): Promis
   out(`(${slice.length} of ${records.length} records from ${sessionId})`);
 }
 
+async function cmdPlay(flags: Flags): Promise<void> {
+  const input = async function* () {
+    const readline = await import('readline');
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stderr,
+    });
+
+    for await (const line of rl) {
+      yield line;
+    }
+  };
+
+  // stdout carries only JSON records; notes and logs go to stderr.
+  const output = (record: unknown) => {
+    process.stdout.write(JSON.stringify(record) + '\n');
+  };
+  const note = (message: string) => process.stderr.write(message + '\n');
+
+  const result = await runPlay(
+    {
+      scenarioPath: flags.scenario,
+      npcId: flags.npc,
+      playerId: flags.player,
+      stub: flags.stub,
+      trials: flags.trials,
+      record: flags.record,
+      replay: flags.replay,
+      endSession: flags.endSession,
+      note,
+    },
+    input(),
+    output
+  );
+
+  // A scenario is a CI gate: every trial must pass every expectation.
+  if (result.summary && result.summary.passK !== 1) process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
   const { positional, flags } = parseFlags(process.argv.slice(2));
   const command = positional[0];
@@ -561,9 +515,13 @@ async function main(): Promise<void> {
       case 'log':
         await cmdLog(state, flags, positional[1]);
         break;
+      case 'play':
+        await cmdPlay(flags);
+        break;
       default:
-        out('Commands: world | talk | affordances | inspect | endsession | cycle | log');
+        out('Commands: world | talk | affordances | inspect | endsession | cycle | log | play');
         out('Flags: --player <id> --stub --show-prompt --turn-cap <n> --session <id> --last <n>');
+        out('Play flags: --npc <id> --scenario <file> --trials <k> --record <file> --replay <file> --end-session');
     }
   } catch (error) {
     out(`Error: ${explainStorageFailure(error)}`);

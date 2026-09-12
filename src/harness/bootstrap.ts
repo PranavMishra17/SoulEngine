@@ -9,6 +9,11 @@
  * pino writes to stdout at info level, which would interleave with the
  * diagnostic block the harness prints.
  */
+// The play command speaks JSON lines on stdout, so its logs must go to stderr.
+if (process.argv[2] === 'play' && !process.env.LOG_DESTINATION) {
+  process.env.LOG_DESTINATION = 'stderr';
+}
+
 if (!process.env.LOG_LEVEL) {
   process.env.LOG_LEVEL = 'warn';
 }

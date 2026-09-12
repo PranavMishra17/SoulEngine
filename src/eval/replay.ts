@@ -19,9 +19,8 @@ import { StubLLMProvider } from '../providers/llm/stub.js';
 import { runConversationTurn } from '../conversation/turn.js';
 import { startSession, endSession } from '../session/manager.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
-import * as storage from '../storage/index.js';
+import { materialiseScenario, teardownProject } from './scratch-project.js';
 import type { ConversationFixture } from '../schema/eval.js';
-import type { NPCDefinition, NPCInstance } from '../types/npc.js';
 
 const logger = createLogger('eval-replay');
 
@@ -79,52 +78,6 @@ export interface ReplayReport {
   };
 }
 
-interface ScratchWorld {
-  projectId: string;
-  npcId: string;
-  playerId: string;
-}
-
-/**
- * Write the fixture into storage so a real session can be opened against it.
- *
- * Storage assigns the project, NPC and instance ids; the fixture's own
- * `test-npc-1` style ids are treated as documentation and discarded. A fixture
- * therefore cannot disagree with the id scheme, which is how instances came to
- * collide in the first place (ERR-024).
- */
-async function materialiseFixture(fixture: ConversationFixture): Promise<ScratchWorld> {
-  const source = fixture.npc;
-  const playerId = source.instance.player_id;
-
-  const project = await storage.createProject(`eval: ${fixture.name}`);
-
-  const { id: _ignoredNpcId, project_id: _ignoredProjectId, ...definitionFields } = source.definition;
-  const definition = await storage.createDefinition(
-    project.id,
-    definitionFields as Omit<NPCDefinition, 'id' | 'project_id'>
-  );
-
-  if (source.knowledgeBase) {
-    await storage.updateKnowledgeBase(project.id, source.knowledgeBase);
-  }
-
-  // getOrCreateInstance owns identity; the fixture owns the mind's contents.
-  const created = await storage.getOrCreateInstance(project.id, definition.id, playerId);
-  const seeded: NPCInstance = {
-    ...created,
-    current_mood: source.instance.current_mood,
-    trait_modifiers: source.instance.trait_modifiers,
-    short_term_memory: source.instance.short_term_memory,
-    long_term_memory: source.instance.long_term_memory,
-    relationships: source.instance.relationships,
-    daily_pulse: source.instance.daily_pulse,
-    cycle_metadata: source.instance.cycle_metadata,
-  };
-  await storage.saveInstance(seeded);
-
-  return { projectId: project.id, npcId: definition.id, playerId };
-}
 
 /**
  * Run a conversation fixture through the cognition path and return a report.
@@ -135,7 +88,7 @@ async function materialiseFixture(fixture: ConversationFixture): Promise<Scratch
 export async function runReplay(fixture: ConversationFixture): Promise<ReplayReport> {
   logger.info({ fixture: fixture.name }, 'Starting replay');
 
-  const world = await materialiseFixture(fixture);
+  const world = await materialiseScenario(`eval: ${fixture.name}`, fixture.npc, null);
   const turnReports: TurnReport[] = [];
   let sessionId = '';
 
@@ -231,12 +184,7 @@ export async function runReplay(fixture: ConversationFixture): Promise<ReplayRep
       new StubLLMProvider({ responses: [{ text: `Replay of ${fixture.name}.` }] })
     );
   } finally {
-    await storage.deleteProject(world.projectId).catch((err) => {
-      logger.warn(
-        { projectId: world.projectId, error: err instanceof Error ? err.message : 'Unknown error' },
-        'Could not remove the scratch project'
-      );
-    });
+    await teardownProject(world.projectId, null);
   }
 
   const turnCount = turnReports.length || 1;
