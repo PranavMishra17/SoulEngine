@@ -72,6 +72,12 @@ export interface VoicePipelineConfig {
    * Used as a fallback principal for rate limiting when the user is not authenticated.
    */
   clientIp?: string;
+  /** Utterance end timeout in ms (passed to STT provider, default: provider-specific) */
+  utteranceEndMs?: number;
+  /** Endpointing minimum silence in ms (passed to STT provider, default: provider-specific) */
+  endpointingMs?: number;
+  /** Client-side aggregation window debounce in ms (default: 400) */
+  aggregationWindowMs?: number;
 }
 
 /**
@@ -158,6 +164,8 @@ export class VoicePipeline {
   private readonly voiceConfig: VoiceConfig;
   private readonly events: VoicePipelineEvents;
   private readonly mode: ConversationMode;
+  private readonly utteranceEndMs?: number;
+  private readonly endpointingMs?: number;
 
   private sttSession: STTSession | null = null;
   private ttsSession: TTSSession | null = null;
@@ -179,19 +187,19 @@ export class VoicePipeline {
 
   // Transcript aggregation: combine fragmented speech into complete utterances.
   //
-  // Latency budget (revised):
-  //   Deepgram utterance_end_ms: 1000ms  (VAD silence detection, server-side)
-  //   AGGREGATION_WINDOW_MS:      400ms  (client-side debounce after commit/speech_final)
-  //   Total worst-case:          ~1.4s   (vs old ~3s with both at 1500ms)
+  // Latency budget: configurable per-project via ProjectSettings.voice_latency
+  //   - utterance_end_ms:       server-side VAD silence detection (default 1000ms)
+  //   - endpointing_ms:         minimum silence for endpoint (default 500ms)
+  //   - aggregation_window_ms:  client-side debounce after commit/speech_final (default 400ms)
   //
-  // On the commit path the debounce is the only window; Deepgram's VAD is
-  // bypassed because commit() triggers the aggregation timer directly.
+  // Total worst-case endpointing latency: sum of utterance_end_ms + aggregation_window_ms (~1.4s with defaults).
+  // On the commit path, only aggregation_window_ms applies (VAD bypassed).
   private transcriptAggregator: {
     text: string;
     timer: NodeJS.Timeout | null;
     lastTimestamp: number;
   } = { text: '', timer: null, lastTimestamp: 0 };
-  private static readonly AGGREGATION_WINDOW_MS = 400; // Short settle after commit/speech_final
+  private readonly aggregationWindowMs: number; // Client-side debounce window
 
   // Per-utterance monotonic ID for robust STT-final deduplication.
   //
@@ -221,9 +229,20 @@ export class VoicePipeline {
     this.events = config.events;
     this.mode = config.mode;
     this.clientIp = config.clientIp;
+    this.utteranceEndMs = config.utteranceEndMs;
+    this.endpointingMs = config.endpointingMs;
+    this.aggregationWindowMs = config.aggregationWindowMs ?? 400;
     this.sentenceDetector = new SentenceDetector();
 
-    logger.info({ sessionId: this.sessionId, mode: this.mode }, 'VoicePipeline created');
+    logger.info({
+      sessionId: this.sessionId,
+      mode: this.mode,
+      voiceLatency: {
+        utteranceEndMs: this.utteranceEndMs ?? 1000,
+        endpointingMs: this.endpointingMs ?? 500,
+        aggregationWindowMs: this.aggregationWindowMs,
+      },
+    }, 'VoicePipeline created');
   }
 
   /**
@@ -268,6 +287,8 @@ export class VoicePipeline {
       encoding: 'linear16',
       punctuate: true,
       interimResults: true,
+      ...(this.utteranceEndMs !== undefined && { utteranceEndMs: this.utteranceEndMs }),
+      ...(this.endpointingMs !== undefined && { endpointingMs: this.endpointingMs }),
     };
 
     logger.info({ sessionId: this.sessionId, sttConfig }, 'Creating STT session');
@@ -442,7 +463,7 @@ export class VoicePipeline {
       }
       this.transcriptAggregator.timer = setTimeout(() => {
         this.processAggregatedTranscript();
-      }, VoicePipeline.AGGREGATION_WINDOW_MS);
+      }, this.aggregationWindowMs);
 
       // Capture the current utterance ID as committed so any late-arriving STT final
       // for this utterance is suppressed even if a new interim arrives first.
@@ -591,7 +612,7 @@ export class VoicePipeline {
     // Set timer to process after window expires
     this.transcriptAggregator.timer = setTimeout(() => {
       this.processAggregatedTranscript();
-    }, VoicePipeline.AGGREGATION_WINDOW_MS);
+    }, this.aggregationWindowMs);
   }
 
   /**

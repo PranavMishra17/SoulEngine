@@ -131,9 +131,9 @@ describe('LatencyTracker', () => {
 });
 
 describe('pipeline latency constants', () => {
-  it('AGGREGATION_WINDOW_MS is reduced from 1500ms to at most 500ms', async () => {
-    // Dynamic import to read the actual constant from the compiled/source file
-    // We read the source file text to check the constant value
+  it('aggregationWindowMs default is at most 500ms', async () => {
+    // The aggregation window is now configurable per-project (item 7.2).
+    // The default is passed in the constructor (config.aggregationWindowMs ?? 400).
     const { readFileSync } = await import('node:fs');
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
@@ -144,15 +144,17 @@ describe('pipeline latency constants', () => {
       'utf8'
     );
 
-    // Extract AGGREGATION_WINDOW_MS value
-    const match = pipelineSrc.match(/AGGREGATION_WINDOW_MS\s*=\s*(\d+)/);
+    // Extract the default value from the constructor
+    const match = pipelineSrc.match(/aggregationWindowMs\s*=\s*config\.aggregationWindowMs\s*\?\?\s*(\d+)/);
     expect(match).not.toBeNull();
     const value = parseInt(match![1], 10);
     expect(value).toBeLessThanOrEqual(500);
     expect(value).toBeGreaterThan(0);
   });
 
-  it('Deepgram utterance_end_ms is reduced from 1500ms to at most 1200ms', async () => {
+  it('Deepgram DEFAULT_UTTERANCE_END_MS is at most 1200ms', async () => {
+    // Deepgram endpointing is now configurable per-project (item 7.2).
+    // The defaults are defined as constants.
     const { readFileSync } = await import('node:fs');
     const { join, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
@@ -163,7 +165,7 @@ describe('pipeline latency constants', () => {
       'utf8'
     );
 
-    const match = deepgramSrc.match(/utterance_end_ms:\s*(\d+)/);
+    const match = deepgramSrc.match(/DEFAULT_UTTERANCE_END_MS\s*=\s*(\d+)/);
     expect(match).not.toBeNull();
     const value = parseInt(match![1], 10);
     expect(value).toBeLessThanOrEqual(1200);

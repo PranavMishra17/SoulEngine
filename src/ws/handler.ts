@@ -571,6 +571,9 @@ async function handleInitMessage(
     const mode = msg.mode || CONVERSATION_MODES.VOICE_VOICE;
     logger.info({ sessionId, mode }, 'handleInitMessage: mode selected');
 
+    // Extract voice latency settings from project config (if present)
+    const voiceLatency = projectSettings.voice_latency;
+
     // Create and initialize pipeline
     const pipeline = createVoicePipeline({
       sessionId,
@@ -581,6 +584,9 @@ async function handleInitMessage(
       voiceConfig,
       events,
       mode,
+      utteranceEndMs: voiceLatency?.utterance_end_ms,
+      endpointingMs: voiceLatency?.endpointing_ms,
+      aggregationWindowMs: voiceLatency?.aggregation_window_ms,
     });
 
     logger.info({ sessionId }, 'handleInitMessage: initializing pipeline');
