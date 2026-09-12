@@ -173,7 +173,7 @@ Direction approved 2026-09-12 from [`research/09-npc-runtime/PROPOSAL.md`](resea
 
 | ID | Item | Size | Depends-on | Test | Status |
 |---|---|---|---|---|---|
-| 7.1 | **Make text-turn latency and cache hits visible.** `TurnTimings` (`src/conversation/turn.ts:90-99`) has no time-to-first-token and no cache signal; no test asserts any latency bound. Add `speakerTtftMs`/`followUpTtftMs`, provider-neutral `cached_input_tokens` on usage (Anthropic `cache_read_input_tokens`, OpenAI `cached_tokens`), usage on `TurnResult` and the session log, harness rendering, and one orchestration-overhead assertion. Spec: [`specs/7.1.md`](specs/7.1.md). | M | — | unit | todo |
+| 7.1 | **Make text-turn latency and cache hits visible.** `TurnTimings` (`src/conversation/turn.ts:90-99`) has no time-to-first-token and no cache signal; no test asserts any latency bound. Add `speakerTtftMs`/`followUpTtftMs`, provider-neutral `cached_input_tokens` on usage (Anthropic `cache_read_input_tokens`, OpenAI `cached_tokens`), usage on `TurnResult` and the session log, harness rendering, and one orchestration-overhead assertion. Spec: [`specs/7.1.md`](specs/7.1.md). Built: `tests/unit/turn-latency-visibility.test.ts` (ttft measured and null, usage on result, overhead bound) and `tests/unit/llm-usage-cache-tokens.test.ts` (Anthropic and OpenAI mapping). | M | — | unit | done |
 | 7.2 | **Make the endpointing budget a project setting.** Deepgram `utterance_end_ms 1000` + `endpointing 500` (`src/providers/stt/deepgram.ts:85-86`) + `AGGREGATION_WINDOW_MS 400` (`src/voice/pipeline.ts:194`) spend ~1.4s before generation starts and cannot be changed without a deploy. Add `voice_latency` to `ProjectConfig`, thread through `STTSessionConfig` and `VoicePipelineConfig`, defaults unchanged. Spec: [`specs/7.2.md`](specs/7.2.md). | S | — | unit | todo |
 | 7.3 | **Split the Speaker prompt into a cacheable prefix and a dynamic suffix.** `assembleSlimSystemPrompt` (`src/core/context.ts:597-654`) puts mood, relationship and memories before the invariant guidance, and the Anthropic provider wraps everything in one `cache_control` block (`anthropic.ts:141-150`), so the cache never hits; OpenAI has no `prompt_cache_key`. Return `{stable, dynamic}`, add `systemPromptPrefix`/`cacheKey` to `LLMChatRequest`, two Anthropic blocks with the breakpoint on the first. Spec: [`specs/7.3.md`](specs/7.3.md). | M | 7.1 | unit | todo |
 | 7.4 | **Playground: JSON-lines `play` mode on `npm run npc`.** stdin `{say|event|state|inspect|end}`, stdout one JSON object per turn (reply, tools offered/called/refused, timings incl. ttft, cache hit, tokens and dollars, state deltas, exit reason, injected facts). Scenario file extends `ConversationFixtureSchema` with a promptfoo-style `player` block, per-turn `gameState`, between-turn `events`, `expect` (visibleTools, noLeak, exitTurn) and `trials` scored pass^k. LLM cassette as a delegating `LLMProvider`. Design brief with reuse seams: [`research/09-npc-runtime/diagnosis/eval-harness.md`](research/09-npc-runtime/diagnosis/eval-harness.md). | L | 7.1 | unit + e2e | todo |
@@ -197,8 +197,8 @@ Direction approved 2026-09-12 from [`research/09-npc-runtime/PROPOSAL.md`](resea
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
 | 5 | 20 | 12 | broker, eval harness, voice vending and streaming landed; Unity runs without provider keys; cross-session memory works and every channel is recorded |
 | 6 | 8 | 0 | not started |
-| 7 | 10 | 0 | direction approved 2026-09-12; 7.1-7.3 dispatched |
-| **Total** | **92** | **50** | — |
+| 7 | 10 | 1 | direction approved 2026-09-12; 7.1 landed, 7.2-7.3 in flight |
+| **Total** | **92** | **51** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
