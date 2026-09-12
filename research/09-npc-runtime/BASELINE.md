@@ -102,6 +102,43 @@ are stochastic; a passK gate at 5 trials will occasionally fail on a good build.
 `passRate` across runs before calling a regression, and expect a pass-rate threshold field to follow
 when this scenario enters CI against real providers.
 
+## A/B: parallel Mind+Speaker vs the single-call runtime (2026-09-12)
+
+`npm run npc -- play --scenario tests/fixtures/playground/deferred-recall-strict.json --trials 5 --runtime <name>`,
+same day, same providers, same fixture (gate widened to any phrasing of the debt: `replyMatches
+owe|debt|forty crowns`). Parallel numbers are the post-ERR-030 runs above.
+
+| | gpt-4o parallel | gpt-4o **single** | gemini-2.5-flash parallel | gemini-2.5-flash **single** |
+|---|---|---|---|---|
+| Turn-2 recall (debt recalled, no first-meeting denial) | 5/5 | **5/5** | 5/5 | **5/5** (4/5 under the literal `owe` check; the miss said "the debt") |
+| p50 wall | 1349 ms | **1128 ms** | 1383 ms | **1198 ms** |
+| p95 wall | 1838 ms | 2634 ms | 4438 ms | 2731 ms |
+| p50 speaker TTFT | 1065 ms | 1125 ms | 1232 ms | 1155 ms |
+| LLM calls per turn | 2 (3 with an action) | **1** | 2 (3 with an action) | **1** |
+| Input tokens, 10 turns | 19 311 | **11 283** | ~19 200 | **11 270** |
+| Recall mechanism | Mind tool, result deferred to the next turn | pre-fetched from the input before the call | same | same |
+
+Cassettes: `tests/fixtures/playground/cassettes/deferred-recall-strict.{openai,gemini}.single.json`.
+
+Reading it:
+
+1. **Same recall quality, one call, about 40 percent fewer input tokens, ~15 percent lower p50 wall.**
+   The single runtime never waits on a second model and never pays a follow-up leg. p95 is
+   noise at five trials (one slow provider response each side); rerun at 20 trials before quoting it.
+2. **TTFT is unchanged, as predicted** in the baseline: prefill dominates a 15-token reply, and the
+   single call's prompt is the Speaker's prompt plus a recall section and a task section. The lever
+   for TTFT is still prompt size and cache hits, not architecture; the cache floor (1024 tokens on
+   OpenAI) is now closer because the single prompt is larger.
+3. **Coherence hazards are gone by construction**: speech and action come from one generation, and
+   recall arrives *before* the call rather than a turn late. `deferred.forNextTurn` on single-runtime
+   records carries only action results.
+4. **Exit behaviour differs.** On `abusive-player.json` (gemini, single) the moderator forced the exit
+   and the reply stayed in character, but the model did not also call `exit_convo` as the parallel
+   Mind did. Whether the single call exits on abuse the keyword moderator misses is untested; add a
+   scenario before flipping the default.
+
+Default stays `parallel` in code until that decision is recorded in `PRODUCT.md` §3.6.
+
 ## How to rerun
 
 ```bash

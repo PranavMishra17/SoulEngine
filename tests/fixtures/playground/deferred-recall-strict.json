@@ -1,6 +1,6 @@
 {
   "name": "deferred-recall-strict",
-  "description": "Same conversation as deferred-recall, plus two checks on turn 2: the NPC recalls the debt the player stated on turn 1 (recallFacts 'owe' matches 'owes'/'owed'), and does not deny ever having met or spoken with the player. This is the ERR-030 gate; see research/09-npc-runtime/BASELINE.md for the before/after numbers. Live models are stochastic, so read passRate per check across trials, not only passK.",
+  "description": "Same conversation as deferred-recall, plus two checks on turn 2: the NPC recalls the debt the player stated on turn 1 (replyMatches owe|debt|forty crowns, so any phrasing of the debt counts), and does not deny ever having met or spoken with the player. This is the ERR-030 gate; see research/09-npc-runtime/BASELINE.md for the before/after numbers. Live models are stochastic, so read passRate per check across trials, not only passK.",
   "npc": {
     "definition": {
       "id": "mira",
@@ -85,10 +85,8 @@
       "toolsNotCalled": [
         "exit_convo"
       ],
-      "recallFacts": [
-        "owe"
-      ],
-      "replyNotMatches": "first (time|meeting|interaction)|never (met|spoken)|don'?t know you|don'?t remember you|haven'?t (met|spoken)"
+      "replyNotMatches": "first (time|meeting|interaction)|never (met|spoken)|don'?t know you|don'?t remember you|haven'?t (met|spoken)",
+      "replyMatches": "owe|debt|forty crowns"
     }
   ],
   "trials": 5

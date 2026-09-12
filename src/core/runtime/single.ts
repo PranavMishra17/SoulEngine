@@ -33,7 +33,6 @@ export class SingleCallRuntime implements CognitionRuntime {
       toolRegistry,
       providers,
       cacheKey,
-      signal,
       context,
     } = input;
 
@@ -99,7 +98,9 @@ export class SingleCallRuntime implements CognitionRuntime {
       cacheKey,
       messages: history,
       tools: hasActionTools ? actionToolsList : undefined,
-      signal,
+      // Deliberately no signal: the host's budget is the Mind's, and here this
+      // call is the speech. Cutting it mid-sentence would throw out of the turn.
+      // A whole-turn budget with a graceful cut arrives with the voice work (7.14).
     })) {
       if (chunk.text) {
         if (speakerTtftMs === null) {
