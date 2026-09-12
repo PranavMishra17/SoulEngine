@@ -139,7 +139,20 @@ export class AnthropicLlmProvider implements LLMProvider {
       };
 
       // Add system prompt with cache_control for prompt caching
-      if (request.systemPrompt) {
+      // If systemPromptPrefix is provided, split into two blocks with cache_control only on prefix
+      if (request.systemPromptPrefix) {
+        body.system = [
+          {
+            type: 'text',
+            text: request.systemPromptPrefix,
+            cache_control: { type: 'ephemeral' },
+          },
+          {
+            type: 'text',
+            text: request.systemPrompt,
+          },
+        ];
+      } else if (request.systemPrompt) {
         body.system = [
           {
             type: 'text',

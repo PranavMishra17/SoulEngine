@@ -129,11 +129,23 @@ export class OpenAILlmProvider implements LLMProvider {
       const messages: Array<Record<string, unknown>> = [];
 
       // Add system message
+      // If systemPromptPrefix is provided, concatenate it with systemPrompt
       if (request.systemPrompt) {
-        messages.push({
+        const systemContent = request.systemPromptPrefix
+          ? request.systemPromptPrefix + '\n\n' + request.systemPrompt
+          : request.systemPrompt;
+
+        const systemMessage: Record<string, unknown> = {
           role: 'system',
-          content: request.systemPrompt,
-        });
+          content: systemContent,
+        };
+
+        // Add prompt_cache_key if cacheKey is provided
+        if (request.cacheKey) {
+          systemMessage.prompt_cache_key = request.cacheKey;
+        }
+
+        messages.push(systemMessage);
       }
 
       // Convert and add conversation messages

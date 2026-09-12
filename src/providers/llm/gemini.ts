@@ -180,10 +180,15 @@ export class GeminiLlmProvider implements LLMProvider {
       };
 
       // Add system instruction as Content object (required by Gemini API)
+      // Concatenate prefix if provided
       if (request.systemPrompt) {
+        const systemContent = request.systemPromptPrefix
+          ? request.systemPromptPrefix + '\n\n' + request.systemPrompt
+          : request.systemPrompt;
+
         chatConfig.systemInstruction = {
           role: 'user',
-          parts: [{ text: request.systemPrompt }],
+          parts: [{ text: systemContent }],
         };
       }
 
