@@ -187,7 +187,7 @@ export class OpenAILlmProvider implements LLMProvider {
       let buffer = '';
       let accumulatedText = '';
       const accumulatedToolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
-      let collectedUsage: { input_tokens: number; output_tokens: number } | undefined;
+      let collectedUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -207,9 +207,11 @@ export class OpenAILlmProvider implements LLMProvider {
 
             // Capture usage from the final usage-only chunk
             if (json.usage && Array.isArray(json.choices) && json.choices.length === 0) {
+              const cachedTokens = json.usage.prompt_tokens_details?.cached_tokens;
               collectedUsage = {
                 input_tokens: json.usage.prompt_tokens ?? 0,
                 output_tokens: json.usage.completion_tokens ?? 0,
+                ...(cachedTokens !== undefined && cachedTokens > 0 ? { cached_input_tokens: cachedTokens } : {}),
               };
               continue;
             }

@@ -184,6 +184,7 @@ export class AnthropicLlmProvider implements LLMProvider {
       let currentToolUse: { id: string; name: string; input: string } | null = null;
       let inputTokens = 0;
       let outputTokens = 0;
+      let cacheReadTokens = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -252,6 +253,7 @@ export class AnthropicLlmProvider implements LLMProvider {
                   (u.input_tokens ?? 0) +
                   (u.cache_creation_input_tokens ?? 0) +
                   (u.cache_read_input_tokens ?? 0);
+                cacheReadTokens = u.cache_read_input_tokens ?? 0;
               }
             } else if (eventType === 'message_delta') {
               // Capture output token count
@@ -277,11 +279,19 @@ export class AnthropicLlmProvider implements LLMProvider {
       }
 
       // Yield final chunk with real token counts when available
+      const finalUsage = inputTokens > 0
+        ? {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            ...(cacheReadTokens > 0 ? { cached_input_tokens: cacheReadTokens } : {}),
+          }
+        : undefined;
+
       yield {
         text: '',
         toolCalls: [],
         done: true,
-        usage: inputTokens > 0 ? { input_tokens: inputTokens, output_tokens: outputTokens } : undefined,
+        usage: finalUsage,
       };
 
       const duration = Date.now() - startTime;
