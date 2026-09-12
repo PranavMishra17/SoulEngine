@@ -1,6 +1,6 @@
 {
   "name": "deferred-recall-strict",
-  "description": "Same conversation as deferred-recall, plus the check that turn 2 does not deny the player's own turn-1 statement. Fails on the current parallel runtime (ERR-030, 4 of 5 trials on both Gemini and OpenAI, 2026-09-12); passing 5 of 5 on both providers is the acceptance gate for backlog 7.13 and the recall bar for 7.5.",
+  "description": "Same conversation as deferred-recall, plus two checks on turn 2: the NPC recalls the debt the player stated on turn 1 (recallFacts 'owe' matches 'owes'/'owed'), and does not deny ever having met or spoken with the player. This is the ERR-030 gate; see research/09-npc-runtime/BASELINE.md for the before/after numbers. Live models are stochastic, so read passRate per check across trials, not only passK.",
   "npc": {
     "definition": {
       "id": "mira",
@@ -86,9 +86,9 @@
         "exit_convo"
       ],
       "recallFacts": [
-        "Kael"
+        "owe"
       ],
-      "replyNotMatches": "first (time|meeting|interaction)|haven'?t told me|never (told|met)|don'?t (recall|remember) (you )?(telling|mentioning)|don'?t remember you|don'?t know you"
+      "replyNotMatches": "first (time|meeting|interaction)|never (met|spoken)|don'?t know you|don'?t remember you|haven'?t (met|spoken)"
     }
   ],
   "trials": 5

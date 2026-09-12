@@ -74,6 +74,34 @@ true`). The Speaker still produced an in-character line ("What in the blazes are
 because the exit is decided after the Speaker commits — the ordering problem `d-disposition-and-patience.md`
 describes and 7.10 fixes.
 
+## After the ERR-030 fix (2026-09-12, same day)
+
+Three prompt sections changed in `src/core/context.ts`: `[RELATIONSHIP TO PLAYER]` and
+`[THE PERSON YOU'RE TALKING TO]` now describe a first *session* ("no history from before this
+conversation", "everything said earlier in this conversation still happened") and the memories
+section is headed `[MEMORIES FROM BEFORE THIS CONVERSATION]` with a line saying the current
+conversation is in the messages and is remembered too.
+
+What each change did, measured with `deferred-recall-strict.json`, 5 trials per provider:
+
+| Step | gpt-4o turn 2 | gemini-2.5-flash turn 2 |
+|---|---|---|
+| Baseline | first-meeting denials in 4/5; debt recalled in ~3/5 | first-meeting denials in 3/5; debt recalled in 1/5 |
+| Relationship + identity reworded | first-meeting denials **0/5**; debt recalled 4/5 | denials **0/5**; debt recalled 1/5 |
+| Memories header scoped to prior sessions | denials 0/5; debt recalled **5/5**, 4 attribute it to the player | denials 0/5; debt recalled **5/5**, 5 attribute it to the player |
+
+The relationship wording removed the "this is our first meeting" symptom on its own. The recall
+miss needed the second change: an explicit memory list that omits the conversation in progress
+reads to the model as the whole of what it remembers, and in the parallel runtime short-term memory
+is only written at session end, so the list can never contain the current conversation.
+
+Gate as committed: `recallFacts: ["owe"]` (the debt, however phrased) and `replyNotMatches` on
+first-meeting denials. **passK 1 on both providers** (`tests/fixtures/playground/deferred-recall-strict.json`,
+regression test `tests/regression/err-030-first-session-not-first-meeting.test.ts`). Live models
+are stochastic; a passK gate at 5 trials will occasionally fail on a good build. Read the per-check
+`passRate` across runs before calling a regression, and expect a pass-rate threshold field to follow
+when this scenario enters CI against real providers.
+
 ## How to rerun
 
 ```bash

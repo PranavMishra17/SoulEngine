@@ -110,7 +110,7 @@ describe('Slim prompt cacheable prefix split', () => {
     // Stable should NOT have dynamic headers
     expect(parts.stable).not.toContain('[NPC CURRENT MOOD]');
     expect(parts.stable).not.toContain('[RELATIONSHIP TO PLAYER]');
-    expect(parts.stable).not.toContain('[RECENT IMPORTANT MEMORIES]');
+    expect(parts.stable).not.toContain('[MEMORIES FROM BEFORE THIS CONVERSATION]');
     expect(parts.stable).not.toContain("[TODAY'S REFLECTION]");
   });
 
@@ -124,7 +124,7 @@ describe('Slim prompt cacheable prefix split', () => {
     // Dynamic should have these headers
     expect(parts.dynamic).toContain('[NPC CURRENT MOOD]');
     expect(parts.dynamic).toContain('[RELATIONSHIP TO PLAYER]');
-    expect(parts.dynamic).toContain('[RECENT IMPORTANT MEMORIES]');
+    expect(parts.dynamic).toContain('[MEMORIES FROM BEFORE THIS CONVERSATION]');
     expect(parts.dynamic).toContain("[TODAY'S REFLECTION]");
     expect(parts.dynamic).toContain('[SECURITY & BOUNDARIES]');
 

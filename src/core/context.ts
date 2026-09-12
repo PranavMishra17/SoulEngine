@@ -144,9 +144,12 @@ function formatPlayerIdentity(
   playerRecognition: PlayerRecognition | undefined
 ): string {
   if (!playerInfo || !playerRecognition?.reveal_player_identity) {
+    // "Stranger" means no shared past, not amnesia: whatever they have said in
+    // this conversation is in the history and counts (ERR-030).
     return `[THE PERSON YOU'RE TALKING TO]
-- You don't know who this person is
-- Treat them as a stranger unless they introduce themselves`;
+- You had never met this person before this conversation began
+- You know only what they have told you during this conversation; remember it and use it
+- If they have not introduced themselves, you do not know their name`;
   }
 
   // Format player like a network entry - this is someone you know
@@ -178,8 +181,9 @@ function formatRelationship(instance: NPCInstance, playerId: string): string {
 
   if (!relationship) {
     return `[RELATIONSHIP TO PLAYER]
-- This is your first interaction with this person
-- You have no prior opinions or relationship history`;
+- You have no history with this person from before this conversation
+- Everything said earlier in this conversation still happened; do not claim you have just met if you have already been talking
+- You hold no prior opinions about them`;
   }
 
   return `[RELATIONSHIP TO PLAYER]
@@ -245,7 +249,11 @@ function formatMemories(instance: NPCInstance, maxMemories: number): string {
   // Apply token budget to prevent massive individual memories from inflating the prompt
   const budgetedMemories = truncateToTokenBudget(formattedMemories, MEMORY_SECTION_TOKEN_BUDGET);
 
-  return `[RECENT IMPORTANT MEMORIES]
+  // Memories are written when a session ends, so this list never contains the
+  // conversation in progress. Say so, or the model reads the list as the whole
+  // of what it remembers and denies things said two turns ago (ERR-030).
+  return `[MEMORIES FROM BEFORE THIS CONVERSATION]
+These are things you remember from earlier; the current conversation is in the messages and you remember all of it too.
 ${budgetedMemories}`;
 }
 

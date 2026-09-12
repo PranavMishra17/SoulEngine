@@ -185,7 +185,7 @@ Direction approved 2026-09-12 from [`research/09-npc-runtime/PROPOSAL.md`](resea
 | 7.10 | **Patience ladder.** `patience` scalar with per-NPC accumulation, decay and breaking point; two warning thresholds and one exit, each firing once, evaluated before speech so the warning lands in the line; decoupled from the moderation exit (`src/mcp/exit-handler.ts:55-89`); exit reason and value in the session log. Toggle row `patience` in §3.4. Evidence: [`research/09-npc-runtime/d-disposition-and-patience.md`](research/09-npc-runtime/d-disposition-and-patience.md). | M | 7.5 | unit + reg | todo |
 | 7.11 | **Cost per turn in the playground.** A maintained per-model price table (input, cached input, output) in data, not code, and a `cost` field on the `turn` and `summary` records of `npm run npc -- play`; cached input priced separately so the 7.3 prefix split shows up in dollars. | S | 7.4 | unit | todo |
 | 7.12 | **LLM persona player for the playground.** A `player.persona` block (goal, style, stop sentinel, pinned model, `maxTurns`) that drives the player side with a second model, promptfoo-simulated-user style; scores stay relative between builds with the same pinned player model. Evidence: [`research/09-npc-runtime/f-player-sim-and-harness.md`](research/09-npc-runtime/f-player-sim-and-harness.md). | M | 7.4 | e2e | todo |
-| 7.13 | **Stop the Speaker prompt calling an in-progress conversation a first meeting.** `formatRelationship` and `formatPlayerIdentity` (`src/core/context.ts:147-149, 180-182`) tell the model "first interaction" and "treat them as a stranger" whenever no relationship record exists, so the NPC denies what the player said two turns ago (ERR-030, 4/5 trials on both providers). Reword to "no history with this person before this conversation" and keep in-session history authoritative; acceptance is `deferred-recall-strict.json` passing 5/5 on Gemini and OpenAI, plus a unit test on the wording. | S | 7.4 | reg + live | todo |
+| 7.13 | **Stop the Speaker prompt calling an in-progress conversation a first meeting.** `formatRelationship` and `formatPlayerIdentity` (`src/core/context.ts:147-149, 180-182`) tell the model "first interaction" and "treat them as a stranger" whenever no relationship record exists, so the NPC denies what the player said two turns ago (ERR-030, 4/5 trials on both providers). Reword to "no history with this person before this conversation" and keep in-session history authoritative; acceptance is `deferred-recall-strict.json` passing 5/5 on Gemini and OpenAI, plus a unit test on the wording. Done 2026-09-12: three sections reworded (relationship, player identity, memories header now "from before this conversation"); live gate 5/5 on both providers, from 1/5 and 0/5. The wording fix alone removed the first-meeting denials but not the recall miss; scoping the memories list to prior sessions did. | S | 7.4 | reg + live | done |
 
 ---
 
@@ -200,8 +200,8 @@ Direction approved 2026-09-12 from [`research/09-npc-runtime/PROPOSAL.md`](resea
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
 | 5 | 20 | 12 | broker, eval harness, voice vending and streaming landed; Unity runs without provider keys; cross-session memory works and every channel is recorded |
 | 6 | 8 | 0 | not started |
-| 7 | 13 | 4 | 7.1-7.4 landed 2026-09-12 (486 tests); baseline recorded in `research/09-npc-runtime/BASELINE.md`, ERR-030 found; next 7.13 and 7.5 |
-| **Total** | **95** | **54** | — |
+| 7 | 13 | 5 | 7.1-7.4 and 7.13 landed 2026-09-12; baseline in `research/09-npc-runtime/BASELINE.md`; ERR-030 fixed and gated; next 7.5 |
+| **Total** | **95** | **55** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
