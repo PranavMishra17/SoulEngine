@@ -29,17 +29,21 @@ reference material to develop against — read it before re-litigating a decisio
 
 | `08-middleware-licence-enforcement.md` | manual | What FMOD, Wwise, SpeedTree and Simplygon actually require for licence enforcement | **done** — closes the last research gap; revises `D3` |
 
+| [`09-npc-runtime/`](09-npc-runtime/) | E | Replacement for the parallel Mind+Speaker cognition (single streamed turn), knowledge tiers and world events as a scoped fact table, quest-state tool gating, patience ladder, role-play persona practice, LLM player simulators and the playground harness — six angle files (`a-` to `f-`), four code diagnoses in `diagnosis/`, claim ledgers in `raw/`, verdict in [`PROPOSAL.md`](09-npc-runtime/PROPOSAL.md) | **done** 2026-09-12 — 35/48 claims survived a three-lens adversarial check; empty sub-questions are listed per file under "Coverage gaps" as manual browser fetches |
+
 ## Decisions waiting on this
 
 | ID | Decision | State after passes A and B |
 |---|---|---|
 | D2 | Runtime topology | **DECIDED — Option B** (fat client + developer-run key broker), 2026-09-05 |
 | D6 | Multi-engine scope and timing | **Answered by D1.** No vendor shares behavioural logic across engines. Decision still open. |
-| D11 | Deployment shape to optimize for | Still open — no per-shape budgets survived |
+| D11 | Deployment shape to optimize for | **Answered 2026-09-12 in Pass E scoping:** few-and-deep (quest-giver / companion, 1-2s) with voice first-class and text as fallback. Record in `PRODUCT.md` §6 when the Pass E proposal is approved. |
 | D12 | **Pass C** | **Done.** C1: marketplace rules. C2: action layer. |
 | D13 | **Pass D, commercial half** | **Split.** Multi-engine **answered** in `05-...md`. Pricing and licence enforcement **failed a third time** — and this time budget was not the cause. Pricing pages are JS shells and bot-protected (Fab 403'd automated fetches in C1). **Stop using the research harness for these**: it is a bounded list of about a dozen URLs, so fetch them by hand in a browser session. |
 | D14 | **Pass D, evolution half** — bounded, designer-controlled character change | **ANSWERED.** Previously failed twice. Diagnosed as sourcing, not absence. Target by name: Monolith's GDC Nemesis talks, Tynan Sylvester's RimWorld writing and *Designing Games*, Paradox CK3 dev diaries, Sims 4 emotion GDC material, AI and Games essays on Nemesis and Radiant AI. **Explicitly permit community wikis and video essays, labelled as such** — these systems are documented far better there than in first-party engineering sources, which is why two first-party-only passes found nothing. |
 | D15 | Action-layer architecture | **Proposed** in `PRODUCT.md` §3.7 from Pass C2, awaiting confirmation |
+| D16 | Cognition runtime v2 — one streamed LLM call owning speech, tools and recall, behind `PRODUCT.md` §3.6 | **Proposed** in [`09-npc-runtime/PROPOSAL.md`](09-npc-runtime/PROPOSAL.md) §2 from Pass E; closes §5 Q8. Awaiting approval |
+| D17 | Playground harness surface — JSON-lines `play` mode on the existing `npm run npc` CLI | **Proposed** in [`09-npc-runtime/PROPOSAL.md`](09-npc-runtime/PROPOSAL.md) §4. Awaiting approval |
 
 ## Pass C — the unanswered questions
 
