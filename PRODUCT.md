@@ -311,6 +311,9 @@ Memory is never one of them — memory is always on. The switchable set:
 | Relationship / sentiment | Trust, familiarity, sentiment toward a player or another NPC | yes, per-instance |
 | Opinions and beliefs | What the NPC holds to be true, and how it judges things — distinct from remembering that something happened | no |
 | Goals and agendas | Standing desires that bias behavior and shift with experience | no (NEW-SPEC 2.2) |
+| World-event inbox | Facts with a scope and a TTL arriving from the game between turns, steering what the NPC raises next (Pass E, backlog 7.8) | no |
+| Social propagation | NPC-to-NPC delivery of scoped facts through the same inbox (Pass E, backlog 7.8; design intent, no shipped precedent found) | no |
+| Patience | Per-NPC accumulation, decay and breaking point; two warnings then an in-character exit, separate from the moderation exit (Pass E, backlog 7.10) | no |
 
 > **Answered by Pass D2** (2026-09-05), after failing in Passes B and C2. The fix was permitting
 > community wikis, modding docs and game-data dumps as provenance-labelled evidence — these systems are
@@ -389,6 +392,8 @@ The current parallel Mind+Speaker becomes one implementation of it. Transport, s
 the engine SDK all bind to the interface, never to the implementation. This is the modularity you asked
 for, and it is what makes a fourth overhaul a contained change instead of another rewrite.
 
+
+> **Second implementation approved 2026-09-12 (D16).** One streamed LLM call owns speech, tool calls and recall; the system prompt is a cacheable stable prefix plus a dynamic suffix (facts, quest state, patience band, memories); tools are filtered by game-state preconditions and re-checked by the executor. `latencyBreakdown` carries time-to-first-token and first-audio. Evidence and shape: [`research/09-npc-runtime/PROPOSAL.md`](research/09-npc-runtime/PROPOSAL.md) §2; build order: backlog Tier 7.
 ---
 
 ### 3.7 The action layer — `DECIDED 2026-09-05`
@@ -542,6 +547,8 @@ holes, because shipping a paid product on auth that is disabled outside producti
 for turn latency (broken down by stage), recall accuracy, and cost per turn. Then measure the current
 parallel Mind+Speaker. Then, and only then, change it — behind the §3.6 interface.
 
+**Pass E direction (2026-09-12):** the harness is a JSON-lines `play` mode on `npm run npc` scored with pass^k (D17); the overhaul is a single streamed call (D16). Before either, three measured wins: latency and cache visibility on the text turn, a configurable endpointing budget, and a cacheable Speaker prompt prefix. Items 7.1-7.10 in [`backlog.md`](backlog.md).
+
 ---
 
 ## 5. Research questions
@@ -575,6 +582,8 @@ Run as **two focused passes**, launched 2026-09-05. Output lands in [`research/`
    recognized pattern, or unusual? How do shipping systems get retrieved memory into the reply
    *without* paying serial latency — speculative retrieval, prefetch on utterance start, retrieval
    during ASR, small local recall models? This is the question behind the deferred-recall compromise.
+
+    > **Answered by Pass E (2026-09-12).** Shipped voice stacks (LiveKit Agents, Pipecat, OpenAI Realtime, Vapi) run **one** LLM call per turn with tool calls interleaved in the same stream; none runs two independent calls and none runs a serial fast/slow pair. Retrieved context enters as a pre-call fetch or an in-stream tool, and first audio comes from stage overlap plus a cached prompt prefix, not from a second model. See [`research/09-npc-runtime/a-voice-turn-pipelines.md`](research/09-npc-runtime/a-voice-turn-pipelines.md).
 9. **Action / tool layer design.** How are in-world actions classified and scheduled? What separates
    actions that **terminate** a conversation (walk away, call guards) from actions that **compose**
    with speech and with each other (show anger while talking, throw a wallet, hand over a key)? Is
@@ -627,8 +636,10 @@ deliberately left open — the research covers the range rather than assuming on
 | D8 | Unity project into git | **DONE** — separate private repo, §4 W0 |
 | D9 | Evolution is per-subsystem toggles, memory always on | **DECIDED** — §3.4 |
 | D10 | Rename the "MCP" layer to a tool/action registry | **DECIDED** — §3.5 |
-| D11 | Deployment shape to optimize for | OPEN — Pass C2 gave real numbers for the ambient and real-time tiers (GOAP <1 plan/sec/NPC, ≤4 actions; AI LOD scheduler 57 µs/frame = 0.17% frame time, 48 B/entity) but **nothing for deep conversational NPCs**, the tier that matters most here |
+| D11 | Deployment shape to optimize for | **DECIDED 2026-09-12** — few-and-deep (quest-giver / companion, 1-2s turn) with **voice first-class and text as the fallback**; the cognition design is therefore streaming-first. Ambient and real-time tiers keep the Pass C2 numbers as reference only. |
 | D12 | Pass C | **Done.** C1 answered the marketplace rules; C2 answered the action layer. Both left gaps, tracked as D13/D14. |
 | D13 | Pass D (commercial half) | **Multi-engine answered** (D1). **Pricing answered** by a manual browser pass (2026-09-05) after three harness failures — the pages are JS shells that return empty documents to automated fetches. **Licence enforcement in game middleware still un-fetched** (Wwise, FMOD, Havok, SpeedTree, Umbra) — separate manual pass. |
 | D14 | Pass D (evolution half): bounded designer-controlled character change | **ANSWERED** by Pass D2 — see §3.4 and [`research/06-bounded-evolution-and-memory-pruning.md`](research/06-bounded-evolution-and-memory-pruning.md). The feature is novel (nobody ships it) but every mechanism is documented. |
 | D15 | Action-layer architecture (§3.7) | **DECIDED** — confirmed 2026-09-05 |
+| D16 | Cognition runtime v2 — one streamed LLM call owning speech, tool calls and recall, behind §3.6 | **APPROVED 2026-09-12** as the W4 direction from Pass E ([`research/09-npc-runtime/PROPOSAL.md`](research/09-npc-runtime/PROPOSAL.md) §2); build order in backlog Tier 7. Closes §5 Q8. |
+| D17 | Playground harness surface | **APPROVED 2026-09-12** — a JSON-lines `play` mode on the existing `npm run npc` CLI, not a separate tool ([`PROPOSAL.md`](research/09-npc-runtime/PROPOSAL.md) §4, backlog 7.4). |

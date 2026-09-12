@@ -167,6 +167,25 @@
 
 ---
 
+## Tier 7 — Agent infrastructure: one streamed turn and the playground  `(PRODUCT.md §4 W4, Pass E)`
+
+Direction approved 2026-09-12 from [`research/09-npc-runtime/PROPOSAL.md`](research/09-npc-runtime/PROPOSAL.md). Order: 7.1 first (so 7.2 and 7.3 have a before/after), then 7.4 harness, then baseline, then 7.5.
+
+| ID | Item | Size | Depends-on | Test | Status |
+|---|---|---|---|---|---|
+| 7.1 | **Make text-turn latency and cache hits visible.** `TurnTimings` (`src/conversation/turn.ts:90-99`) has no time-to-first-token and no cache signal; no test asserts any latency bound. Add `speakerTtftMs`/`followUpTtftMs`, provider-neutral `cached_input_tokens` on usage (Anthropic `cache_read_input_tokens`, OpenAI `cached_tokens`), usage on `TurnResult` and the session log, harness rendering, and one orchestration-overhead assertion. Spec: [`specs/7.1.md`](specs/7.1.md). | M | — | unit | todo |
+| 7.2 | **Make the endpointing budget a project setting.** Deepgram `utterance_end_ms 1000` + `endpointing 500` (`src/providers/stt/deepgram.ts:85-86`) + `AGGREGATION_WINDOW_MS 400` (`src/voice/pipeline.ts:194`) spend ~1.4s before generation starts and cannot be changed without a deploy. Add `voice_latency` to `ProjectConfig`, thread through `STTSessionConfig` and `VoicePipelineConfig`, defaults unchanged. Spec: [`specs/7.2.md`](specs/7.2.md). | S | — | unit | todo |
+| 7.3 | **Split the Speaker prompt into a cacheable prefix and a dynamic suffix.** `assembleSlimSystemPrompt` (`src/core/context.ts:597-654`) puts mood, relationship and memories before the invariant guidance, and the Anthropic provider wraps everything in one `cache_control` block (`anthropic.ts:141-150`), so the cache never hits; OpenAI has no `prompt_cache_key`. Return `{stable, dynamic}`, add `systemPromptPrefix`/`cacheKey` to `LLMChatRequest`, two Anthropic blocks with the breakpoint on the first. Spec: [`specs/7.3.md`](specs/7.3.md). | M | 7.1 | unit | todo |
+| 7.4 | **Playground: JSON-lines `play` mode on `npm run npc`.** stdin `{say|event|state|inspect|end}`, stdout one JSON object per turn (reply, tools offered/called/refused, timings incl. ttft, cache hit, tokens and dollars, state deltas, exit reason, injected facts). Scenario file extends `ConversationFixtureSchema` with a promptfoo-style `player` block, per-turn `gameState`, between-turn `events`, `expect` (visibleTools, noLeak, exitTurn) and `trials` scored pass^k. LLM cassette as a delegating `LLMProvider`. Design brief with reuse seams: [`research/09-npc-runtime/diagnosis/eval-harness.md`](research/09-npc-runtime/diagnosis/eval-harness.md). | L | 7.1 | unit + e2e | todo |
+| 7.5 | **`CognitionRuntime` v2: one streamed LLM call owning speech, tool calls and recall.** Replaces parallel Mind+Speaker (`turn.ts:291-329`) and the serial follow-up leg (`turn.ts:372-397`, `pipeline.ts:1074-1130`) behind the `PRODUCT.md` §3.6 interface; recall is a pre-call fetch or an in-stream tool. A/B against the parallel runtime with 7.4 pass^k on identical cassettes. Evidence: [`research/09-npc-runtime/a-voice-turn-pipelines.md`](research/09-npc-runtime/a-voice-turn-pipelines.md). | L | 7.3, 7.4 | unit + e2e + conf | todo |
+| 7.6 | **Constant Mind tool list; gate `exit_convo` in the executor.** `src/core/tools.ts:112-119, 415-418` force-adds `exit_convo` per turn, changing the tool list and defeating Mind-prompt caching; offer it always and gate at execution per §3.7 rule 6. Needs its own over-triggering regression test given the ERRORS.md history. | S | 7.3 | reg | todo |
+| 7.7 | **Evaluate Deepgram model-based end-of-turn detection** against the 7.2 thresholds on the same recordings; adopt only if it cuts p50 endpointing without cutting speakers off. Measurement item; may produce no code. | M | 7.2, 7.4 | manual | todo |
+| 7.8 | **Scoped fact table with TTL** replacing `depths: Record<number,string>` (`src/types/knowledge.ts:1-5`, resolver `src/core/knowledge.ts:38-62`): facts carry `scope` (common / faction / personal / secret) and optional `ttl`; a criterion naming an absent fact rejects; world events arrive by POST into the same table; assembled into the dynamic suffix at turn start. Toggle rows `world_events`, `social_propagation` in §3.4. Evidence: [`research/09-npc-runtime/b-knowledge-and-world-events.md`](research/09-npc-runtime/b-knowledge-and-world-events.md). | L | 7.3 | unit + conf | todo |
+| 7.9 | **Quest state and tool preconditions.** `quest_state: Record<string,string>` on `NPCInstance` (`src/schema/index.ts:150-163`); registry entries gain `precondition(gameState)` evaluated at tool-list assembly and again before execution; `update_quest` action becomes an enum (`src/mcp/registry.ts:293-315`); `strict: true` on Anthropic tools; `tool_choice` exposed through the provider interface. Evidence: [`research/09-npc-runtime/c-tool-gating-and-quests.md`](research/09-npc-runtime/c-tool-gating-and-quests.md). | L | 7.4 | unit + e2e | todo |
+| 7.10 | **Patience ladder.** `patience` scalar with per-NPC accumulation, decay and breaking point; two warning thresholds and one exit, each firing once, evaluated before speech so the warning lands in the line; decoupled from the moderation exit (`src/mcp/exit-handler.ts:55-89`); exit reason and value in the session log. Toggle row `patience` in §3.4. Evidence: [`research/09-npc-runtime/d-disposition-and-patience.md`](research/09-npc-runtime/d-disposition-and-patience.md). | M | 7.5 | unit + reg | todo |
+
+---
+
 ## Progress
 
 | Tier | Items | Done | Status |
@@ -178,7 +197,8 @@
 | 4 | 7 | 5 | **voice hardened**; binary frames + backpressure open (4.5, 4.7) |
 | 5 | 20 | 12 | broker, eval harness, voice vending and streaming landed; Unity runs without provider keys; cross-session memory works and every channel is recorded |
 | 6 | 8 | 0 | not started |
-| **Total** | **82** | **50** | — |
+| 7 | 10 | 0 | direction approved 2026-09-12; 7.1-7.3 dispatched |
+| **Total** | **92** | **50** | — |
 
 > **Local-mode guarantee:** verified + guarded by `tests/regression/local-mode-no-supabase.test.ts` — with no Supabase env, every storage selector falls back to local (even with a userId), so the webapp runs fully offline.
 
