@@ -128,10 +128,15 @@ export class GrokLlmProvider implements LLMProvider {
       const messages: Array<Record<string, unknown>> = [];
 
       // Add system message
+      // Concatenate prefix if provided
       if (request.systemPrompt) {
+        const systemContent = request.systemPromptPrefix
+          ? request.systemPromptPrefix + '\n\n' + request.systemPrompt
+          : request.systemPrompt;
+
         messages.push({
           role: 'system',
-          content: request.systemPrompt,
+          content: systemContent,
         });
       }
 

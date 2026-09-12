@@ -48,6 +48,10 @@ export interface LLMToolResult {
 export interface LLMChatRequest {
   /** System prompt / instructions */
   systemPrompt: string;
+  /** Optional stable prefix for system prompt (cacheable, byte-identical across turns) */
+  systemPromptPrefix?: string;
+  /** Optional cache key for prompt caching (definition.id + version) */
+  cacheKey?: string;
   /** Conversation history */
   messages: LLMMessage[];
   /** Available tools for function calling */

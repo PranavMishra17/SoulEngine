@@ -29,7 +29,7 @@ import {
 import { sanitize } from '../security/sanitizer.js';
 import { moderate } from '../security/moderator.js';
 import {
-  assembleSlimSystemPrompt,
+  assembleSlimSystemPromptParts,
   assembleConversationHistory,
   augmentPromptWithMindContext,
   buildFollowUpPrompt,
@@ -232,7 +232,8 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
 
   // Slim system prompt for the Speaker. Deliberately carries no world knowledge
   // and no tools — knowledge only reaches a model through the Mind's recall.
-  const systemPrompt = await assembleSlimSystemPrompt(
+  // Split into stable (cacheable) prefix and dynamic suffix.
+  const promptParts = await assembleSlimSystemPromptParts(
     definition,
     instance,
     securityContext,
@@ -283,17 +284,20 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   const llmMessages: LLMMessage[] = conversationHistory;
   const projectTools = toolRegistry.getProjectTools(state.project_id);
 
-  // Deferred recall from the previous turn goes into this turn's speaker prompt.
+  // Deferred recall from the previous turn goes into this turn's speaker prompt dynamic suffix.
   const deferredContextInjected = state.deferred_mind_context ?? null;
-  let speakerPrompt = systemPrompt;
+  let speakerDynamic = promptParts.dynamic;
   if (state.deferred_mind_context) {
-    speakerPrompt = augmentPromptWithMindContext(systemPrompt, state.deferred_mind_context);
+    speakerDynamic = augmentPromptWithMindContext(promptParts.dynamic, state.deferred_mind_context);
     logger.info(
       { sessionId, contextLength: state.deferred_mind_context.length },
       'Injected deferred mind context from previous turn'
     );
     state.deferred_mind_context = undefined;
   }
+
+  // Cache key for provider-level prompt caching
+  const cacheKey = `${definition.id}:${definition.version ?? 0}`;
 
   const mindAbortController = new AbortController();
   const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
@@ -326,7 +330,9 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let speakerTtftMs: number | null = null;
 
   for await (const chunk of activeProvider.streamChat({
-    systemPrompt: speakerPrompt,
+    systemPromptPrefix: promptParts.stable,
+    systemPrompt: speakerDynamic,
+    cacheKey,
     messages: llmMessages,
   })) {
     if (chunk.text && speakerTtftMs === null) {
@@ -345,6 +351,9 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   const toolCalls: ToolCall[] = mindResult?.raw_tool_calls ?? [];
   const toolResults: ToolResult[] = [];
   let exitConvoResult: ExitConvoResult | undefined;
+
+  // Reconstruct full system prompt for follow-up leg (if needed)
+  const fullSystemPrompt = promptParts.stable + '\n\n' + promptParts.dynamic;
 
   if (mindResult && mindResult.tools_called.length > 0) {
     for (const tr of mindResult.tools_called) {
@@ -372,6 +381,9 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let followUpTtftMs: number | null = null;
   let followUpUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
 
+  // Reconstruct full speaker prompt for token accounting and return value
+  const speakerPrompt = promptParts.stable + '\n\n' + speakerDynamic;
+
   if (mindResult && mindResult.tools_called.length > 0) {
     const { recallLines: recallResults, mcpLines: mcpResults } =
       partitionMindToolResults(mindResult.tools_called);
@@ -387,7 +399,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
 
     if (mcpResults.length > 0) {
       const mcpContext = mcpResults.join('\n');
-      const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext, definition.name);
+      const followUpPrompt = buildFollowUpPrompt(fullSystemPrompt, mcpContext, definition.name);
 
       const updatedHistory: LLMMessage[] = [
         ...llmMessages,

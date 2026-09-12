@@ -107,6 +107,41 @@ ${personalityDescription}`;
 }
 
 /**
+ * Format the baseline personality (stable, definition-level)
+ */
+function formatPersonalityBaseline(definition: NPCDefinition): string {
+  const personalityDescription = generatePersonalityDescription(
+    definition.personality_baseline
+  );
+
+  return `[NPC PERSONALITY & TRAITS]
+${personalityDescription}`;
+}
+
+/**
+ * Format personality trait modifiers (dynamic, instance drift from baseline)
+ */
+function formatPersonalityModifiers(_definition: NPCDefinition, instance: NPCInstance): string {
+  if (!instance.trait_modifiers) {
+    return '';
+  }
+
+  const modifiers = instance.trait_modifiers;
+  const significantChanges = Object.entries(modifiers)
+    .filter(([, value]) => Math.abs(value as number) > 0.1)
+    .map(([trait, value]) => {
+      const direction = (value as number) > 0 ? 'increased' : 'decreased';
+      return `${trait} has ${direction}`;
+    });
+
+  if (significantChanges.length === 0) {
+    return '';
+  }
+
+  return `Recent experiences have shifted personality: ${significantChanges.join(', ')}.`;
+}
+
+/**
  * Format the current mood section for the prompt
  */
 function formatMood(instance: NPCInstance): string {
@@ -556,6 +591,120 @@ Respond as ${definition.name}. Be natural. Be brief. Be human.
 }
 
 /**
+ * Assemble slim system prompt split into stable prefix and dynamic suffix.
+ * The stable prefix is byte-identical across turns for the same NPC definition.
+ * The dynamic suffix varies with mood, relationships, memories, etc.
+ *
+ * @param definition - The NPC's static definition
+ * @param instance - The NPC's current instance state
+ * @param securityContext - Current security context
+ * @param options - Assembly options
+ * @param playerInfo - Optional player info
+ * @returns Object with stable and dynamic parts
+ */
+export async function assembleSlimSystemPromptParts(
+  definition: NPCDefinition,
+  instance: NPCInstance,
+  securityContext: SecurityContext,
+  options: ContextAssemblyOptions = {},
+  playerInfo?: PlayerInfo | null,
+  userId?: string | null
+): Promise<{ stable: string; dynamic: string }> {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+
+  logger.debug(
+    {
+      npcId: definition.id,
+      instanceId: instance.id,
+      exitRequested: securityContext.exitRequested,
+    },
+    'Assembling slim system prompt parts'
+  );
+
+  const stableSections: string[] = [];
+  const dynamicSections: string[] = [];
+
+  // STABLE: Role definition
+  stableSections.push(`[ROLE]
+You are ${definition.name}, an NPC in the game world. You are NOT a chatbot, assistant, or AI.
+You speak, think, and act as this character would. Stay in character at all times.
+
+${definition.description}`);
+
+  // STABLE: Core anchor
+  stableSections.push(formatCoreAnchor(definition));
+
+  // STABLE: Baseline personality (without modifiers)
+  stableSections.push(formatPersonalityBaseline(definition));
+
+  // STABLE: Known NPCs -- Tier 1 only (flat list, name + description)
+  const knownNpcsSection = await formatKnownNpcsTier1Only(definition, definition.project_id, userId);
+  if (knownNpcsSection) {
+    stableSections.push(knownNpcsSection);
+  }
+
+  // STABLE: Behavioral guidance
+  stableSections.push(formatBehavioralGuidance());
+
+  // STABLE: Injection resistance
+  stableSections.push(formatInjectionResistance());
+
+  // STABLE: Slim conversation task (no tool mentions, recall note)
+  stableSections.push(formatSlimConversationTask(definition, opts.voiceMode));
+
+  // DYNAMIC: Personality modifiers (if significant)
+  const personalityModifiers = formatPersonalityModifiers(definition, instance);
+  if (personalityModifiers) {
+    dynamicSections.push(personalityModifiers);
+  }
+
+  // DYNAMIC: Current mood
+  dynamicSections.push(formatMood(instance));
+
+  // DYNAMIC: Relationship to player
+  dynamicSections.push(formatRelationship(instance, instance.player_id));
+
+  // DYNAMIC: Player identity (if provided)
+  if (playerInfo) {
+    dynamicSections.push(formatPlayerIdentity(playerInfo, definition.player_recognition));
+  }
+
+  // DYNAMIC: The slim prompt omits world knowledge and tools, not memory. Memory is the
+  // thing the character is judged on, and two slots meant an NPC holding
+  // thirteen memories about a player greeted them as a stranger (ERR-025).
+  // The section is separately capped by MEMORY_SECTION_TOKEN_BUDGET, so this
+  // bounds the count and the budget bounds the size.
+  const memoriesSection = formatMemories(instance, SLIM_PROMPT_MAX_MEMORIES);
+  if (memoriesSection) {
+    dynamicSections.push(memoriesSection);
+  }
+
+  // DYNAMIC: Daily pulse takeaway (if available)
+  if (instance.daily_pulse?.takeaway) {
+    dynamicSections.push(`[TODAY'S REFLECTION]
+${instance.daily_pulse.takeaway}`);
+  }
+
+  // DYNAMIC: Security boundaries (reads securityContext.exitRequested)
+  dynamicSections.push(formatSecurityBoundaries(securityContext));
+
+  const stable = stableSections.join('\n\n');
+  const dynamic = dynamicSections.join('\n\n');
+
+  logger.debug(
+    {
+      stableLength: stable.length,
+      dynamicLength: dynamic.length,
+      stableSections: stableSections.length,
+      dynamicSections: dynamicSections.length,
+    },
+    'Slim system prompt parts assembled'
+  );
+
+  return { stable, dynamic };
+}
+
+/**
  * Assemble a slimmer system prompt for the Speaker instance.
  *
  * Compared to assembleSystemPrompt():
@@ -580,82 +729,18 @@ export async function assembleSlimSystemPrompt(
   playerInfo?: PlayerInfo | null,
   userId?: string | null
 ): Promise<string> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
-
-  logger.debug(
-    {
-      npcId: definition.id,
-      instanceId: instance.id,
-      exitRequested: securityContext.exitRequested,
-    },
-    'Assembling slim system prompt'
+  const parts = await assembleSlimSystemPromptParts(
+    definition,
+    instance,
+    securityContext,
+    options,
+    playerInfo,
+    userId
   );
 
-  const sections: string[] = [];
+  const prompt = parts.stable + '\n\n' + parts.dynamic;
 
-  // Role definition
-  sections.push(`[ROLE]
-You are ${definition.name}, an NPC in the game world. You are NOT a chatbot, assistant, or AI.
-You speak, think, and act as this character would. Stay in character at all times.
-
-${definition.description}`);
-
-  // Core anchor
-  sections.push(formatCoreAnchor(definition));
-
-  // Personality
-  sections.push(formatPersonality(definition, instance));
-
-  // Current mood
-  sections.push(formatMood(instance));
-
-  // Relationship to player
-  sections.push(formatRelationship(instance, instance.player_id));
-
-  // Player identity (if provided)
-  if (playerInfo) {
-    sections.push(formatPlayerIdentity(playerInfo, definition.player_recognition));
-  }
-
-  // Known NPCs -- Tier 1 only (flat list, name + description)
-  const knownNpcsSection = await formatKnownNpcsTier1Only(definition, definition.project_id, userId);
-  if (knownNpcsSection) {
-    sections.push(knownNpcsSection);
-  }
-
-  // NO world knowledge section in slim prompt
-
-  // The slim prompt omits world knowledge and tools, not memory. Memory is the
-  // thing the character is judged on, and two slots meant an NPC holding
-  // thirteen memories about a player greeted them as a stranger (ERR-025).
-  // The section is separately capped by MEMORY_SECTION_TOKEN_BUDGET, so this
-  // bounds the count and the budget bounds the size.
-  const memoriesSection = formatMemories(instance, SLIM_PROMPT_MAX_MEMORIES);
-  if (memoriesSection) {
-    sections.push(memoriesSection);
-  }
-
-  // Daily pulse takeaway (if available)
-  if (instance.daily_pulse?.takeaway) {
-    sections.push(`[TODAY'S REFLECTION]
-${instance.daily_pulse.takeaway}`);
-  }
-
-  // Behavioral guidance
-  sections.push(formatBehavioralGuidance());
-
-  // Security boundaries
-  sections.push(formatSecurityBoundaries(securityContext));
-
-  // Injection resistance
-  sections.push(formatInjectionResistance());
-
-  // Slim conversation task (no tool mentions, recall note)
-  sections.push(formatSlimConversationTask(definition, opts.voiceMode));
-
-  const prompt = sections.join('\n\n');
-
-  logger.debug({ promptLength: prompt.length, sectionCount: sections.length }, 'Slim system prompt assembled');
+  logger.debug({ promptLength: prompt.length }, 'Slim system prompt assembled');
 
   return prompt;
 }

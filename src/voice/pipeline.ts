@@ -13,7 +13,7 @@ import {
 } from '../session/manager.js';
 import { sessionStore } from '../session/store.js';
 import { appendSessionLog } from '../telemetry/session-log.js';
-import { assembleSlimSystemPrompt, assembleConversationHistory, augmentPromptWithMindContext, buildFollowUpPrompt } from '../core/context.js';
+import { assembleSlimSystemPromptParts, assembleConversationHistory, augmentPromptWithMindContext, buildFollowUpPrompt } from '../core/context.js';
 import { runMindAgentLoop } from '../core/mind.js';
 import { isRecallTool } from '../core/tools.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
@@ -898,7 +898,8 @@ export class VoicePipeline {
       const sessionUserId = stored?.state.user_id ?? null;
 
       // Build slim system prompt for Speaker (no knowledge, no tools)
-      const systemPrompt = await assembleSlimSystemPrompt(
+      // Split into stable (cacheable) prefix and dynamic suffix
+      const promptParts = await assembleSlimSystemPromptParts(
         context.definition,
         context.instance,
         securityContext,
@@ -913,13 +914,16 @@ export class VoicePipeline {
 
       // --- PARALLEL: Speaker starts immediately, Mind runs alongside ---
 
-      // Augment Speaker prompt with deferred mind context from previous turn (if any)
-      let speakerPrompt = systemPrompt;
+      // Augment Speaker dynamic suffix with deferred mind context from previous turn (if any)
+      let speakerDynamic = promptParts.dynamic;
       if (this.deferredMindContext) {
-        speakerPrompt = augmentPromptWithMindContext(systemPrompt, this.deferredMindContext);
+        speakerDynamic = augmentPromptWithMindContext(promptParts.dynamic, this.deferredMindContext);
         logger.info({ sessionId: this.sessionId, contextLength: this.deferredMindContext.length }, 'Injected deferred mind context from previous turn');
         this.deferredMindContext = '';
       }
+
+      // Cache key for provider-level prompt caching
+      const cacheKey = `${context.definition.id}:${context.definition.version ?? 0}`;
 
       // Start Mind in background (does not block Speaker)
       const mindTimeoutMs = Math.min(
@@ -963,7 +967,9 @@ export class VoicePipeline {
       const ttsPipeline: Promise<void>[] = [];
 
       for await (const chunk of this.llmProvider.streamChat({
-        systemPrompt: speakerPrompt,
+        systemPromptPrefix: promptParts.stable,
+        systemPrompt: speakerDynamic,
+        cacheKey,
         messages: llmMessages,
         signal: this.turnState!.abortController.signal,
       })) {
@@ -1095,7 +1101,9 @@ export class VoicePipeline {
         // MCP tool results -> follow-up speech NOW
         if (mcpResults.length > 0) {
           const mcpContext = mcpResults.join('\n');
-          const followUpPrompt = buildFollowUpPrompt(systemPrompt, mcpContext, context.definition.name);
+          // Reconstruct full system prompt for follow-up leg
+          const fullSystemPrompt = promptParts.stable + '\n\n' + promptParts.dynamic;
+          const followUpPrompt = buildFollowUpPrompt(fullSystemPrompt, mcpContext, context.definition.name);
 
           // Build updated history: primary response + synthetic user prompt for continuation
           const updatedHistory = [...llmMessages];
