@@ -7,6 +7,7 @@ import type { LLMProvider, LLMMessage } from '../providers/llm/interface.js';
 import type { TurnTimings } from '../conversation/turn.js';
 import type { MCPToolRegistry } from '../mcp/registry.js';
 import { ParallelRuntime } from './runtime/parallel.js';
+import { SingleCallRuntime } from './runtime/single.js';
 
 /**
  * Input to a cognition runtime for a single conversation turn.
@@ -98,6 +99,9 @@ export interface CognitionRuntime {
 export function selectRuntime(name: 'parallel' | 'single'): CognitionRuntime {
   if (name === 'parallel') {
     return new ParallelRuntime();
+  }
+  if (name === 'single') {
+    return new SingleCallRuntime();
   }
 
   throw new Error(`Unknown cognition runtime: ${name}`);

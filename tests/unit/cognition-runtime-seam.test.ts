@@ -14,6 +14,11 @@ describe('CognitionRuntime seam (Phase A)', () => {
       expect(runtime.name).toBe('parallel');
     });
 
+    it('returns the single runtime for "single"', () => {
+      const runtime = selectRuntime('single');
+      expect(runtime.name).toBe('single');
+    });
+
     it('throws for unknown runtime names', () => {
       expect(() => selectRuntime('unknown' as any)).toThrow();
     });
@@ -221,6 +226,28 @@ describe('CognitionRuntime seam (Phase A)', () => {
       // The turn must not have waited for the 2 s Mind; the budget was 40 ms.
       expect(Date.now() - started).toBeLessThan(1000);
       expect(result.toolCalls).toEqual([]);
+    });
+
+    it('project setting cognition_runtime: "single" selects the single runtime', async () => {
+      const project = await storage.getProject(projectId);
+      await storage.updateProject(projectId, {
+        settings: { ...project.settings, cognition_runtime: 'single' },
+      });
+
+      const speakerProvider = new StubLLMProvider({ responses: [{ text: 'Greetings.' }] });
+
+      const result = await runConversationTurn({
+        sessionId,
+        content: 'Hello',
+        fallbackProvider: null,
+        toolRegistry: mcpToolRegistry,
+        channel: 'harness',
+        providers: { speaker: speakerProvider, mind: speakerProvider },
+      });
+
+      expect(result.runtime).toBe('single');
+      expect(result.responseText).toBe('Greetings.');
+      expect(result.timings.mindMs).toBeNull();
     });
   });
 });

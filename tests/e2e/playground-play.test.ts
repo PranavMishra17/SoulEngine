@@ -413,4 +413,86 @@ describe('playground play mode', () => {
     expect(replayedTurn).toBeDefined();
     expect(replayedTurn.reply).toBe(recordedReply);
   });
+
+  it('runs with --runtime single and reports it in state and turn records', async () => {
+    const scenario = {
+      name: 'Single runtime test',
+      description: 'Drive play with single runtime',
+      npc: {
+        definition: {
+          id: 'npc-single',
+          project_id: 'proj-single',
+          name: 'SingleBot',
+          description: 'NPC for single runtime test',
+          core_anchor: {
+            backstory: 'Test NPC',
+            principles: [],
+            trauma_flags: [],
+          },
+          personality_baseline: {
+            openness: 0.5,
+            conscientiousness: 0.5,
+            extraversion: 0.5,
+            agreeableness: 0.5,
+            neuroticism: 0.5,
+          },
+          voice: { provider: 'elevenlabs', voice_id: 'test', speed: 1.0 },
+          schedule: [],
+          mcp_permissions: { conversation_tools: [], game_event_tools: [], denied: [] },
+          knowledge_access: {},
+          network: [],
+        },
+        instance: {
+          id: 'inst-single',
+          definition_id: 'npc-single',
+          project_id: 'proj-single',
+          player_id: 'player-1',
+          created_at: new Date().toISOString(),
+          current_mood: { valence: 0.5, arousal: 0.5, dominance: 0.5 },
+          trait_modifiers: {},
+          short_term_memory: [],
+          long_term_memory: [],
+          relationships: {},
+          daily_pulse: null,
+          cycle_metadata: { last_weekly: null, last_persona_shift: null },
+        },
+      },
+      player: {
+        script: ['hello'],
+      },
+    };
+
+    const input = [
+      '{"say": "hello"}',
+      '{"inspect": true}',
+      '{"end": true}',
+    ];
+
+    const outputs: any[] = [];
+    const collectOutput = (record: any) => {
+      outputs.push(record);
+      if (record.type === 'turn' && record.sessionId) {
+        const stored = getSession(record.sessionId);
+        if (stored?.state.project_id) {
+          scratchProjectId = stored.state.project_id;
+        }
+      }
+    };
+
+    await runPlay(
+      {
+        scenario,
+        stub: true,
+        endSession: false,
+        runtime: 'single',
+      },
+      input,
+      collectOutput
+    );
+
+    const turn = outputs.find((o) => o.type === 'turn');
+    expect(turn).toBeDefined();
+    expect(turn.runtime).toBe('single');
+    expect(turn.timings.mindMs).toBeNull();
+  });
 });
