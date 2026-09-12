@@ -19,6 +19,8 @@ export interface LLMStreamChunk {
   usage?: {
     input_tokens: number;
     output_tokens: number;
+    /** Cached input tokens (prompt cache hit). Undefined when no cache. Anthropic: cache_read_input_tokens; OpenAI: prompt_tokens_details.cached_tokens. */
+    cached_input_tokens?: number;
   };
 }
 

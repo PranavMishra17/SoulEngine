@@ -210,12 +210,33 @@ export function renderTurnDiagnostics(input: TurnDiagnosticInput): string {
   }
 
   const t = turn.timings;
+  const ttftParts: string[] = [];
+  if (t.speakerTtftMs !== null) {
+    ttftParts.push(`speaker-ttft ${t.speakerTtftMs}ms`);
+  }
+  if (t.followUpTtftMs !== null) {
+    ttftParts.push(`follow-up-ttft ${t.followUpTtftMs}ms`);
+  }
+  const ttftLine = ttftParts.length > 0 ? ` | ${ttftParts.join(' | ')}` : '';
+
   lines.push(
     `timing    : mind ${t.mindMs ?? 'n/a'}ms | speaker ${t.speakerMs}ms` +
     (t.followUpMs !== null ? ` | follow-up ${t.followUpMs}ms` : '') +
+    ttftLine +
     ` | wall ${t.wallMs}ms` +
     (turn.usageEstimated ? '  (tokens estimated, provider reported none)' : '')
   );
+
+  const cacheParts: string[] = [];
+  if (turn.usage?.speaker?.cached_input_tokens) {
+    cacheParts.push(`speaker: ${turn.usage.speaker.cached_input_tokens} read`);
+  }
+  if (turn.usage?.followUp?.cached_input_tokens) {
+    cacheParts.push(`follow-up: ${turn.usage.followUp.cached_input_tokens} read`);
+  }
+  if (cacheParts.length > 0) {
+    lines.push(`cache     : ${cacheParts.join(', ')}`);
+  }
 
   return lines.join('\n');
 }

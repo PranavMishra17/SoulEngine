@@ -92,8 +92,12 @@ export interface TurnTimings {
   mindMs: number | null;
   /** Speaker stream, measured here. */
   speakerMs: number;
+  /** Milliseconds to first non-empty text chunk from Speaker. Null if stream yielded no text. */
+  speakerTtftMs: number | null;
   /** Follow-up speech after an MCP action, when one happened. */
   followUpMs: number | null;
+  /** Milliseconds to first non-empty text chunk from follow-up. Null if no follow-up or no text. */
+  followUpTtftMs: number | null;
   /** Whole turn. Mind and Speaker overlap, so this is not their sum. */
   wallMs: number;
 }
@@ -121,6 +125,12 @@ export interface TurnResult {
   moderationAction: string;
   sanitizationViolations: string[];
   timings: TurnTimings;
+  /** Token usage per leg. Speaker and followUp usage come from the provider; Mind usage from MindResult. */
+  usage: {
+    speaker?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
+    mind?: { input_tokens: number; output_tokens: number };
+    followUp?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
+  };
   /** True when speaker token counts are estimated rather than provider-reported. */
   usageEstimated: boolean;
 }
@@ -312,12 +322,16 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   // Speaker streams immediately; it does not wait for the Mind.
   const speakerStart = Date.now();
   let responseText = '';
-  let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
+  let providerUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
+  let speakerTtftMs: number | null = null;
 
   for await (const chunk of activeProvider.streamChat({
     systemPrompt: speakerPrompt,
     messages: llmMessages,
   })) {
+    if (chunk.text && speakerTtftMs === null) {
+      speakerTtftMs = Date.now() - speakerStart;
+    }
     if (chunk.text) responseText += chunk.text;
     if (chunk.done && chunk.usage) providerUsage = chunk.usage;
   }
@@ -355,6 +369,8 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let recallResultCount = 0;
   let mcpResultCount = 0;
   let followUpMs: number | null = null;
+  let followUpTtftMs: number | null = null;
+  let followUpUsage: { input_tokens: number; output_tokens: number; cached_input_tokens?: number } | undefined;
 
   if (mindResult && mindResult.tools_called.length > 0) {
     const { recallLines: recallResults, mcpLines: mcpResults } =
@@ -385,7 +401,11 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
         systemPrompt: followUpPrompt,
         messages: updatedHistory,
       })) {
+        if (chunk.text && followUpTtftMs === null) {
+          followUpTtftMs = Date.now() - followUpStart;
+        }
         if (chunk.text) followUpText += chunk.text;
+        if (chunk.done && chunk.usage) followUpUsage = chunk.usage;
       }
       followUpMs = Date.now() - followUpStart;
 
@@ -469,8 +489,15 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
       timings: {
         mindMs: mindResult?.duration_ms ?? null,
         speakerMs,
+        speakerTtftMs,
         followUpMs,
+        followUpTtftMs,
         wallMs: Date.now() - wallStart,
+      },
+      usage: {
+        speaker: providerUsage,
+        mind: mindResult?.usage,
+        followUp: followUpUsage,
       },
       usageEstimated,
     }
@@ -494,8 +521,15 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
     timings: {
       mindMs: mindResult?.duration_ms ?? null,
       speakerMs,
+      speakerTtftMs,
       followUpMs,
+      followUpTtftMs,
       wallMs: Date.now() - wallStart,
+    },
+    usage: {
+      speaker: providerUsage,
+      mind: mindResult?.usage,
+      followUp: followUpUsage,
     },
     usageEstimated,
   };
