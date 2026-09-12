@@ -237,9 +237,10 @@ export class VoicePipeline {
     logger.info({
       sessionId: this.sessionId,
       mode: this.mode,
+      // STT values log as 'provider-default' when unset; the provider owns the numbers.
       voiceLatency: {
-        utteranceEndMs: this.utteranceEndMs ?? 1000,
-        endpointingMs: this.endpointingMs ?? 500,
+        utteranceEndMs: this.utteranceEndMs ?? 'provider-default',
+        endpointingMs: this.endpointingMs ?? 'provider-default',
         aggregationWindowMs: this.aggregationWindowMs,
       },
     }, 'VoicePipeline created');

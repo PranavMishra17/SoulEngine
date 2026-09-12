@@ -1,70 +1,81 @@
 /**
- * Tests for Deepgram configurable endpointing options (item 7.2).
+ * The endpointing budget is a project setting. These tests prove that the
+ * values a caller puts on STTSessionConfig are the values the Deepgram live
+ * connection is opened with, and that omitting them yields the historical
+ * defaults (utterance_end_ms 1000, endpointing 500).
  *
- * Verifies that the Deepgram constants and code structure support configurable
- * utterance_end_ms and endpointing values. Full end-to-end mocking of the Deepgram
- * SDK is fragile and unreliable, so we verify implementation by inspecting the source.
+ * The Deepgram SDK is mocked at the module boundary so no network is touched;
+ * the fake connection fires Open on the next tick so connect() resolves.
  */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+const liveMock = vi.fn();
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+vi.mock('@deepgram/sdk', async () => {
+  const actual = await vi.importActual<typeof import('@deepgram/sdk')>('@deepgram/sdk');
+  return {
+    ...actual,
+    createClient: vi.fn(() => ({ listen: { live: liveMock } })),
+  };
+});
 
-describe('DeepgramSession endpointing options', () => {
-  it('defines DEFAULT_UTTERANCE_END_MS and DEFAULT_ENDPOINTING_MS constants', () => {
-    const deepgramSrc = readFileSync(
-      join(__dirname, '..', '..', 'src', 'providers', 'stt', 'deepgram.ts'),
-      'utf8'
-    );
+import { LiveTranscriptionEvents } from '@deepgram/sdk';
+import { DeepgramSttProvider } from '../../src/providers/stt/deepgram.js';
+import type { STTSessionConfig, STTSessionEvents } from '../../src/providers/stt/interface.js';
 
-    // Verify the constants exist
-    expect(deepgramSrc).toContain('DEFAULT_UTTERANCE_END_MS');
-    expect(deepgramSrc).toContain('DEFAULT_ENDPOINTING_MS');
+function fakeConnection() {
+  const handlers = new Map<string, Array<(...args: unknown[]) => void>>();
+  const conn = {
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      const list = handlers.get(event) ?? [];
+      list.push(handler);
+      handlers.set(event, list);
+    }),
+    send: vi.fn(),
+    keepAlive: vi.fn(),
+    requestClose: vi.fn(),
+  };
+  // connect() registers its Open handlers synchronously after live() returns,
+  // so firing on the next macrotask reaches all of them.
+  setTimeout(() => {
+    for (const h of handlers.get(LiveTranscriptionEvents.Open) ?? []) h();
+  }, 0);
+  return conn;
+}
 
-    // Extract their values
-    const utteranceEndMatch = deepgramSrc.match(/DEFAULT_UTTERANCE_END_MS\s*=\s*(\d+)/);
-    const endpointingMatch = deepgramSrc.match(/DEFAULT_ENDPOINTING_MS\s*=\s*(\d+)/);
+const events: STTSessionEvents = {
+  onTranscript: () => {},
+  onError: () => {},
+  onClose: () => {},
+  onOpen: () => {},
+};
 
-    expect(utteranceEndMatch).not.toBeNull();
-    expect(endpointingMatch).not.toBeNull();
+async function openSession(sessionConfig: STTSessionConfig) {
+  liveMock.mockImplementation(() => fakeConnection());
+  const provider = new DeepgramSttProvider({ apiKey: 'test-key' });
+  const session = await provider.createSession(sessionConfig, events);
+  session.close();
+  expect(liveMock).toHaveBeenCalledTimes(1);
+  return liveMock.mock.calls[0][0] as Record<string, unknown>;
+}
 
-    const utteranceEndValue = parseInt(utteranceEndMatch![1], 10);
-    const endpointingValue = parseInt(endpointingMatch![1], 10);
-
-    expect(utteranceEndValue).toBe(1000);
-    expect(endpointingValue).toBe(500);
+describe('Deepgram endpointing options', () => {
+  beforeEach(() => {
+    liveMock.mockReset();
   });
 
-  it('uses config.utteranceEndMs ?? DEFAULT_UTTERANCE_END_MS for utterance_end_ms option', () => {
-    const deepgramSrc = readFileSync(
-      join(__dirname, '..', '..', 'src', 'providers', 'stt', 'deepgram.ts'),
-      'utf8'
-    );
-
-    // Verify the connection options use the config or default
-    expect(deepgramSrc).toContain('utterance_end_ms: this.config.utteranceEndMs ?? DEFAULT_UTTERANCE_END_MS');
+  it('opens the live connection with the configured utterance_end_ms and endpointing', async () => {
+    const options = await openSession({ utteranceEndMs: 600, endpointingMs: 300 });
+    expect(options).toEqual(expect.objectContaining({ utterance_end_ms: 600, endpointing: 300 }));
   });
 
-  it('uses config.endpointingMs ?? DEFAULT_ENDPOINTING_MS for endpointing option', () => {
-    const deepgramSrc = readFileSync(
-      join(__dirname, '..', '..', 'src', 'providers', 'stt', 'deepgram.ts'),
-      'utf8'
-    );
-
-    // Verify the connection options use the config or default
-    expect(deepgramSrc).toContain('endpointing: this.config.endpointingMs ?? DEFAULT_ENDPOINTING_MS');
+  it('falls back to 1000 / 500 when the session config carries no endpointing values', async () => {
+    const options = await openSession({});
+    expect(options).toEqual(expect.objectContaining({ utterance_end_ms: 1000, endpointing: 500 }));
   });
 
-  it('STTSessionConfig type includes utteranceEndMs and endpointingMs fields', () => {
-    const interfaceSrc = readFileSync(
-      join(__dirname, '..', '..', 'src', 'providers', 'stt', 'interface.ts'),
-      'utf8'
-    );
-
-    expect(interfaceSrc).toContain('utteranceEndMs?');
-    expect(interfaceSrc).toContain('endpointingMs?');
+  it('applies each value independently', async () => {
+    const options = await openSession({ endpointingMs: 250 });
+    expect(options).toEqual(expect.objectContaining({ utterance_end_ms: 1000, endpointing: 250 }));
   });
 });

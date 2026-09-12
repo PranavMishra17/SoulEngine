@@ -229,19 +229,33 @@ export function generatePersonalityDescription(
 
   // Add note about modifiers if significant
   if (modifiers) {
-    const significantChanges = Object.entries(modifiers)
-      .filter(([, value]) => Math.abs(value as number) > 0.1)
-      .map(([trait, value]) => {
-        const direction = (value as number) > 0 ? 'increased' : 'decreased';
-        return `${trait} has ${direction}`;
-      });
-
-    if (significantChanges.length > 0) {
-      descriptions.push(`\nRecent experiences have shifted personality: ${significantChanges.join(', ')}.`);
+    const shiftNote = describeTraitShifts(modifiers);
+    if (shiftNote) {
+      descriptions.push(`\n${shiftNote}`);
     }
   }
 
   return descriptions.join('\n');
+}
+
+/** Modifiers smaller than this are treated as noise and not narrated. */
+const SIGNIFICANT_TRAIT_SHIFT = 0.1;
+
+/**
+ * Describe which traits have drifted from baseline, or null when no drift is
+ * significant. Shared by the full prompt (inside the personality section) and
+ * the slim prompt (as its own dynamic section), so the wording lives once.
+ */
+export function describeTraitShifts(modifiers: TraitModifiers): string | null {
+  const significantChanges = Object.entries(modifiers)
+    .filter(([, value]) => Math.abs(value as number) > SIGNIFICANT_TRAIT_SHIFT)
+    .map(([trait, value]) => {
+      const direction = (value as number) > 0 ? 'increased' : 'decreased';
+      return `${trait} has ${direction}`;
+    });
+
+  if (significantChanges.length === 0) return null;
+  return `Recent experiences have shifted personality: ${significantChanges.join(', ')}.`;
 }
 
 /**

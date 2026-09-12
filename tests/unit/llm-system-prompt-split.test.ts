@@ -238,9 +238,9 @@ describe('OpenAI provider system prompt split', () => {
     const [, fetchOptions] = fetchMock.mock.calls[0];
     const body = JSON.parse(fetchOptions.body);
 
+    expect(body.prompt_cache_key).toBe('npc-123:v5');
     const systemMessage = body.messages.find((m: Record<string, unknown>) => m.role === 'system');
-    expect(systemMessage).toBeDefined();
-    expect(systemMessage.prompt_cache_key).toBe('npc-123:v5');
+    expect(systemMessage.prompt_cache_key).toBeUndefined();
   });
 
   it('omits prompt_cache_key when cacheKey is not provided', async () => {
@@ -282,9 +282,7 @@ describe('OpenAI provider system prompt split', () => {
     const [, fetchOptions] = fetchMock.mock.calls[0];
     const body = JSON.parse(fetchOptions.body);
 
-    const systemMessage = body.messages.find((m: Record<string, unknown>) => m.role === 'system');
-    expect(systemMessage).toBeDefined();
-    expect(systemMessage.prompt_cache_key).toBeUndefined();
+    expect(body.prompt_cache_key).toBeUndefined();
   });
 });
 

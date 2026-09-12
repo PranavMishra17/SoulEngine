@@ -3,7 +3,7 @@ import type { NPCDefinition, NPCInstance, NPCNetworkEntry, PlayerRecognition } f
 import type { SecurityContext } from '../types/security.js';
 import type { Message, PlayerInfo } from '../types/session.js';
 import type { LLMMessage } from '../providers/llm/interface.js';
-import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
+import { generatePersonalityDescription, formatMoodForPrompt, describeTraitShifts } from './personality.js';
 import { formatMemoriesForPrompt, selectMemoriesForPrompt } from './memory.js';
 import { getStorage } from '../storage/factory.js';
 
@@ -121,24 +121,11 @@ ${personalityDescription}`;
 /**
  * Format personality trait modifiers (dynamic, instance drift from baseline)
  */
-function formatPersonalityModifiers(_definition: NPCDefinition, instance: NPCInstance): string {
+function formatPersonalityModifiers(instance: NPCInstance): string {
   if (!instance.trait_modifiers) {
     return '';
   }
-
-  const modifiers = instance.trait_modifiers;
-  const significantChanges = Object.entries(modifiers)
-    .filter(([, value]) => Math.abs(value as number) > 0.1)
-    .map(([trait, value]) => {
-      const direction = (value as number) > 0 ? 'increased' : 'decreased';
-      return `${trait} has ${direction}`;
-    });
-
-  if (significantChanges.length === 0) {
-    return '';
-  }
-
-  return `Recent experiences have shifted personality: ${significantChanges.join(', ')}.`;
+  return describeTraitShifts(instance.trait_modifiers) ?? '';
 }
 
 /**
@@ -653,7 +640,7 @@ ${definition.description}`);
   stableSections.push(formatSlimConversationTask(definition, opts.voiceMode));
 
   // DYNAMIC: Personality modifiers (if significant)
-  const personalityModifiers = formatPersonalityModifiers(definition, instance);
+  const personalityModifiers = formatPersonalityModifiers(instance);
   if (personalityModifiers) {
     dynamicSections.push(personalityModifiers);
   }

@@ -135,17 +135,10 @@ export class OpenAILlmProvider implements LLMProvider {
           ? request.systemPromptPrefix + '\n\n' + request.systemPrompt
           : request.systemPrompt;
 
-        const systemMessage: Record<string, unknown> = {
+        messages.push({
           role: 'system',
           content: systemContent,
-        };
-
-        // Add prompt_cache_key if cacheKey is provided
-        if (request.cacheKey) {
-          systemMessage.prompt_cache_key = request.cacheKey;
-        }
-
-        messages.push(systemMessage);
+        });
       }
 
       // Convert and add conversation messages
@@ -163,6 +156,9 @@ export class OpenAILlmProvider implements LLMProvider {
         model: this.model,
         messages,
         max_tokens: this.maxTokens,
+        // Route requests for the same NPC definition to the same cache shard so
+        // the stable prompt prefix is served from cache across turns.
+        ...(request.cacheKey ? { prompt_cache_key: request.cacheKey } : {}),
         temperature: this.temperature,
         stream: true,
         stream_options: { include_usage: true },
