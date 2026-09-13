@@ -92,6 +92,12 @@ export interface RunTurnOptions {
    * Used by the playground and tests.
    */
   runtime?: 'parallel' | 'single';
+  /**
+   * Callback invoked for every runtime event as it arrives, before the host
+   * consumes it. Voice callers use this to start TTS on the first sentence
+   * while generation continues.
+   */
+  onEvent?: (event: import('../core/runtime.js').CognitionEvent) => void;
 }
 
 export interface TurnTimings {
@@ -255,7 +261,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
     definition,
     instance,
     securityContext,
-    {},
+    { voiceMode: state.mode.output === 'voice' },
     state.player_info,
     state.user_id
   );
@@ -365,6 +371,11 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
 
   try {
   for await (const event of runtime.generate(cognitionInput)) {
+    // Fire onEvent callback synchronously before processing
+    if (options.onEvent) {
+      options.onEvent(event);
+    }
+
     if (event.type === 'text') {
       responseText += event.delta;
     } else if (event.type === 'tool_call') {

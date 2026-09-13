@@ -1,31 +1,24 @@
 import { createLogger } from '../logger.js';
-import { sanitize } from '../security/sanitizer.js';
-import { moderate } from '../security/moderator.js';
 import { rateLimiter } from '../security/rate-limiter.js';
 import {
   getSessionContext,
-  addMessageToSession,
-  updateSessionInstance,
   addTokensToSession,
   endSession,
   SessionContext,
   SessionError,
 } from '../session/manager.js';
 import { sessionStore } from '../session/store.js';
-import { appendSessionLog } from '../telemetry/session-log.js';
-import { assembleSlimSystemPromptParts, assembleConversationHistory, augmentPromptWithMindContext, buildFollowUpPrompt } from '../core/context.js';
-import { runMindAgentLoop } from '../core/mind.js';
-import { isRecallTool } from '../core/tools.js';
+import { runConversationTurn } from '../conversation/turn.js';
 import { mcpToolRegistry } from '../mcp/registry.js';
-import { handleExitConvo, processExitResult } from '../mcp/exit-handler.js';
+import { processExitResult } from '../mcp/exit-handler.js';
 import { resolveRateLimitPrincipal } from '../security/principal.js';
 import { SentenceDetector } from './sentence-detector.js';
 import { encodeTtsAudio } from './audio.js';
 
-import type { SessionID, Message } from '../types/session.js';
+import type { SessionID } from '../types/session.js';
 import type { SecurityContext } from '../types/security.js';
 import type { TranscriptEvent, TTSChunk, VoiceConfig, ConversationMode } from '../types/voice.js';
-import type { MindResult, MindActivity } from '../types/mind.js';
+import type { MindActivity } from '../types/mind.js';
 import type { STTProvider, STTSession, STTSessionConfig, STTSessionEvents } from '../providers/stt/interface.js';
 import type { TTSProvider, TTSSession, TTSSessionConfig, TTSSessionEvents } from '../providers/tts/interface.js';
 import type { LLMProvider } from '../providers/llm/interface.js';
@@ -160,7 +153,6 @@ export class VoicePipeline {
   private readonly sttProvider: STTProvider;
   private readonly ttsProvider: TTSProvider;
   private readonly llmProvider: LLMProvider;
-  private readonly mindProvider: LLMProvider;
   private readonly voiceConfig: VoiceConfig;
   private readonly events: VoicePipelineEvents;
   private readonly mode: ConversationMode;
@@ -213,9 +205,6 @@ export class VoicePipeline {
   private currentUtteranceId: number = 0;
   private committedUtteranceId: number | null = null;
 
-  // Deferred mind context: recall tool results stored here for injection into NEXT turn's prompt
-  private deferredMindContext: string = '';
-
   // Client IP from the WebSocket upgrade (used for rate-limit principal resolution)
   private readonly clientIp: string | undefined;
 
@@ -224,7 +213,6 @@ export class VoicePipeline {
     this.sttProvider = config.sttProvider;
     this.ttsProvider = config.ttsProvider;
     this.llmProvider = config.llmProvider;
-    this.mindProvider = config.mindProvider;
     this.voiceConfig = config.voiceConfig;
     this.events = config.events;
     this.mode = config.mode;
@@ -807,18 +795,17 @@ export class VoicePipeline {
       context = await getSessionContext(this.sessionId);
     }
 
-    // Add user message to session history
-    const userMessage: Message = { role: 'user', content: securityContext.sanitized ? text : text };
-    addMessageToSession(this.sessionId, userMessage);
-
-    // Process turn with LLM
+    // Process turn with LLM (the host adds the user message)
     await this.processTurn(text, context, securityContext, rateLimitPrincipal);
   }
 
   /**
-   * Run the security pipeline on input
+   * Run the security pipeline (rate limiting only).
    *
-   * @param input - The raw input text
+   * Sanitization and moderation are now done by the conversation host, which
+   * surfaces moderation exits via `result.moderationAction`.
+   *
+   * @param _input - The raw input text (unused; kept for signature compat)
    * @param projectId - The project ID
    * @param playerId - Client-supplied player ID (untrusted)
    * @param npcId - The NPC ID
@@ -826,22 +813,13 @@ export class VoicePipeline {
    *                    Used to key the rate limit so player_id rotation cannot bypass it.
    */
   private async runSecurityPipeline(
-    input: string,
+    _input: string,
     projectId: string,
     playerId: string,
     npcId: string,
     principal: string
   ): Promise<SecurityContext | null> {
-    // 1. Sanitize
-    const sanitizeResult = sanitize(input);
-    if (sanitizeResult.violations.length > 0) {
-      logger.warn(
-        { sessionId: this.sessionId, violations: sanitizeResult.violations },
-        'Input sanitization violations'
-      );
-    }
-
-    // 2. Rate limit — key on the trusted principal, not player_id
+    // Rate limit — key on the trusted principal, not player_id
     const rateLimitResult = rateLimiter.checkLimit(projectId, playerId, npcId, principal);
     if (!rateLimitResult.allowed) {
       logger.warn({ sessionId: this.sessionId, resetAt: rateLimitResult.resetAt }, 'Rate limit exceeded');
@@ -849,21 +827,15 @@ export class VoicePipeline {
       return null;
     }
 
-    // 3. Moderate
-    const moderationResult = await moderate(sanitizeResult.sanitized);
-
+    // Return a minimal security context; the host does sanitization and moderation.
     const securityContext: SecurityContext = {
       sanitized: true,
       moderated: true,
       rateLimited: false,
-      exitRequested: moderationResult.action === 'exit',
-      moderationFlags: moderationResult.flagged ? [moderationResult.reason || 'flagged'] : [],
-      inputViolations: sanitizeResult.violations,
+      exitRequested: false,
+      moderationFlags: [],
+      inputViolations: [],
     };
-
-    if (moderationResult.action === 'exit') {
-      logger.warn({ sessionId: this.sessionId, reason: moderationResult.reason }, 'Moderation triggered exit');
-    }
 
     return securityContext;
   }
@@ -880,10 +852,20 @@ export class VoicePipeline {
    * @param context - The session context
    * @param securityContext - The security context
    * @param principal - Trusted principal (used for cooldown keying on exit_convo)
+  /**
+   * Process a turn: run the shared turn host and stream events to TTS.
+   *
+   * This is now a thin adapter over `runConversationTurn` that feeds text/follow_up
+   * deltas into SentenceDetector -> TTS as they stream.
+   *
+   * @param _userInput - The sanitized user input
+   * @param _context - The session context (unused; the host fetches it)
+   * @param securityContext - The security context
+   * @param principal - Trusted principal (used for cooldown keying on exit_convo)
    */
   private async processTurn(
     _userInput: string,
-    context: SessionContext,
+    _context: SessionContext,
     securityContext: SecurityContext,
     principal: string
   ): Promise<void> {
@@ -894,120 +876,72 @@ export class VoicePipeline {
     };
 
     try {
-      const stored = sessionStore.get(this.sessionId);
-      const playerInfo = stored?.state.player_info || null;
-      const sessionUserId = stored?.state.user_id ?? null;
+      // TTS pipelining: collect in-flight synthesis promises in order
+      const ttsPipeline: Promise<void>[] = [];
+      let firstTextSeen = false;
 
-      // Build slim system prompt for Speaker (no knowledge, no tools)
-      // Split into stable (cacheable) prefix and dynamic suffix
-      const promptParts = await assembleSlimSystemPromptParts(
-        context.definition,
-        context.instance,
-        securityContext,
-        { voiceMode: this.mode.output === 'voice' },
-        playerInfo,
-        sessionUserId
-      );
+      const result = await runConversationTurn({
+        sessionId: this.sessionId,
+        content: _userInput,
+        fallbackProvider: this.llmProvider,
+        toolRegistry: mcpToolRegistry,
+        channel: 'voice',
+        onEvent: (event) => {
+          if (event.type === 'text') {
+            // Record latency: first LLM token
+            if (!firstTextSeen) {
+              this.latencyTracker.mark('first_token');
+              firstTextSeen = true;
+            }
 
-      // Assemble conversation history
-      const history = stored?.state.conversation_history ?? [];
-      const llmMessages = assembleConversationHistory(history);
+            this.events.onTextChunk(event.delta);
 
-      // --- PARALLEL: Speaker starts immediately, Mind runs alongside ---
+            if (this.mode.output === 'voice') {
+              const sentences = this.sentenceDetector.addChunk(event.delta);
+              for (const sentence of sentences) {
+                ttsPipeline.push(this.synthesizeSentence(sentence));
+              }
+            }
+          } else if (event.type === 'follow_up') {
+            // Flush detector before follow-up so follow-up never glues to primary
+            if (this.mode.output === 'voice') {
+              const remaining = this.sentenceDetector.flush();
+              if (remaining) {
+                ttsPipeline.push(this.synthesizeSentence(remaining));
+              }
+            }
 
-      // Augment Speaker dynamic suffix with deferred mind context from previous turn (if any)
-      let speakerDynamic = promptParts.dynamic;
-      if (this.deferredMindContext) {
-        speakerDynamic = augmentPromptWithMindContext(promptParts.dynamic, this.deferredMindContext);
-        logger.info({ sessionId: this.sessionId, contextLength: this.deferredMindContext.length }, 'Injected deferred mind context from previous turn');
-        this.deferredMindContext = '';
-      }
+            this.events.onTextChunk(event.delta);
 
-      // Cache key for provider-level prompt caching
-      const cacheKey = `${context.definition.id}:${context.definition.version ?? 0}`;
-
-      // Start Mind in background (does not block Speaker)
-      const mindTimeoutMs = Math.min(
-        context.project.settings.mind_timeout_ms ?? 15000,
-        8000
-      );
-      const mindAbortController = new AbortController();
-      const mindTimeout = setTimeout(() => mindAbortController.abort(), mindTimeoutMs);
-      const projectTools = mcpToolRegistry.getProjectTools(context.project.id);
-
-      const mindPromise = runMindAgentLoop(
-        context.definition,
-        context.instance,
-        _userInput,
-        llmMessages,
-        this.mindProvider,
-        context.project.id,
-        context.knowledgeBase,
-        mcpToolRegistry,
-        securityContext,
-        projectTools,
-        mindAbortController.signal,
-        sessionUserId,
-      ).catch((err) => {
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        logger.error({ sessionId: this.sessionId, error: msg }, 'Mind agent loop failed in voice pipeline');
-        return null as MindResult | null;
-      }).finally(() => {
-        clearTimeout(mindTimeout);
+            if (this.mode.output === 'voice') {
+              const sentences = this.sentenceDetector.addChunk(event.delta);
+              for (const sentence of sentences) {
+                ttsPipeline.push(this.synthesizeSentence(sentence));
+              }
+            }
+          } else if (event.type === 'tool_call') {
+            this.events.onToolCall(event.call.name, event.call.arguments);
+          } else if (event.type === 'tool_result') {
+            const tr = event.result;
+            this.events.onMindActivity({
+              tools_called: [{
+                name: tr.tool_name,
+                args: tr.arguments,
+                status: tr.status,
+              }],
+              duration_ms: 0,
+              completed: true,
+            });
+          }
+        },
       });
 
-      // Stream Speaker immediately (no waiting for Mind)
-      let fullResponse = '';
-      let providerUsage: { input_tokens: number; output_tokens: number } | undefined;
-
-      // TTS pipelining: collect in-flight synthesis promises in order so we can
-      // await them after the LLM stream ends without blocking token ingestion.
-      // Each sentence is fired without awaiting so the LLM stream continues
-      // producing tokens while TTS synthesizes in parallel. Order is preserved
-      // because we await the promises in the order they were pushed.
-      const ttsPipeline: Promise<void>[] = [];
-
-      for await (const chunk of this.llmProvider.streamChat({
-        systemPromptPrefix: promptParts.stable,
-        systemPrompt: speakerDynamic,
-        cacheKey,
-        messages: llmMessages,
-        signal: this.turnState!.abortController.signal,
-      })) {
-        if (this.turnState!.abortController.signal.aborted) {
-          logger.debug({ sessionId: this.sessionId }, 'Speaker LLM stream aborted');
-          break;
-        }
-
-        if (chunk.text) {
-          // Record latency: first LLM token from Speaker stream
-          this.latencyTracker.mark('first_token');
-
-          fullResponse += chunk.text;
-          this.events.onTextChunk(chunk.text);
-
-          if (this.mode.output === 'voice') {
-            const sentences = this.sentenceDetector.addChunk(chunk.text);
-            for (const sentence of sentences) {
-              // Fire synthesis without awaiting — do not stall token ingestion.
-              // Push the promise so we can await it in order below.
-              ttsPipeline.push(this.synthesizeSentence(sentence));
-            }
-          }
-        }
-
-        if (chunk.done && chunk.usage) {
-          providerUsage = chunk.usage;
-        }
-      }
-
-      // Flush remaining Speaker text to TTS and await all pipelined synthesis
+      // Flush remaining TTS
       if (this.mode.output === 'voice') {
         const remaining = this.sentenceDetector.flush();
         if (remaining) {
           ttsPipeline.push(this.synthesizeSentence(remaining));
         }
-        // Await synthesis in the order sentences were queued (preserves audio order)
         for (const p of ttsPipeline) {
           await p;
         }
@@ -1016,191 +950,52 @@ export class VoicePipeline {
         }
       }
 
-      // Store primary assistant message
-      if (fullResponse.trim().length > 0) {
-        const assistantMessage: Message = { role: 'assistant', content: fullResponse };
-        addMessageToSession(this.sessionId, assistantMessage);
-      }
-
-      // Await Mind result (likely already done by now)
-      const mindResult = await mindPromise;
-
-      // Emit Mind activity chips to UI
-      if (mindResult && mindResult.tools_called.length > 0) {
-        this.events.onMindActivity({
-          tools_called: mindResult.tools_called.map(tc => ({
-            name: tc.tool_name,
-            args: tc.arguments,
-            status: tc.status,
-          })),
-          duration_ms: mindResult.duration_ms,
-          completed: mindResult.completed,
-        });
-      }
-
-      // Handle exit_convo
-      if (mindResult?.exit_convo_used) {
+      // Handle moderation exit (result.moderationAction === 'exit' or securityContext.exitRequested)
+      if (result.moderationAction === 'exit' || securityContext.exitRequested) {
         if (this.turnState) {
           this.turnState.exitConvoUsed = true;
         }
 
-        const exitResult = handleExitConvo(
-          this.sessionId,
-          { reason: mindResult.exit_convo_reason ?? 'Mind decided to end conversation' },
-          securityContext
-        );
+        try {
+          await endSession(this.sessionId, this.llmProvider, true);
+          logger.info({ sessionId: this.sessionId }, 'Session ended by moderation');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          logger.error({ sessionId: this.sessionId, error: errorMessage }, 'Failed to end session after moderation exit');
+        }
+
+        this.isActive = false;
+        this.events.onExitConvo('Inappropriate content detected', 300);
+        this.events.onGenerationEnd();
+        return;
+      }
+
+      // Handle exit_convo tool
+      if (result.exitConvoResult) {
+        if (this.turnState) {
+          this.turnState.exitConvoUsed = true;
+        }
 
         processExitResult(
-          exitResult,
-          context.project.id,
+          result.exitConvoResult,
+          sessionStore.get(this.sessionId)?.state.project_id || '',
           sessionStore.get(this.sessionId)?.state.player_id || '',
-          context.definition.id,
+          sessionStore.get(this.sessionId)?.state.definition_id || '',
           principal
         );
 
         try {
           await endSession(this.sessionId, this.llmProvider, true);
-          logger.info({ sessionId: this.sessionId }, 'Session ended by Mind exit_convo');
+          logger.info({ sessionId: this.sessionId }, 'Session ended by exit_convo');
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          logger.error({ sessionId: this.sessionId, error: errorMessage }, 'Failed to end session after Mind exit_convo');
+          logger.error({ sessionId: this.sessionId, error: errorMessage }, 'Failed to end session after exit_convo');
         }
 
         this.isActive = false;
-        this.events.onExitConvo(exitResult.reason, exitResult.cooldownSeconds);
+        this.events.onExitConvo(result.exitConvoResult.reason, result.exitConvoResult.cooldownSeconds);
         this.events.onGenerationEnd();
         return;
-      }
-
-      // Separate recall tools vs MCP/project tools
-      if (mindResult && mindResult.tools_called.length > 0) {
-        const recallResults: string[] = [];
-        const mcpResults: string[] = [];
-
-        for (const tr of mindResult.tools_called) {
-          if (tr.status === 'error') continue;
-
-          const argsStr = Object.entries(tr.arguments)
-            .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
-            .join(', ');
-
-          if (isRecallTool(tr.tool_name)) {
-            if (tr.result_content) {
-              recallResults.push(`- Retrieved (${tr.tool_name}): ${tr.result_content}`);
-            }
-          } else {
-            mcpResults.push(`- Action taken (${tr.tool_name}): ${tr.result_content || 'executed successfully'}. Params: ${argsStr}`);
-          }
-        }
-
-        // Recall results -> defer to next turn's speaker prompt
-        if (recallResults.length > 0) {
-          this.deferredMindContext = recallResults.join('\n');
-          logger.info({ sessionId: this.sessionId, recallCount: recallResults.length }, 'Recall results deferred to next turn');
-        }
-
-        // MCP tool results -> follow-up speech NOW
-        if (mcpResults.length > 0) {
-          const mcpContext = mcpResults.join('\n');
-          // Reconstruct full system prompt for follow-up leg
-          const fullSystemPrompt = promptParts.stable + '\n\n' + promptParts.dynamic;
-          const followUpPrompt = buildFollowUpPrompt(fullSystemPrompt, mcpContext, context.definition.name);
-
-          // Build updated history: primary response + synthetic user prompt for continuation
-          const updatedHistory = [...llmMessages];
-          if (fullResponse.trim()) {
-            updatedHistory.push({ role: 'model' as const, content: fullResponse });
-          }
-          updatedHistory.push({ role: 'user' as const, content: '[System: You just took an action. Briefly address it.]' });
-
-          let followUpResponse = '';
-          const followUpTtsPipeline: Promise<void>[] = [];
-
-          for await (const chunk of this.llmProvider.streamChat({
-            systemPrompt: followUpPrompt,
-            messages: updatedHistory,
-            signal: this.turnState!.abortController.signal,
-          })) {
-            if (this.turnState!.abortController.signal.aborted) break;
-
-            if (chunk.text) {
-              followUpResponse += chunk.text;
-              this.events.onTextChunk(chunk.text);
-
-              if (this.mode.output === 'voice') {
-                const sentences = this.sentenceDetector.addChunk(chunk.text);
-                for (const sentence of sentences) {
-                  followUpTtsPipeline.push(this.synthesizeSentence(sentence));
-                }
-              }
-            }
-          }
-
-          // Flush follow-up TTS with pipelined awaiting
-          if (this.mode.output === 'voice') {
-            const remaining = this.sentenceDetector.flush();
-            if (remaining) {
-              followUpTtsPipeline.push(this.synthesizeSentence(remaining));
-            }
-            for (const p of followUpTtsPipeline) {
-              await p;
-            }
-            if (this.ttsSession) {
-              await this.ttsSession.flush();
-            }
-          }
-
-          // Store follow-up as part of conversation
-          if (followUpResponse.trim().length > 0) {
-            const followUpMessage: Message = { role: 'assistant', content: followUpResponse };
-            addMessageToSession(this.sessionId, followUpMessage);
-          }
-
-          logger.info({ sessionId: this.sessionId, mcpToolCount: mcpResults.length }, 'MCP follow-up speech completed');
-        }
-      }
-
-      // Durable record of this turn. Voice runs its own loop rather than
-      // runConversationTurn, so the append that covers the text paths does not
-      // reach here and has to be made explicitly. Converging the two loops is
-      // the real fix (backlog 5.19/5.21); until then this keeps voice sessions
-      // from being a hole in the record.
-      const loggedState = sessionStore.get(this.sessionId)?.state;
-      if (loggedState) {
-        await appendSessionLog(
-          {
-            sessionId: this.sessionId,
-            projectId: loggedState.project_id,
-            npcId: loggedState.definition_id,
-            playerId: loggedState.player_id,
-            channel: 'voice',
-          },
-          'turn',
-          {
-            playerInput: _userInput,
-            reply: fullResponse,
-            mindCompleted: mindResult?.completed ?? null,
-            toolsOffered: mindResult?.tools_offered ?? [],
-            toolsCalled: (mindResult?.tools_called ?? []).map((t) => ({
-              name: t.tool_name,
-              arguments: t.arguments,
-              status: t.status,
-              resultChars: t.result_content?.length ?? 0,
-            })),
-            recallDeferred: loggedState.deferred_mind_context ?? null,
-            mode: this.mode,
-            stm: loggedState.instance?.short_term_memory?.length ?? 0,
-            ltm: loggedState.instance?.long_term_memory?.length ?? 0,
-            mood: loggedState.instance?.current_mood ?? null,
-            latency: {
-              commitToFirstTranscript: this.latencyTracker.elapsed('commit', 'first_transcript'),
-              firstTranscriptToFirstToken: this.latencyTracker.elapsed('first_transcript', 'first_token'),
-              firstTokenToFirstAudio: this.latencyTracker.elapsed('first_token', 'first_audio'),
-              commitToFirstAudio: this.latencyTracker.elapsed('commit', 'first_audio'),
-            },
-            mindMs: mindResult?.duration_ms ?? null,
-          }
-        );
       }
 
       // Generation complete — log turn latency breakdown
@@ -1222,24 +1017,21 @@ export class VoicePipeline {
       try {
         addTokensToSession(this.sessionId, {
           voice_input_chars: _userInput.length,
-          voice_output_chars: fullResponse.length,
-          ...(providerUsage && {
-            text_input_tokens: providerUsage.input_tokens,
-            text_output_tokens: providerUsage.output_tokens,
+          voice_output_chars: result.responseText.length,
+          ...(result.usage.speaker && {
+            text_input_tokens: result.usage.speaker.input_tokens,
+            text_output_tokens: result.usage.speaker.output_tokens,
           }),
         });
-        if (mindResult?.usage) {
+        if (result.usage.mind) {
           addTokensToSession(this.sessionId, {
-            text_input_tokens: mindResult.usage.input_tokens,
-            text_output_tokens: mindResult.usage.output_tokens,
+            text_input_tokens: result.usage.mind.input_tokens,
+            text_output_tokens: result.usage.mind.output_tokens,
           });
         }
       } catch {
         // Never break the voice pipeline for token tracking
       }
-
-      // Update instance state
-      updateSessionInstance(this.sessionId, context.instance);
 
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
