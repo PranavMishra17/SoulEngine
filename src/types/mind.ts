@@ -37,6 +37,8 @@ export interface MindResult {
   usage?: {
     input_tokens: number;
     output_tokens: number;
+    /** Cached input tokens (prompt cache hit). Sum of both Mind LLM calls. */
+    cached_input_tokens?: number;
   };
   /** Whether the Mind completed before timeout */
   completed: boolean;

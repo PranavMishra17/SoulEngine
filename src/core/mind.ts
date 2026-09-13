@@ -13,7 +13,7 @@ import type { MCPToolRegistry } from '../mcp/registry.js';
 import { getMindAvailableTools, isExitConvoTool, isRecallTool, EXIT_CONVO_RULES } from './tools.js';
 import { formatMemoriesForPrompt } from './memory.js';
 import { recallMemoriesFor, recallKnowledgeByCategory, recallNpcByName } from './recall.js';
-import { generatePersonalityDescription, formatMoodForPrompt } from './personality.js';
+import { generatePersonalityDescription, formatMoodForPrompt, describeTraitShifts } from './personality.js';
 import { getStorage } from '../storage/factory.js';
 
 const logger = createLogger('npc-mind');
@@ -23,39 +23,41 @@ const logger = createLogger('npc-mind');
  * Extracted to prevent drift between the two implementations.
  */
 // ---------------------------------------------------------------------------
-// 1. buildMindSystemPrompt
+// 1. buildMindSystemPromptParts
 // ---------------------------------------------------------------------------
 
 /**
- * Build the system prompt for the Mind's cognitive background process.
- * This is intentionally much smaller than the full NPC Speaker prompt.
+ * Build the Mind's system prompt in two parts: stable (cacheable) and dynamic.
+ * The stable part is byte-identical across a session; the dynamic part varies with mood and trait drift.
+ *
+ * @param definition - The NPC's static definition
+ * @param instance - The NPC's current instance state
+ * @returns Object with `stable` and `dynamic` prompt strings
  */
-export function buildMindSystemPrompt(
+export function buildMindSystemPromptParts(
   definition: NPCDefinition,
   instance: NPCInstance,
-  userMessage: string,
-  conversationHistory: LLMMessage[],
-): string {
-  const sections: string[] = [];
+): { stable: string; dynamic: string } {
+  const stableSections: string[] = [];
+  const dynamicSections: string[] = [];
 
-  // --- ROLE ---
-  sections.push(
+  // --- STABLE: ROLE ---
+  stableSections.push(
     `[ROLE]\nYou are the cognitive background process of ${definition.name}. You analyze the conversation and decide whether to take actions or retrieve information using the tools available to you.`
   );
 
-  // --- NPC IDENTITY ---
-  const personalityDesc = generatePersonalityDescription(
+  // --- STABLE: NPC IDENTITY (baseline only, no modifiers) ---
+  const baselinePersonalityDesc = generatePersonalityDescription(
     definition.personality_baseline,
-    instance.trait_modifiers,
   );
-  const moodDesc = formatMoodForPrompt(instance.current_mood);
+  const backstory = definition.core_anchor.backstory;
   const principles = definition.core_anchor.principles.join(', ');
 
-  sections.push(
-    `[NPC IDENTITY]\nName: ${definition.name}\nDescription: ${definition.description}\nPersonality: ${personalityDesc}\nCurrent mood: ${moodDesc}\nCore values: ${principles}`
+  stableSections.push(
+    `[NPC IDENTITY]\nName: ${definition.name}\nDescription: ${definition.description}\nBackstory: ${backstory}\nPersonality: ${baselinePersonalityDesc}\nCore values: ${principles}`
   );
 
-  // --- PEOPLE YOU KNOW ---
+  // --- STABLE: PEOPLE YOU KNOW ---
   if (definition.network && definition.network.length > 0) {
     const networkLines = definition.network.map((entry) => {
       const tierLabel =
@@ -66,51 +68,34 @@ export function buildMindSystemPrompt(
             : 'acquaintance';
       return `- ${entry.npc_id} (${tierLabel})`;
     });
-    sections.push(`[PEOPLE YOU KNOW]\n${networkLines.join('\n')}`);
+    stableSections.push(`[PEOPLE YOU KNOW]\n${networkLines.join('\n')}`);
   }
 
-  // --- KNOWLEDGE DOMAINS ---
+  // --- STABLE: KNOWLEDGE DOMAINS ---
   if (definition.knowledge_access) {
     const accessibleCategories = Object.entries(definition.knowledge_access)
       .filter(([, level]) => level > 0)
       .map(([id]) => id);
     if (accessibleCategories.length > 0) {
-      sections.push(
+      stableSections.push(
         `[KNOWLEDGE DOMAINS YOU HAVE ACCESS TO]\n${accessibleCategories.join(', ')}`
       );
     }
   }
 
-  // --- CURRENT CONVERSATION (last 3-5 messages) ---
-  const recentHistory = conversationHistory.slice(-5);
-  if (recentHistory.length > 0) {
-    const historyLines = recentHistory.map((msg) => {
-      const label = msg.role === 'user' ? 'Player' : 'NPC';
-      return `${label}: ${msg.content}`;
-    });
-    sections.push(
-      `[CURRENT CONVERSATION]\n${historyLines.join('\n')}\n\nPlayer: ${userMessage}`
-    );
-  } else {
-    sections.push(
-      `[CURRENT CONVERSATION]\nPlayer: ${userMessage}`
-    );
-  }
-
-  // --- CONVERSATION TOOLS ---
-  // List MCP conversation tools explicitly so the Mind knows to use them
+  // --- STABLE: CONVERSATION TOOLS (conservative action instruction) ---
   const mcpConvoTools = (definition.mcp_permissions?.conversation_tools ?? [])
     .filter(name => name !== 'exit_convo' && !(name in { recall_npc: 1, recall_knowledge: 1, recall_memories: 1 }));
   if (mcpConvoTools.length > 0) {
-    sections.push(
-      `[CONVERSATION TOOLS AVAILABLE]\nYou have these action tools: ${mcpConvoTools.join(', ')}.\nUse them when the player's request or the conversation naturally calls for it. For example, if someone needs credentials verified, use request_credentials. If someone needs to be stopped, use call_guards. These are YOUR tools — use them proactively when appropriate.`
+    stableSections.push(
+      `[CONVERSATION TOOLS AVAILABLE]\nYou have these action tools: ${mcpConvoTools.join(', ')}.\n\nCall an action tool ONLY when the player's words plainly require it: a payment made, an item handed over, a request the NPC fulfils or refuses, a threat that warrants guards. For example, call request_credentials only when someone explicitly asks for credentials or needs verification; call call_guards only when someone poses a clear threat requiring security.\n\nNEVER call action tools for: small talk, questions about the world or people, or anything a line of dialogue answers. When in doubt: NO_ACTION.`
     );
   }
 
-  // --- YOUR TASK ---
-  sections.push(
+  // --- STABLE: YOUR TASK ---
+  stableSections.push(
     `[YOUR TASK]
-Analyze this conversation and decide:
+Analyze the conversation and decide:
 1. Should you recall information about any mentioned person? Use recall_npc.
 2. Should you recall world knowledge about a topic discussed? Use recall_knowledge.
 3. Should you recall past memories relevant to this conversation? Use recall_memories.
@@ -124,9 +109,31 @@ If nothing is needed, respond with exactly: NO_ACTION
 Do NOT generate spoken dialogue. Only call tools or respond NO_ACTION. Your tool results will be provided to ${definition.name}'s voice to inform their spoken response.`
   );
 
-  return sections.join('\n\n');
+  // --- DYNAMIC: CURRENT MOOD ---
+  const moodDesc = formatMoodForPrompt(instance.current_mood);
+  dynamicSections.push(`[NPC CURRENT MOOD]\n${moodDesc}`);
+
+  // --- DYNAMIC: TRAIT DRIFT (if present) ---
+  if (instance.trait_modifiers) {
+    const traitShiftDesc = describeTraitShifts(instance.trait_modifiers);
+    if (traitShiftDesc) {
+      dynamicSections.push(`[PERSONALITY SHIFTS]\n${traitShiftDesc}`);
+    }
+  }
+
+  return {
+    stable: stableSections.join('\n\n'),
+    dynamic: dynamicSections.join('\n\n'),
+  };
 }
 
+/**
+ * Build the system prompt for the Mind's cognitive background process.
+ * This is a compatibility wrapper that combines stable and dynamic parts.
+ * Prefer `buildMindSystemPromptParts` for cacheable prompts.
+ *
+ * @deprecated Use buildMindSystemPromptParts for new code
+ */
 // ---------------------------------------------------------------------------
 // 2. executeMindTool
 // ---------------------------------------------------------------------------
@@ -241,7 +248,7 @@ export async function executeMindTool(
 /**
  * The core Mind agent loop. Entry point for the NPC's cognitive background process.
  *
- * 1. Builds the mind system prompt
+ * 1. Builds the mind system prompt (stable + dynamic parts)
  * 2. Makes LLM call to decide on tool calls (or NO_ACTION)
  * 3. Executes any tool calls
  * 4. Formats tool results as tool_context for Speaker prompt injection
@@ -267,17 +274,14 @@ export async function runMindAgentLoop(
   const rawToolCalls: ToolCall[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCachedInputTokens = 0;
   let exitConvoUsed = false;
   let exitConvoReason: string | undefined;
 
   try {
-    // 1. Build mind system prompt
-    const systemPrompt = buildMindSystemPrompt(
-      definition,
-      instance,
-      userMessage,
-      conversationHistory,
-    );
+    // 1. Build mind system prompt parts (stable + dynamic)
+    const promptParts = buildMindSystemPromptParts(definition, instance);
+    const cacheKey = `${definition.id}:${definition.version ?? 0}`;
 
     // 2. Resolve network NPC names for constrained recall_npc enum
     const storage = getStorage(userId);
@@ -297,13 +301,21 @@ export async function runMindAgentLoop(
 
     logger.info({ npcId: definition.id, toolCount: mindTools.length }, 'Mind agent loop started');
 
-    // 4. LLM call 1: Decide what to do
+    // 4. Build messages array (history + current user message)
+    const messages: LLMMessage[] = [
+      ...conversationHistory,
+      { role: 'user' as const, content: userMessage },
+    ];
+
+    // 5. LLM call 1: Decide what to do
     let responseText = '';
     let call1ToolCalls: ToolCall[] = [];
 
     const stream1 = llmProvider.streamChat({
-      systemPrompt,
-      messages: [],
+      systemPromptPrefix: promptParts.stable,
+      systemPrompt: promptParts.dynamic,
+      cacheKey,
+      messages,
       tools: mindTools,
       signal,
     });
@@ -323,10 +335,13 @@ export async function runMindAgentLoop(
       if (chunk.done && chunk.usage) {
         totalInputTokens += chunk.usage.input_tokens;
         totalOutputTokens += chunk.usage.output_tokens;
+        if (chunk.usage.cached_input_tokens) {
+          totalCachedInputTokens += chunk.usage.cached_input_tokens;
+        }
       }
     }
 
-    // 4. Check for NO_ACTION or no tool calls
+    // 6. Check for NO_ACTION or no tool calls
     const trimmedResponse = responseText.trim();
     logger.info({ npcId: definition.id, toolCallCount: call1ToolCalls.length, noAction: trimmedResponse === 'NO_ACTION' }, 'Mind LLM call 1 complete');
     if (call1ToolCalls.length === 0 || trimmedResponse === 'NO_ACTION') {
@@ -337,6 +352,7 @@ export async function runMindAgentLoop(
         usage: {
           input_tokens: totalInputTokens,
           output_tokens: totalOutputTokens,
+          cached_input_tokens: totalCachedInputTokens > 0 ? totalCachedInputTokens : undefined,
         },
         completed: true,
         exit_convo_used: false,
@@ -348,7 +364,7 @@ export async function runMindAgentLoop(
     // Record raw tool calls
     rawToolCalls.push(...call1ToolCalls);
 
-    // 5. Execute each tool call
+    // 7. Execute each tool call
     for (const tc of call1ToolCalls) {
       if (signal.aborted) {
         logger.info({ npcId: definition.id }, 'Mind agent loop aborted during tool execution');
@@ -384,6 +400,7 @@ export async function runMindAgentLoop(
         usage: {
           input_tokens: totalInputTokens,
           output_tokens: totalOutputTokens,
+          cached_input_tokens: totalCachedInputTokens > 0 ? totalCachedInputTokens : undefined,
         },
         completed: false,
         exit_convo_used: exitConvoUsed,
@@ -393,7 +410,7 @@ export async function runMindAgentLoop(
       };
     }
 
-    // 6. Build tool_context string for Speaker prompt injection
+    // 8. Build tool_context string for Speaker prompt injection
     const toolContextLines = toolsCalled.map((tr) => {
       const argsStr = Object.entries(tr.arguments)
         .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
@@ -408,7 +425,7 @@ export async function runMindAgentLoop(
     });
     const toolContext = toolContextLines.join('\n');
 
-    // 7. Return MindResult with tool_context (no LLM call 2 — Speaker will use this)
+    // 9. Return MindResult with tool_context (no LLM call 2 — Speaker will use this)
     const duration_ms = Date.now() - startTime;
     logger.info({ npcId: definition.id, totalDurationMs: duration_ms, toolsCalled: toolsCalled.length, toolContextLength: toolContext.length }, 'Mind agent loop complete');
     return {
@@ -418,6 +435,7 @@ export async function runMindAgentLoop(
       usage: {
         input_tokens: totalInputTokens,
         output_tokens: totalOutputTokens,
+        cached_input_tokens: totalCachedInputTokens > 0 ? totalCachedInputTokens : undefined,
       },
       completed: true,
       exit_convo_used: exitConvoUsed,
@@ -444,6 +462,7 @@ export async function runMindAgentLoop(
       usage: {
         input_tokens: totalInputTokens,
         output_tokens: totalOutputTokens,
+        cached_input_tokens: totalCachedInputTokens > 0 ? totalCachedInputTokens : undefined,
       },
       completed: false,
       exit_convo_used: exitConvoUsed,
