@@ -1,4 +1,5 @@
 import { createLogger } from '../logger.js';
+import { promptCacheKey } from './context.js';
 import type { NPCDefinition, NPCInstance } from '../types/npc.js';
 import type { KnowledgeBase } from '../types/knowledge.js';
 import type { Tool, ToolCall } from '../types/mcp.js';
@@ -281,7 +282,7 @@ export async function runMindAgentLoop(
   try {
     // 1. Build mind system prompt parts (stable + dynamic)
     const promptParts = buildMindSystemPromptParts(definition, instance);
-    const cacheKey = `${definition.id}:${definition.version ?? 0}`;
+    const cacheKey = promptCacheKey(definition);
 
     // 2. Resolve network NPC names for constrained recall_npc enum
     const storage = getStorage(userId);

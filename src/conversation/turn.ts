@@ -32,6 +32,7 @@ import {
   assembleSlimSystemPromptParts,
   assembleConversationHistory,
   augmentPromptWithMindContext,
+  promptCacheKey,
 } from '../core/context.js';
 import { selectRuntime, type CognitionInput } from '../core/runtime.js';
 import { isRecallTool } from '../core/tools.js';
@@ -146,7 +147,7 @@ export interface TurnResult {
   /** Token usage per leg. Speaker and followUp usage come from the provider; Mind usage from MindResult. */
   usage: {
     speaker?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
-    mind?: { input_tokens: number; output_tokens: number };
+    mind?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
     followUp?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
   };
   /** True when speaker token counts are estimated rather than provider-reported. */
@@ -316,7 +317,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   }
 
   // Cache key for provider-level prompt caching
-  const cacheKey = `${definition.id}:${definition.version ?? 0}`;
+  const cacheKey = promptCacheKey(definition);
 
   const llmMessages: LLMMessage[] = conversationHistory;
   const projectTools = toolRegistry.getProjectTools(state.project_id);
@@ -363,7 +364,7 @@ export async function runConversationTurn(options: RunTurnOptions): Promise<Turn
   let timings = { mindMs: null as number | null, speakerMs: 0, speakerTtftMs: null as number | null, followUpMs: null as number | null, followUpTtftMs: null as number | null, wallMs: 0 };
   let usage: {
     speaker?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
-    mind?: { input_tokens: number; output_tokens: number };
+    mind?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
     followUp?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
   } = {};
   let usageEstimated = false;

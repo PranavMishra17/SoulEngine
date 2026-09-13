@@ -89,7 +89,7 @@ export interface TurnRecord {
   };
   usage: {
     speaker?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
-    mind?: { input_tokens: number; output_tokens: number };
+    mind?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
     followUp?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
   };
   security: {

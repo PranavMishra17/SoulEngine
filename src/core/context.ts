@@ -903,3 +903,12 @@ export function formatSingleCallTask(
 
   return sections.join('\n');
 }
+
+/**
+ * Provider cache routing key for every prompt built from one NPC definition.
+ * The Speaker and the Mind share it so both stable prefixes land in the same
+ * cache shard; a definition edit bumps the version and misses on purpose.
+ */
+export function promptCacheKey(definition: { id: string; version?: number }): string {
+  return `${definition.id}:${definition.version ?? 0}`;
+}

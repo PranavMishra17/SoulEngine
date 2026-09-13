@@ -72,7 +72,7 @@ export interface CognitionSummary {
   /** Token usage per leg */
   usage: {
     speaker?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
-    mind?: { input_tokens: number; output_tokens: number };
+    mind?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
     followUp?: { input_tokens: number; output_tokens: number; cached_input_tokens?: number };
   };
   /** True when speaker usage is estimated rather than provider-reported */

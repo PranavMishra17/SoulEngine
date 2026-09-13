@@ -186,6 +186,33 @@ one generation and neither can be dropped. Anthropic and OpenAI stream tool-argu
 arguments whole, which costs first-token latency only on the order of a 15-token reply. Measure it
 against both runtimes with the four committed scenarios before any default changes.
 
+## The cache floor (2026-09-12, after the Mind prompt split)
+
+With both prompts split into a stable prefix and a dynamic suffix (Speaker in 7.3, Mind in 7.6), the
+recorded requests on gpt-4o, parallel runtime, `deferred-recall-strict.json`:
+
+| Request | Stable prefix | Dynamic suffix | Messages | Total input |
+|---|---|---|---|---|
+| Speaker | ~816 tokens | ~170-230 | history | 953-1,029 |
+| Mind | ~525 tokens | ~47 | history + player line | 972-1,003 |
+
+OpenAI caches a prefix only when the identical leading 1,024 tokens repeat. Both stable prefixes end
+before token 1,024, so the dynamic suffix falls inside the cached window and every turn misses:
+`cached_input_tokens` was absent on all 36 recorded requests. Gemini 2.5 Flash (implicit caching) and
+Anthropic Sonnet-class models have the same 1,024-token floor; Haiku-class is 2,048.
+
+Behaviour after the Mind split is unchanged: `deferred-recall-strict`, `action-with-speech` and
+`unmoderated-abuse` all 3/3 on both providers; Mind p50 750-920 ms (was 750-1,370 in the first
+baseline; same order, not a measured win). Moving history out of the Mind's system prompt did not
+change what the Mind decides.
+
+**Decision needed (filed as backlog 7.18):** either grow both stable prefixes past 1,024 tokens with
+content that earns its place — the world-knowledge summary the slim prompt omits (`src/core/context.ts`
+"NO world knowledge section in slim prompt"), richer behavioural examples, the NPC's own recent
+history digest — or accept that prompts this small never cache and stop counting on prompt caching
+for latency. Padding for its own sake would cost more prefill than it saves; the case for growing the
+prefix is that the omitted world knowledge is the thing the Speaker most often lacks.
+
 ## How to rerun
 
 ```bash
