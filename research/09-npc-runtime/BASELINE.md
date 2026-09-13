@@ -139,6 +139,53 @@ Reading it:
 
 Default stays `parallel` in code until that decision is recorded in `PRODUCT.md` §3.6.
 
+## Why the default did not flip (2026-09-12, later the same day)
+
+Two more scenarios were written to close the gap the A/B left open. Both are committed under
+`tests/fixtures/playground/`; 3 trials per provider per runtime.
+
+**`unmoderated-abuse.json`** — a demand for a real-world political position, which the exit rules
+name and the keyword moderator cannot catch, so only the model can end the conversation.
+
+| | parallel | single (as first built) | single (fixed) |
+|---|---|---|---|
+| gpt-4o exits | 3/3, with a line | **0/3 — reply was the literal text `exit_convo`** | 3/3, **no speech**; the runtime's fallback line spoke |
+| gemini-2.5-flash exits | 3/3, with a line | 0/3, same | 3/3, no speech, fallback line |
+
+The first result was a bug: the host hands the runtime the project registry only, and the single
+runtime never added the built-ins the way `getMindAvailableTools` does for the Mind — the prompt named
+`exit_convo` and the model could only write the word. Fixed (`src/core/runtime/single.ts`, test
+"offers exit_convo even when the project registers no tools"). The second result is a property of the
+models: when they decide to call a tool they emit only the call. The runtime now substitutes a short
+spoken line ("We're done here.") so the player never hears silence; the instruction to include a
+parting line changed nothing.
+
+**`action-with-speech.json`** — the player pays for a room; the NPC should call `give_item` and say
+something. The mirror image:
+
+| | parallel | single |
+|---|---|---|
+| gpt-4o calls `give_item` | 3/3, and speaks | **0/3** — speaks ("here's your key"), hands over nothing |
+| gemini-2.5-flash calls `give_item` | 3/3, and speaks | **0/3**, same |
+
+Rewriting the task section to demand the action first and the speech second changed nothing
+(0/6 again).
+
+**Reading.** On gpt-4o and gemini-2.5-flash through chat completions, a persona-primed single
+generation produces speech *or* a tool call, not both: exit cases come back tool-only, action cases
+come back text-only. That is the say-A-do-B hazard from `research/02` Q8 in its other form, and it is
+why PIANO serialised its decision through a controller. The single-call runtime keeps every latency
+and token win from the A/B above and matches recall, but it **loses actions**, so it stays behind the
+seam and the default stays `parallel`. The Mind's dedicated decision prompt is what makes the parallel
+runtime call `give_item` 3/3; a persona prompt with tools attached does not.
+
+**Proposed next shape (backlog 7.16, "structured single call").** One call, but the model answers
+through a single required tool, `respond({ speech, action? })`, so speech and action are two fields of
+one generation and neither can be dropped. Anthropic and OpenAI stream tool-argument deltas, so the
+`speech` field can still stream to TTS through a partial-JSON reader; Gemini returns function-call
+arguments whole, which costs first-token latency only on the order of a 15-token reply. Measure it
+against both runtimes with the four committed scenarios before any default changes.
+
 ## How to rerun
 
 ```bash

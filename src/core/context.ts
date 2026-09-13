@@ -881,15 +881,19 @@ export function formatSingleCallTask(
   const sections: string[] = [];
 
   sections.push(`[YOUR TASK]`);
-  sections.push(`Speak as ${definition.name} in 1-3 sentences.`);
-
   if (hasActionTools) {
+    // Order matters: models that decide to act tend to emit only the call, and
+    // models that decide to speak tend to skip the call. Ask for both, action first.
     sections.push(
-      `You may call one of your action tools when the situation clearly calls for it. Say your line as well; the action does not replace speech.`
+      `Every reply has two parts, in this order:
+1. ACTION: if what the player just said calls for one of your tools (paying for something you hand over, a threat, a request you fulfil or refuse), call that tool now. Saying "here's your key" without calling the tool hands over nothing.
+2. SPEECH: then speak as ${definition.name} in 1-3 sentences. Always include speech, even when you called a tool.`
     );
+  } else {
+    sections.push(`Speak as ${definition.name} in 1-3 sentences.`);
   }
 
-  sections.push(`${EXIT_CONVO_RULES} When in doubt, do not call it.`);
+  sections.push(`${EXIT_CONVO_RULES} When in doubt, do not call it. If you do end the conversation, say a short in-character parting line in the same reply; never call exit_convo silently.`);
 
   if (voiceMode) {
     sections.push(

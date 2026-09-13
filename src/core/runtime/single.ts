@@ -1,5 +1,5 @@
 import { executeMindTool } from '../mind.js';
-import { isRecallTool, isExitConvoTool } from '../tools.js';
+import { isRecallTool, isExitConvoTool, getMindAvailableTools } from '../tools.js';
 import { stripNarration } from '../../conversation/turn.js';
 import { formatSingleCallTask } from '../context.js';
 import { recallMemoriesFor, recallKnowledgeFor, recallNpcsFor, RECALL_KNOWLEDGE_TOKEN_BUDGET } from '../recall.js';
@@ -21,6 +21,13 @@ import type { MindToolResult } from '../../types/mind.js';
  * Action tools execute after the stream ends.
  * No follow-up call.
  */
+import { createLogger } from '../../logger.js';
+
+const logger = createLogger('single-call-runtime');
+
+/** Spoken when the model exits without saying anything; a line, not a stage direction, so it survives TTS. */
+const SILENT_EXIT_LINE = "We're done here.";
+
 export class SingleCallRuntime implements CognitionRuntime {
   readonly name = 'single' as const;
 
@@ -73,13 +80,14 @@ export class SingleCallRuntime implements CognitionRuntime {
       recallSection = `\n\n[RELEVANT TO WHAT WAS JUST SAID]\n${recallSections.join('\n\n')}`;
     }
 
-    // --- Filter tools to action tools only (no recall) ---
-    const actionToolsList: Tool[] = [];
-    for (const [name, tool] of Object.entries(tools)) {
-      if (!isRecallTool(name)) {
-        actionToolsList.push(tool);
-      }
-    }
+    // --- Offer the same tool set the Mind would, minus recall (pre-fetched above) ---
+    // `tools` from the host is the project registry only; the built-ins
+    // (exit_convo, and the recall tools we drop) come from getMindAvailableTools,
+    // exactly as the parallel Mind assembles them. Without this the prompt
+    // names exit_convo and the model can only write the word.
+    const actionToolsList: Tool[] = getMindAvailableTools(definition, context.securityContext, tools).filter(
+      (tool) => !isRecallTool(tool.name)
+    );
 
     // --- Build task section ---
     const hasActionTools = actionToolsList.length > 0;
@@ -123,6 +131,12 @@ export class SingleCallRuntime implements CognitionRuntime {
     const speakerMs = Date.now() - speakerStart;
 
     responseText = stripNarration(responseText);
+    if (!responseText.trim() && collectedToolCalls.some((tc) => isExitConvoTool(tc.name))) {
+      // The model ended the conversation without a word. Silence reads as a
+      // crash to a player, so say the least that still sounds like a person.
+      logger.warn({ sessionId: context.sessionId }, 'Single-call runtime: exit_convo without speech; using the silent-exit line');
+      responseText = SILENT_EXIT_LINE;
+    }
 
     // --- Execute tool calls after stream ends ---
     const toolResults: MindToolResult[] = [];

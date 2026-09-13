@@ -93,6 +93,40 @@ describe('SingleCallRuntime (Phase B)', () => {
     expect(Object.keys(call.tools ?? {})).not.toContain('recall_knowledge');
   });
 
+  it('offers exit_convo even when the project registers no tools', async () => {
+    // The host hands over the project registry only; the built-in exit tool
+    // must still be offered or the prompt names a tool the model cannot call.
+    const speakerProvider = new StubLLMProvider({ responses: [{ text: 'Leave.' }] });
+    const streamChatSpy = vi.spyOn(speakerProvider, 'streamChat');
+
+    const input: CognitionInput = {
+      prompt: { stable: 'You are a merchant.', dynamic: 'Be helpful.' },
+      history: [],
+      playerInput: 'Hello',
+      tools: {},
+      toolRegistry: mcpToolRegistry,
+      providers: { speaker: speakerProvider, mind: speakerProvider },
+      cacheKey: 'test-cache',
+      signal: new AbortController().signal,
+      context: {
+        definition,
+        instance,
+        knowledgeBase: null,
+        projectId,
+        sessionId,
+        securityContext: { sanitized: true, moderated: true, rateLimited: false, exitRequested: false, moderationFlags: [], inputViolations: [] },
+        userId: null,
+      },
+    };
+
+    for await (const _event of new SingleCallRuntime().generate(input)) { /* drain */ }
+
+    const call = streamChatSpy.mock.calls[0][0];
+    const offered = (call.tools ?? []).map((t) => t.name);
+    expect(offered).toContain('exit_convo');
+    expect(offered.some((n) => n.startsWith('recall_'))).toBe(false);
+  });
+
   it('yields text events and executes tool calls from one stream', async () => {
     const speakerProvider = new StubLLMProvider({
       responses: [{

@@ -1,0 +1,81 @@
+{
+  "name": "action-with-speech",
+  "description": "Does the runtime speak AND act in one turn? Turn 2 pays for a room; the NPC should call give_item and still say something. Written to test the single-call runtime's speech+action claim before it becomes the default.",
+  "npc": {
+    "definition": {
+      "id": "bram",
+      "project_id": "scratch",
+      "name": "Bram",
+      "description": "A tavern keeper who hands over a room key when a guest has paid.",
+      "core_anchor": {
+        "backstory": "Bram has thrown out worse than you.",
+        "principles": [
+          "Honesty"
+        ],
+        "trauma_flags": []
+      },
+      "personality_baseline": {
+        "openness": 0.5,
+        "conscientiousness": 0.6,
+        "extraversion": 0.4,
+        "agreeableness": 0.5,
+        "neuroticism": 0.3
+      },
+      "voice": {
+        "provider": "cartesia",
+        "voice_id": "default",
+        "speed": 1.0
+      },
+      "schedule": [],
+      "mcp_permissions": {
+        "conversation_tools": [
+          "give_item",
+          "refuse_service"
+        ],
+        "game_event_tools": [],
+        "denied": []
+      },
+      "knowledge_access": {},
+      "network": []
+    },
+    "instance": {
+      "id": "scratch-instance",
+      "definition_id": "bram",
+      "project_id": "scratch",
+      "player_id": "player-1",
+      "created_at": "2026-09-12T00:00:00.000Z",
+      "current_mood": {
+        "valence": 0.5,
+        "arousal": 0.5,
+        "dominance": 0.5
+      },
+      "trait_modifiers": {},
+      "short_term_memory": [],
+      "long_term_memory": [],
+      "relationships": {},
+      "daily_pulse": null,
+      "cycle_metadata": {
+        "last_weekly": null,
+        "last_persona_shift": null
+      }
+    }
+  },
+  "player": {
+    "id": "player-1",
+    "script": [
+      "Evening. Got a room for the night?",
+      "Here are ten coppers, paid in full. Hand me the key."
+    ]
+  },
+  "expect": [
+    {
+      "turn": 2,
+      "toolsCalled": [
+        "give_item"
+      ],
+      "moderationAction": "none",
+      "replyMatches": "[a-z]{3,}"
+    }
+  ],
+  "trials": 3
+}
