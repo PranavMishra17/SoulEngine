@@ -879,6 +879,7 @@ export class VoicePipeline {
       // TTS pipelining: collect in-flight synthesis promises in order
       const ttsPipeline: Promise<void>[] = [];
       let firstTextSeen = false;
+      let followUpStarted = false;
 
       const result = await runConversationTurn({
         sessionId: this.sessionId,
@@ -903,11 +904,15 @@ export class VoicePipeline {
               }
             }
           } else if (event.type === 'follow_up') {
-            // Flush detector before follow-up so follow-up never glues to primary
-            if (this.mode.output === 'voice') {
-              const remaining = this.sentenceDetector.flush();
-              if (remaining) {
-                ttsPipeline.push(this.synthesizeSentence(remaining));
+            // The primary reply is complete once the first follow-up delta arrives:
+            // flush its tail once so the follow-up never glues onto its last sentence.
+            if (!followUpStarted) {
+              followUpStarted = true;
+              if (this.mode.output === 'voice') {
+                const remaining = this.sentenceDetector.flush();
+                if (remaining) {
+                  ttsPipeline.push(this.synthesizeSentence(remaining));
+                }
               }
             }
 
