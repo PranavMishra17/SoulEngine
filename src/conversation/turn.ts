@@ -156,8 +156,14 @@ export function stripNarration(text: string): string {
     .split('\n')
     .map((line) => {
       let cleaned = line.replace(/\([^)]*\)/g, '');
-      cleaned = cleaned.replace(/\*[^*]*\*/g, '');
-      return cleaned.trim();
+      // Asterisked spans are stage directions when they stand at a line or
+      // sentence boundary, and emphasis when they sit inside a clause. Delete
+      // the former; unwrap the latter so the word survives (ERR-031).
+      cleaned = cleaned.replace(/^\s*\*[^*]+\*\s*/, '');
+      cleaned = cleaned.replace(/\s*\*[^*]+\*\s*$/, '');
+      cleaned = cleaned.replace(/([.!?])\s*\*[^*]+\*\s*/g, '$1 ');
+      cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1');
+      return cleaned.replace(/\s{2,}/g, ' ').trim();
     })
     .filter((line) => line.length > 0)
     .join('\n')
