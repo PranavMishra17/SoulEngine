@@ -102,6 +102,8 @@ Built-in agents worth using: **Explore** (read-only fan-out search — cheap cod
 
 ## Starting a session (quick start)
 
+- **Resuming after another agent:** read [`HANDOFF.md`](HANDOFF.md) first — where the work is, what landed, what is next, and what bites.
+
 1. Read `backlog.md` → pick the lowest-tier `todo` items whose deps are `done`.
 2. `/orchestrate-tier 0` (or `/execute-feature 0.6` for a single one).
 3. Review each agent's report; ensure ERRORS rows flip to `FIXED` with test paths.
